@@ -384,7 +384,7 @@ func (m Model) renderFooter() string {
 	} else if m.filter != "" {
 		filter = "  filter: " + m.filter
 	}
-	keys := "click view/PR · wheel scroll · click URL browser · 1–9 view · / filter · r refresh · R refresh all · Ctrl+click URL review · q quit"
+	keys := "click view/PR · wheel scroll · click URL browser · 1–9 view · / filter · r refresh · R refresh all · Ctrl+click URL Pickr · q quit"
 	meta := ""
 	if !m.updated.IsZero() {
 		meta = fmt.Sprintf("updated %s", relativeTime(m.updated))
