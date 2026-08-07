@@ -82,6 +82,73 @@ func TestModelSwitchesViewsAndFilters(t *testing.T) {
 	}
 }
 
+func TestModelMouseSelectsViewsRowsAndURL(t *testing.T) {
+	cfg := testConfig()
+	model, err := NewModel(cfg, fakeLoader{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	model.views = []ViewData{
+		{View: cfg.Views[0], PRs: []gh.PullRequest{{Title: "Mine", URL: "https://github.com/acme/api/pull/1"}}},
+		{View: cfg.Views[1], PRs: []gh.PullRequest{
+			{Title: "First", URL: "https://github.com/acme/web/pull/1"},
+			{Title: "Second", URL: "https://github.com/acme/web/pull/2"},
+		}},
+	}
+	model.loading = false
+	model.width, model.height = 120, 30
+
+	secondTabX := 0
+	for {
+		index, ok := model.tabAtX(secondTabX)
+		if ok && index == 1 {
+			break
+		}
+		secondTabX++
+		if secondTabX > model.width {
+			t.Fatal("could not find the second tab")
+		}
+	}
+	updated, command := model.Update(tea.MouseMsg(tea.MouseEvent{
+		X: secondTabX, Y: tabRowY, Action: tea.MouseActionPress, Button: tea.MouseButtonLeft,
+	}))
+	if command != nil {
+		t.Fatal("tab click returned an unexpected command")
+	}
+	model = updated.(Model)
+	if model.active != 1 {
+		t.Fatalf("active view = %d, want 1", model.active)
+	}
+
+	updated, command = model.Update(tea.MouseMsg(tea.MouseEvent{
+		X: 2, Y: firstPRRowY + 1, Action: tea.MouseActionPress, Button: tea.MouseButtonLeft,
+	}))
+	if command != nil {
+		t.Fatal("row click returned an unexpected command")
+	}
+	model = updated.(Model)
+	if model.cursor != 1 {
+		t.Fatalf("cursor = %d, want 1", model.cursor)
+	}
+
+	updated, command = model.Update(tea.MouseMsg(tea.MouseEvent{Button: tea.MouseButtonWheelUp}))
+	if command != nil {
+		t.Fatal("wheel returned an unexpected command")
+	}
+	model = updated.(Model)
+	if model.cursor != 0 {
+		t.Fatalf("wheel did not move the cursor: %d", model.cursor)
+	}
+
+	updated, command = model.Update(tea.MouseMsg(tea.MouseEvent{
+		X: 2, Y: model.selectedURLY(), Action: tea.MouseActionPress, Button: tea.MouseButtonLeft,
+	}))
+	if command == nil {
+		t.Fatal("URL click did not return a browser command")
+	}
+	_ = updated
+}
+
 func TestModelKeepsLoadedRowsWhenRefreshFails(t *testing.T) {
 	cfg := testConfig()
 	model, err := NewModel(cfg, fakeLoader{})

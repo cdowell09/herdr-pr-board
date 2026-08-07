@@ -17,6 +17,12 @@ import (
 	"github.com/charmbracelet/lipgloss"
 )
 
+const (
+	tabRowY     = 1
+	firstPRRowY = 5
+	mouseStep   = 3
+)
+
 var (
 	titleStyle    = lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("212"))
 	activeTab     = lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("230")).Background(lipgloss.Color("62")).Padding(0, 1)
@@ -126,6 +132,8 @@ func (m Model) Update(message tea.Msg) (tea.Model, tea.Cmd) {
 			commands = append(commands, m.refreshAllCmd())
 		}
 		return m, tea.Batch(commands...)
+	case tea.MouseMsg:
+		return m.updateMouse(msg)
 	case tea.KeyMsg:
 		if m.editing {
 			return m.updateFilter(msg)
@@ -204,6 +212,70 @@ func (m Model) updateKey(key tea.KeyMsg) (tea.Model, tea.Cmd) {
 		}
 	}
 	return m, nil
+}
+
+func (m Model) updateMouse(message tea.MouseMsg) (tea.Model, tea.Cmd) {
+	event := tea.MouseEvent(message)
+	switch event.Button {
+	case tea.MouseButtonWheelUp:
+		m.cursor -= mouseStep
+		m.clampCursor()
+		return m, nil
+	case tea.MouseButtonWheelDown:
+		m.cursor += mouseStep
+		m.clampCursor()
+		return m, nil
+	case tea.MouseButtonLeft:
+		if event.Action != tea.MouseActionPress {
+			return m, nil
+		}
+	default:
+		return m, nil
+	}
+
+	if event.Y == tabRowY {
+		if index, ok := m.tabAtX(event.X); ok {
+			m.selectView(index)
+		}
+		return m, nil
+	}
+
+	rows := m.filteredPRs()
+	row := m.offset + event.Y - firstPRRowY
+	visible := min(m.visibleRows(), max(0, len(rows)-m.offset))
+	if event.Y >= firstPRRowY && event.Y < firstPRRowY+visible && row >= 0 && row < len(rows) {
+		m.cursor = row
+		m.clampCursor()
+		return m, nil
+	}
+
+	if event.Y == m.selectedURLY() {
+		if pr, ok := m.selectedPR(); ok {
+			return m, openBrowserCmd(pr.URL)
+		}
+	}
+	return m, nil
+}
+
+func (m Model) tabAtX(x int) (int, bool) {
+	position := 0
+	for i, view := range m.views {
+		label := fmt.Sprintf("%d %s %d", i+1, view.View.Title, len(view.PRs))
+		width := lipgloss.Width(inactiveTab.Render(label))
+		if x >= position && x < position+width {
+			return i, true
+		}
+		position += width + 1
+	}
+	return 0, false
+}
+
+func (m Model) selectedURLY() int {
+	if len(m.filteredPRs()) == 0 {
+		return 5
+	}
+	visible := min(m.visibleRows(), max(0, len(m.filteredPRs())-m.offset))
+	return 6 + visible
 }
 
 func (m *Model) selectView(index int) {
@@ -312,7 +384,7 @@ func (m Model) renderFooter() string {
 	} else if m.filter != "" {
 		filter = "  filter: " + m.filter
 	}
-	keys := "1–9 view · Tab next · j/k move · / filter · r refresh · R refresh all · Enter browser · Ctrl+click URL review · q quit"
+	keys := "click view/PR · wheel scroll · click URL browser · 1–9 view · / filter · r refresh · R refresh all · Ctrl+click URL review · q quit"
 	meta := ""
 	if !m.updated.IsZero() {
 		meta = fmt.Sprintf("updated %s", relativeTime(m.updated))

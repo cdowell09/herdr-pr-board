@@ -2,6 +2,7 @@
 set -euo pipefail
 
 root="${HERDR_PLUGIN_ROOT:-$(cd "$(dirname "$0")/.." && pwd)}"
+herdr_bin="${HERDR_BIN_PATH:-herdr}"
 config_dir="${HERDR_PLUGIN_CONFIG_DIR:?HERDR_PLUGIN_CONFIG_DIR is required}"
 state_dir="${HERDR_PLUGIN_STATE_DIR:?HERDR_PLUGIN_STATE_DIR is required}"
 pane_file="$state_dir/pane-id"
@@ -9,6 +10,9 @@ pane_file="$state_dir/pane-id"
 mkdir -p "$state_dir"
 if [[ -n "${HERDR_PANE_ID:-}" ]]; then
   printf '%s\n' "$HERDR_PANE_ID" >"$pane_file"
+fi
+if [[ -n "${HERDR_TAB_ID:-}" ]]; then
+  "$herdr_bin" tab rename "$HERDR_TAB_ID" "PR Board" >/dev/null 2>&1 || true
 fi
 
 cleanup() {

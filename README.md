@@ -74,13 +74,13 @@ Run this command:
 herdr plugin action invoke open --plugin cdowell09.pr-board
 ```
 
-The action opens a dedicated Herdr tab. If the tab is open, the action moves focus to that tab.
+The action opens a dedicated Herdr tab named `PR Board`. If the tab is open, the action moves focus to that tab.
 
 You can add this key binding to `~/.config/herdr/config.toml`:
 
 ```toml
 [[keys.command]]
-key = "prefix+shift+p"
+key = "prefix+shift+b"
 type = "plugin_action"
 command = "cdowell09.pr-board.open"
 description = "open PR board"
@@ -91,6 +91,10 @@ Reload the Herdr configuration:
 ```sh
 herdr server reload-config
 ```
+
+The default Herdr prefix is `Ctrl+B`. Press `Ctrl+B`, and then press `Shift+B` to open the board.
+
+The shortcut does not replace `prefix+shift+p`. Herdr uses that shortcut to rename a pane.
 
 ## Configure the board
 
@@ -171,6 +175,10 @@ refresh_interval = "0"
 
 | Key | Action |
 | --- | --- |
+| Left click a view | Select the view. |
+| Left click a PR | Select the PR. |
+| Left click the URL | Open the PR in a browser. |
+| Mouse wheel | Move through the PR list. |
 | `1`–`9` | Select a view. |
 | `Tab` | Select the next view. |
 | `Shift+Tab` | Select the previous view. |

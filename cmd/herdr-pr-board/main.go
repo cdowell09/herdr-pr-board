@@ -31,7 +31,7 @@ func main() {
 	if err != nil {
 		fatal(err.Error())
 	}
-	if _, err := tea.NewProgram(model, tea.WithAltScreen()).Run(); err != nil {
+	if _, err := tea.NewProgram(model, tea.WithAltScreen(), tea.WithMouseCellMotion()).Run(); err != nil {
 		fatal(err.Error())
 	}
 }
