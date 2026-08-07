@@ -103,10 +103,7 @@ func TestEnrichCIBatchesAndMapsRollups(t *testing.T) {
 		{Repository: "acme/two", Number: 2, URL: "https://github.com/acme/two/pull/2"},
 		{Repository: "acme/three", Number: 3, URL: "https://github.com/acme/three/pull/3"},
 	}
-	if batches := client.CIBatchCount(prs); batches != 2 {
-		t.Fatalf("CI batches = %d, want 2", batches)
-	}
-	rate, err := client.EnrichCI(context.Background(), prs)
+	rate, err := client.EnrichCI(context.Background(), prs, RateResource{})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -119,14 +116,11 @@ func TestEnrichCIBatchesAndMapsRollups(t *testing.T) {
 	if rate.Remaining != 4988 || !rate.Reset.Equal(time.Date(2026, 8, 7, 13, 0, 0, 0, time.UTC)) {
 		t.Fatalf("rate = %#v", rate)
 	}
-	if _, err := client.EnrichCI(context.Background(), prs); err != nil {
+	if _, err := client.EnrichCI(context.Background(), prs, rate); err != nil {
 		t.Fatal(err)
 	}
 	if calls != 2 {
 		t.Fatalf("cached enrichment made another request; calls = %d", calls)
-	}
-	if batches := client.CIBatchCount(prs); batches != 0 {
-		t.Fatalf("cached CI batches = %d, want 0", batches)
 	}
 }
 
@@ -145,12 +139,36 @@ func TestEnrichCIStopsBeforeUnbudgetedBatch(t *testing.T) {
 		{Repository: "acme/two", Number: 2, URL: "https://github.com/acme/two/pull/2"},
 	}
 
-	rate, err := client.EnrichCI(context.Background(), prs)
+	budget := RateResource{Limit: 5000, Remaining: 2, Reset: time.Now().Add(time.Hour)}
+	rate, err := client.EnrichCI(context.Background(), prs, budget)
 	if err == nil || !strings.Contains(err.Error(), "needs at least 1") {
 		t.Fatalf("error = %v", err)
 	}
 	if calls != 1 {
 		t.Fatalf("GraphQL calls = %d, want 1", calls)
+	}
+	if rate.Limit != 5000 || rate.Remaining != 0 {
+		t.Fatalf("rate = %#v", rate)
+	}
+}
+
+func TestEnrichCIRechecksExpiredCacheBeforeFirstBatch(t *testing.T) {
+	calls := 0
+	runner := runnerFunc(func(_ context.Context, _ ...string) ([]byte, error) {
+		calls++
+		return nil, errors.New("unexpected GraphQL request")
+	})
+	client := NewClient(runner, config.GitHubConfig{CIBatchSize: 1})
+	pr := PullRequest{Repository: "acme/one", Number: 1, URL: "https://github.com/acme/one/pull/1"}
+	client.ciCache[pr.URL] = ciCacheEntry{state: CISuccess, expiresAt: time.Now().Add(-time.Second)}
+	budget := RateResource{Limit: 5000, Remaining: 0, Reset: time.Now().Add(time.Hour)}
+
+	rate, err := client.EnrichCI(context.Background(), []PullRequest{pr}, budget)
+	if err == nil || !strings.Contains(err.Error(), "needs at least 1") {
+		t.Fatalf("error = %v", err)
+	}
+	if calls != 0 {
+		t.Fatalf("GraphQL calls = %d, want 0", calls)
 	}
 	if rate.Limit != 5000 || rate.Remaining != 0 {
 		t.Fatalf("rate = %#v", rate)

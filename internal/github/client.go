@@ -178,26 +178,13 @@ func (c *Client) resolveScope(ctx context.Context, scope string) (string, error)
 	return strings.ReplaceAll(scope, "@me", c.login), nil
 }
 
-func (c *Client) CIBatchCount(prs []PullRequest) int {
-	now := time.Now()
-	pending := 0
-	c.ciMu.Lock()
-	for _, pr := range prs {
-		entry, cached := c.ciCache[pr.URL]
-		if !cached || !now.Before(entry.expiresAt) {
-			pending++
-		}
-	}
-	c.ciMu.Unlock()
-	if pending == 0 {
-		return 0
-	}
-	return (pending + c.cfg.CIBatchSize - 1) / c.cfg.CIBatchSize
+func graphQLCapacityAvailable(rate RateResource, requests int) bool {
+	return rate.Limit == 0 || rate.Remaining >= requests || !time.Now().Before(rate.Reset)
 }
 
-func (c *Client) EnrichCI(ctx context.Context, prs []PullRequest) (RateResource, error) {
+func (c *Client) EnrichCI(ctx context.Context, prs []PullRequest, budget RateResource) (RateResource, error) {
 	if len(prs) == 0 {
-		return RateResource{}, nil
+		return budget, nil
 	}
 
 	now := time.Now()
@@ -216,12 +203,12 @@ func (c *Client) EnrichCI(ctx context.Context, prs []PullRequest) (RateResource,
 	c.ciMu.Unlock()
 
 	batchSize := c.cfg.CIBatchSize
-	var latest RateResource
+	latest := budget
 	for start := 0; start < len(pending); start += batchSize {
 		remainingBatches := (len(pending) - start + batchSize - 1) / batchSize
-		if latest.Limit > 0 && latest.Remaining < remainingBatches && time.Now().Before(latest.Reset) {
+		if !graphQLCapacityAvailable(latest, remainingBatches) {
 			return latest, fmt.Errorf(
-				"GraphQL rate limit has %d points remaining but CI refresh needs at least %d",
+				"GraphQL rate limit has %d points remaining but CI refresh needs at least %d; CI status is stale",
 				latest.Remaining,
 				remainingBatches,
 			)

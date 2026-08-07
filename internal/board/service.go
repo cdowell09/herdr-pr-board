@@ -93,9 +93,8 @@ func (s *Service) RefreshAll(ctx context.Context) Snapshot {
 	for _, pr := range unique {
 		prs = append(prs, pr)
 	}
-	ciRequests := s.client.CIBatchCount(prs)
-	if len(prs) > 0 && (ciRequests == 0 || graphQLCapacityAvailable(snapshot.Rates.GraphQL, ciRequests)) {
-		graphRate, err := s.client.EnrichCI(ctx, prs)
+	if len(prs) > 0 {
+		graphRate, err := s.client.EnrichCI(ctx, prs, snapshot.Rates.GraphQL)
 		if graphRate.Limit > 0 {
 			snapshot.Rates.GraphQL = graphRate
 		}
@@ -103,8 +102,6 @@ func (s *Service) RefreshAll(ctx context.Context) Snapshot {
 			snapshot.Warning = appendWarning(snapshot.Warning, err.Error())
 			s.refreshRates(ctx, &snapshot.Rates, &snapshot.Warning)
 		}
-	} else if len(prs) > 0 {
-		snapshot.Warning = appendWarning(snapshot.Warning, graphQLCapacityWarning(snapshot.Rates.GraphQL, ciRequests))
 	}
 
 	ciByURL := make(map[string]gh.CIState, len(prs))
@@ -139,12 +136,7 @@ func (s *Service) RefreshOne(ctx context.Context, view config.View) ViewSnapshot
 	if result.Data.Err != nil || len(result.Data.PRs) == 0 {
 		return result
 	}
-	ciRequests := s.client.CIBatchCount(result.Data.PRs)
-	if ciRequests > 0 && !graphQLCapacityAvailable(result.Rates.GraphQL, ciRequests) {
-		result.Warning = appendWarning(result.Warning, graphQLCapacityWarning(result.Rates.GraphQL, ciRequests))
-		return result
-	}
-	graphRate, err := s.client.EnrichCI(ctx, result.Data.PRs)
+	graphRate, err := s.client.EnrichCI(ctx, result.Data.PRs, result.Rates.GraphQL)
 	if graphRate.Limit > 0 {
 		result.Rates.GraphQL = graphRate
 	}
@@ -179,18 +171,6 @@ func searchCapacityError(rate gh.RateResource, requests int) error {
 		rate.Remaining,
 		requests,
 		rate.Reset.Local().Format("15:04"),
-	)
-}
-
-func graphQLCapacityAvailable(rate gh.RateResource, requests int) bool {
-	return rate.Limit == 0 || rate.Remaining >= requests || !time.Now().Before(rate.Reset)
-}
-
-func graphQLCapacityWarning(rate gh.RateResource, requests int) string {
-	return fmt.Sprintf(
-		"GraphQL rate limit has %d points remaining but CI refresh needs at least %d; CI status is stale",
-		rate.Remaining,
-		requests,
 	)
 }
 
