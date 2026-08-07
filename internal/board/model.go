@@ -38,29 +38,28 @@ var (
 type snapshotMsg Snapshot
 
 type viewMsg struct {
-	index int
-	data  ViewData
+	index    int
+	snapshot ViewSnapshot
 }
 
 type tickMsg struct{}
 
 type Model struct {
-	cfg      config.Config
-	loader   Loader
-	refresh  time.Duration
-	views    []ViewData
-	active   int
-	cursor   int
-	offset   int
-	width    int
-	height   int
-	filter   string
-	editing  bool
-	loading  bool
-	warning  string
-	rates    gh.RateLimits
-	updated  time.Time
-	lastTick time.Time
+	cfg     config.Config
+	loader  Loader
+	refresh time.Duration
+	views   []ViewData
+	active  int
+	cursor  int
+	offset  int
+	width   int
+	height  int
+	filter  string
+	editing bool
+	loading bool
+	warning string
+	rates   gh.RateLimits
+	updated time.Time
 }
 
 func NewModel(cfg config.Config, loader Loader) (Model, error) {
@@ -109,25 +108,26 @@ func (m Model) Update(message tea.Msg) (tea.Model, tea.Cmd) {
 		m.clampCursor()
 		return m, nil
 	case viewMsg:
-		data := msg.data
+		refresh := msg.snapshot
+		data := refresh.Data
 		if msg.index >= 0 && msg.index < len(m.views) {
 			if data.Err != nil && len(data.PRs) == 0 && len(m.views[msg.index].PRs) > 0 {
 				data.PRs = m.views[msg.index].PRs
 			}
 			m.views[msg.index] = data
 		}
-		m.warning = ""
+		m.rates = refresh.Rates
+		m.warning = refresh.Warning
 		if data.Err != nil {
-			m.warning = data.Err.Error()
+			m.warning = appendWarning(m.warning, data.Err.Error())
 		}
 		m.loading = false
-		m.updated = time.Now()
+		m.updated = refresh.UpdatedAt
 		m.clampCursor()
 		return m, nil
 	case tickMsg:
-		m.lastTick = time.Now()
 		commands := []tea.Cmd{m.tickCmd()}
-		if !m.loading && !m.searchRateExhausted() {
+		if !m.loading && searchCapacityAvailable(m.rates.Search, m.cfg.SearchRequestCount()) {
 			m.loading = true
 			commands = append(commands, m.refreshAllCmd())
 		}
@@ -145,7 +145,11 @@ func (m Model) Update(message tea.Msg) (tea.Model, tea.Cmd) {
 
 func (m Model) updateFilter(key tea.KeyMsg) (tea.Model, tea.Cmd) {
 	switch key.String() {
-	case "esc", "enter":
+	case "esc":
+		m.editing = false
+		m.filter = ""
+		m.cursor, m.offset = 0, 0
+	case "enter":
 		m.editing = false
 		m.cursor, m.offset = 0, 0
 	case "backspace":
@@ -193,12 +197,13 @@ func (m Model) updateKey(key tea.KeyMsg) (tea.Model, tea.Cmd) {
 			m.cursor, m.offset = 0, 0
 		}
 	case "r":
-		if !m.loading && !m.searchRateExhausted() {
+		requests := m.currentView().View.SearchRequestCount(len(m.cfg.GitHub.Scopes))
+		if !m.loading && searchCapacityAvailable(m.rates.Search, requests) {
 			m.loading = true
 			return m, m.refreshOneCmd(m.active)
 		}
 	case "R":
-		if !m.loading && !m.searchRateExhausted() {
+		if !m.loading && searchCapacityAvailable(m.rates.Search, m.cfg.SearchRequestCount()) {
 			m.loading = true
 			return m, m.refreshAllCmd()
 		}
@@ -260,7 +265,7 @@ func (m Model) updateMouse(message tea.MouseMsg) (tea.Model, tea.Cmd) {
 func (m Model) tabAtX(x int) (int, bool) {
 	position := 0
 	for i, view := range m.views {
-		label := fmt.Sprintf("%d %s %d", i+1, view.View.Title, len(view.PRs))
+		label := tabLabel(i, view)
 		width := lipgloss.Width(inactiveTab.Render(label))
 		if x >= position && x < position+width {
 			return i, true
@@ -320,7 +325,7 @@ func (m Model) View() string {
 func (m Model) renderTabs() string {
 	var tabs []string
 	for i, view := range m.views {
-		label := fmt.Sprintf("%d %s %d", i+1, view.View.Title, len(view.PRs))
+		label := tabLabel(i, view)
 		if i == m.active {
 			tabs = append(tabs, activeTab.Render(label))
 		} else {
@@ -449,8 +454,8 @@ func (m Model) columnWidths() (repo, title, author int) {
 	return repo, title, author
 }
 
-func (m Model) searchRateExhausted() bool {
-	return m.rates.Search.Limit > 0 && m.rates.Search.Remaining == 0 && time.Now().Before(m.rates.Search.Reset)
+func tabLabel(index int, view ViewData) string {
+	return fmt.Sprintf("%d %s %d", index+1, view.View.Title, len(view.PRs))
 }
 
 func (m Model) refreshAllCmd() tea.Cmd {
@@ -466,7 +471,7 @@ func (m Model) refreshOneCmd(index int) tea.Cmd {
 	return func() tea.Msg {
 		ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
 		defer cancel()
-		return viewMsg{index: index, data: m.loader.RefreshOne(ctx, view)}
+		return viewMsg{index: index, snapshot: m.loader.RefreshOne(ctx, view)}
 	}
 }
 

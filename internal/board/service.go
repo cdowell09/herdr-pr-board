@@ -11,10 +11,9 @@ import (
 )
 
 type ViewData struct {
-	View      config.View
-	PRs       []gh.PullRequest
-	Err       error
-	UpdatedAt time.Time
+	View config.View
+	PRs  []gh.PullRequest
+	Err  error
 }
 
 type Snapshot struct {
@@ -24,9 +23,16 @@ type Snapshot struct {
 	UpdatedAt time.Time
 }
 
+type ViewSnapshot struct {
+	Data      ViewData
+	Rates     gh.RateLimits
+	Warning   string
+	UpdatedAt time.Time
+}
+
 type Loader interface {
 	RefreshAll(context.Context) Snapshot
-	RefreshOne(context.Context, config.View) ViewData
+	RefreshOne(context.Context, config.View) ViewSnapshot
 }
 
 type Service struct {
@@ -39,16 +45,17 @@ func NewService(cfg config.Config, client *gh.Client) *Service {
 }
 
 func (s *Service) RefreshAll(ctx context.Context) Snapshot {
-	now := time.Now()
-	snapshot := Snapshot{Views: make([]ViewData, len(s.cfg.Views)), UpdatedAt: now}
+	snapshot := Snapshot{Views: make([]ViewData, len(s.cfg.Views)), UpdatedAt: time.Now()}
 	rates, rateErr := s.client.RateLimits(ctx)
 	snapshot.Rates = rates
 	if rateErr != nil {
 		snapshot.Warning = "rate limits unavailable: " + rateErr.Error()
 	}
-	if rates.Search.Limit > 0 && rates.Search.Remaining == 0 {
+	requests := s.cfg.SearchRequestCount()
+	if rateErr == nil && !searchCapacityAvailable(rates.Search, requests) {
+		err := searchCapacityError(rates.Search, requests)
 		for i, view := range s.cfg.Views {
-			snapshot.Views[i] = ViewData{View: view, Err: fmt.Errorf("GitHub search rate limit exhausted until %s", rates.Search.Reset.Local().Format("15:04"))}
+			snapshot.Views[i] = ViewData{View: view, Err: err}
 		}
 		return snapshot
 	}
@@ -75,6 +82,7 @@ func (s *Service) RefreshAll(ctx context.Context) Snapshot {
 	close(jobs)
 	wg.Wait()
 
+	s.refreshRates(ctx, &snapshot.Rates, &snapshot.Warning)
 	unique := make(map[string]gh.PullRequest)
 	for _, view := range snapshot.Views {
 		for _, pr := range view.PRs {
@@ -85,7 +93,7 @@ func (s *Service) RefreshAll(ctx context.Context) Snapshot {
 	for _, pr := range unique {
 		prs = append(prs, pr)
 	}
-	if rates.GraphQL.Limit == 0 || rates.GraphQL.Remaining > 0 {
+	if len(prs) > 0 && graphQLCapacityAvailable(snapshot.Rates.GraphQL) {
 		graphRate, err := s.client.EnrichCI(ctx, prs)
 		if err != nil {
 			snapshot.Warning = appendWarning(snapshot.Warning, err.Error())
@@ -110,20 +118,66 @@ func (s *Service) RefreshAll(ctx context.Context) Snapshot {
 	return snapshot
 }
 
-func (s *Service) RefreshOne(ctx context.Context, view config.View) ViewData {
-	data := s.searchView(ctx, view)
-	if data.Err != nil || len(data.PRs) == 0 {
-		return data
+func (s *Service) RefreshOne(ctx context.Context, view config.View) ViewSnapshot {
+	result := ViewSnapshot{Data: ViewData{View: view}, UpdatedAt: time.Now()}
+	rates, rateErr := s.client.RateLimits(ctx)
+	result.Rates = rates
+	if rateErr != nil {
+		result.Warning = "rate limits unavailable: " + rateErr.Error()
 	}
-	if _, ciErr := s.client.EnrichCI(ctx, data.PRs); ciErr != nil {
-		data.Err = fmt.Errorf("PRs loaded; CI unavailable: %w", ciErr)
+	requests := view.SearchRequestCount(len(s.cfg.GitHub.Scopes))
+	if rateErr == nil && !searchCapacityAvailable(rates.Search, requests) {
+		result.Data.Err = searchCapacityError(rates.Search, requests)
+		return result
 	}
-	return data
+
+	result.Data = s.searchView(ctx, view)
+	s.refreshRates(ctx, &result.Rates, &result.Warning)
+	if result.Data.Err != nil || len(result.Data.PRs) == 0 {
+		return result
+	}
+	if !graphQLCapacityAvailable(result.Rates.GraphQL) {
+		result.Warning = appendWarning(result.Warning, "GraphQL rate limit exhausted; CI status is stale")
+		return result
+	}
+	graphRate, err := s.client.EnrichCI(ctx, result.Data.PRs)
+	if err != nil {
+		result.Warning = appendWarning(result.Warning, "PRs loaded; CI unavailable: "+err.Error())
+	} else if graphRate.Limit > 0 {
+		result.Rates.GraphQL = graphRate
+	}
+	return result
 }
 
 func (s *Service) searchView(ctx context.Context, view config.View) ViewData {
 	prs, err := s.client.SearchView(ctx, view)
-	return ViewData{View: view, PRs: prs, Err: err, UpdatedAt: time.Now()}
+	return ViewData{View: view, PRs: prs, Err: err}
+}
+
+func (s *Service) refreshRates(ctx context.Context, rates *gh.RateLimits, warning *string) {
+	latest, err := s.client.RateLimits(ctx)
+	if err != nil {
+		*warning = appendWarning(*warning, "updated rate limits unavailable: "+err.Error())
+		return
+	}
+	*rates = latest
+}
+
+func searchCapacityAvailable(rate gh.RateResource, requests int) bool {
+	return rate.Limit == 0 || rate.Remaining >= requests || !time.Now().Before(rate.Reset)
+}
+
+func searchCapacityError(rate gh.RateResource, requests int) error {
+	return fmt.Errorf(
+		"GitHub search rate limit has %d requests remaining but refresh requires %d; resets at %s",
+		rate.Remaining,
+		requests,
+		rate.Reset.Local().Format("15:04"),
+	)
+}
+
+func graphQLCapacityAvailable(rate gh.RateResource) bool {
+	return rate.Limit == 0 || rate.Remaining > 0 || !time.Now().Before(rate.Reset)
 }
 
 func appendWarning(current, next string) string {

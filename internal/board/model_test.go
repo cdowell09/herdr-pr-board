@@ -17,13 +17,20 @@ type fakeLoader struct {
 }
 
 func (f fakeLoader) RefreshAll(context.Context) Snapshot { return f.snapshot }
-func (f fakeLoader) RefreshOne(_ context.Context, view config.View) ViewData {
+func (f fakeLoader) RefreshOne(_ context.Context, view config.View) ViewSnapshot {
+	refresh := ViewSnapshot{
+		Data:      ViewData{View: view},
+		Rates:     f.snapshot.Rates,
+		Warning:   f.snapshot.Warning,
+		UpdatedAt: f.snapshot.UpdatedAt,
+	}
 	for _, data := range f.snapshot.Views {
 		if data.View.ID == view.ID {
-			return data
+			refresh.Data = data
+			break
 		}
 	}
-	return ViewData{View: view}
+	return refresh
 }
 
 func TestModelRendersConfigTitlesPRAndCI(t *testing.T) {
@@ -79,6 +86,26 @@ func TestModelSwitchesViewsAndFilters(t *testing.T) {
 	model = updated.(Model)
 	if !strings.Contains(model.View(), "No pull requests match the filter") {
 		t.Fatalf("filter not applied:\n%s", model.View())
+	}
+}
+
+func TestModelEscapeClearsFilterWhileEditing(t *testing.T) {
+	cfg := testConfig()
+	model, err := NewModel(cfg, fakeLoader{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	model.editing = true
+	model.filter = "api"
+	model.cursor, model.offset = 2, 1
+
+	updated, command := model.Update(tea.KeyMsg{Type: tea.KeyEsc})
+	if command != nil {
+		t.Fatal("Escape returned an unexpected command")
+	}
+	model = updated.(Model)
+	if model.editing || model.filter != "" || model.cursor != 0 || model.offset != 0 {
+		t.Fatalf("Escape did not clear filter state: editing=%v filter=%q cursor=%d offset=%d", model.editing, model.filter, model.cursor, model.offset)
 	}
 }
 
@@ -182,6 +209,53 @@ func TestModelDoesNotRefreshWhenSearchRateIsExhausted(t *testing.T) {
 	}
 	if model.loading {
 		t.Fatal("active refresh entered loading state with an exhausted search rate limit")
+	}
+}
+
+func TestModelDoesNotRefreshAllBeyondSearchBudget(t *testing.T) {
+	cfg := testConfig()
+	model, err := NewModel(cfg, fakeLoader{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	model.loading = false
+	model.rates.Search = gh.RateResource{Limit: 30, Remaining: 1, Reset: time.Now().Add(time.Minute)}
+
+	updated, command := model.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'R'}})
+	model = updated.(Model)
+	if command != nil {
+		t.Fatal("full refresh returned a command without enough Search capacity")
+	}
+	if model.loading {
+		t.Fatal("full refresh entered loading state without enough Search capacity")
+	}
+}
+
+func TestModelUpdatesRatesAfterActiveRefresh(t *testing.T) {
+	cfg := testConfig()
+	model, err := NewModel(cfg, fakeLoader{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	model.loading = true
+	model.rates.Search = gh.RateResource{Limit: 30, Remaining: 2}
+	updatedAt := time.Now().Add(-time.Second)
+	refresh := ViewSnapshot{
+		Data:      ViewData{View: cfg.Views[0]},
+		Rates:     gh.RateLimits{Search: gh.RateResource{Limit: 30, Remaining: 1}},
+		UpdatedAt: updatedAt,
+	}
+
+	updated, command := model.Update(viewMsg{index: 0, snapshot: refresh})
+	if command != nil {
+		t.Fatal("active refresh result returned an unexpected command")
+	}
+	model = updated.(Model)
+	if model.rates.Search.Remaining != 1 {
+		t.Fatalf("Search remaining = %d, want 1", model.rates.Search.Remaining)
+	}
+	if !model.updated.Equal(updatedAt) {
+		t.Fatalf("updated time = %s, want %s", model.updated, updatedAt)
 	}
 }
 

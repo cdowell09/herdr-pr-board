@@ -94,6 +94,21 @@ type View struct {
 	Scope ScopeMode `toml:"scope"`
 }
 
+func (v View) SearchRequestCount(configuredScopes int) int {
+	if v.Scope == ScopeConfigured {
+		return configuredScopes
+	}
+	return 1
+}
+
+func (c Config) SearchRequestCount() int {
+	count := 0
+	for _, view := range c.Views {
+		count += view.SearchRequestCount(len(c.GitHub.Scopes))
+	}
+	return count
+}
+
 func Load(path string) (Config, error) {
 	if path == "" {
 		return Config{}, errors.New("config path is required")
