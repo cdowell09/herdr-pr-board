@@ -1,0 +1,21 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+root="${HERDR_PLUGIN_ROOT:-$(cd "$(dirname "$0")/.." && pwd)}"
+config_dir="${HERDR_PLUGIN_CONFIG_DIR:?HERDR_PLUGIN_CONFIG_DIR is required}"
+state_dir="${HERDR_PLUGIN_STATE_DIR:?HERDR_PLUGIN_STATE_DIR is required}"
+pane_file="$state_dir/pane-id"
+
+mkdir -p "$state_dir"
+if [[ -n "${HERDR_PANE_ID:-}" ]]; then
+  printf '%s\n' "$HERDR_PANE_ID" >"$pane_file"
+fi
+
+cleanup() {
+  if [[ -f "$pane_file" ]] && [[ "$(<"$pane_file")" == "${HERDR_PANE_ID:-}" ]]; then
+    rm -f "$pane_file"
+  fi
+}
+trap cleanup EXIT INT TERM
+
+"$root/bin/herdr-pr-board" --config "$config_dir/config.toml"

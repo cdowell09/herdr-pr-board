@@ -1,0 +1,43 @@
+[ui]
+title = "Pull Requests"
+
+[github]
+# 0 disables automatic refresh. Otherwise use a Go duration (5m, 1h, etc.).
+refresh_interval = "5m"
+# GitHub Search returns at most 1,000 results per query.
+limit_per_scope = 100
+# Bounds simultaneous Search API calls.
+max_concurrency = 4
+# Number of PRs enriched with aggregate CI status in each GraphQL query.
+ci_batch_size = 25
+# Applied to views with scope = "configured". @me resolves through `gh api user`.
+scopes = [
+  "user:@me",
+  # "org:your-company",
+  # "repo:owner/repository",
+]
+
+[[views]]
+id = "authored"
+title = "Opened by me"
+query = "is:open author:@me"
+scope = "global"
+
+[[views]]
+id = "review"
+title = "Review requested"
+query = "is:open review-requested:@me"
+scope = "global"
+
+[[views]]
+id = "all"
+title = "All open"
+query = "is:open"
+scope = "configured"
+
+# Add any GitHub pull-request search as a custom view.
+# [[views]]
+# id = "frontend"
+# title = "Frontend queue"
+# query = 'is:open label:"frontend" -is:draft'
+# scope = "configured"

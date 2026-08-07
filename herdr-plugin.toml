@@ -1,0 +1,21 @@
+id = "cdowell09.pr-board"
+name = "PR Board"
+version = "0.1.0"
+min_herdr_version = "0.8.0"
+description = "Configurable cross-repository GitHub pull request dashboard with CI status."
+platforms = ["macos", "linux"]
+
+[[build]]
+command = ["go", "build", "-o", "bin/herdr-pr-board", "./cmd/herdr-pr-board"]
+
+[[actions]]
+id = "open"
+title = "Open PR board"
+contexts = ["workspace"]
+command = ["bash", "bin/open"]
+
+[[panes]]
+id = "board"
+title = "PR Board"
+placement = "tab"
+command = ["bash", "bin/run"]

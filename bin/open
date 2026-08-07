@@ -1,0 +1,20 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+herdr_bin="${HERDR_BIN_PATH:-herdr}"
+state_dir="${HERDR_PLUGIN_STATE_DIR:?HERDR_PLUGIN_STATE_DIR is required}"
+pane_file="$state_dir/pane-id"
+
+if [[ -s "$pane_file" ]]; then
+  pane_id="$(<"$pane_file")"
+  if "$herdr_bin" plugin pane focus "$pane_id" >/dev/null 2>&1; then
+    exit 0
+  fi
+  rm -f "$pane_file"
+fi
+
+exec "$herdr_bin" plugin pane open \
+  --plugin cdowell09.pr-board \
+  --entrypoint board \
+  --placement tab \
+  --focus
