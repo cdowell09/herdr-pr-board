@@ -41,10 +41,14 @@ func main() {
 }
 
 func defaultConfigPath() (string, error) {
-	if directory := os.Getenv("HERDR_PLUGIN_CONFIG_DIR"); directory != "" {
-		return filepath.Join(directory, "config.toml"), nil
+	return resolveDefaultConfigPath(os.Getenv("HERDR_PLUGIN_CONFIG_DIR"), os.UserConfigDir)
+}
+
+func resolveDefaultConfigPath(pluginConfigDir string, userConfigDir func() (string, error)) (string, error) {
+	if pluginConfigDir != "" {
+		return filepath.Join(pluginConfigDir, "config.toml"), nil
 	}
-	directory, err := os.UserConfigDir()
+	directory, err := userConfigDir()
 	if err != nil {
 		return "", fmt.Errorf("resolve user config directory: %w", err)
 	}

@@ -1,16 +1,16 @@
 package main
 
 import (
+	"errors"
 	"path/filepath"
 	"strings"
 	"testing"
 )
 
 func TestDefaultConfigPathReportsMissingUserConfigDirectory(t *testing.T) {
-	t.Setenv("HERDR_PLUGIN_CONFIG_DIR", "")
-	t.Setenv("HOME", "")
-
-	path, err := defaultConfigPath()
+	path, err := resolveDefaultConfigPath("", func() (string, error) {
+		return "", errors.New("config directory unavailable")
+	})
 	if err == nil {
 		t.Fatalf("defaultConfigPath() = %q, nil; want an error", path)
 	}
@@ -23,9 +23,10 @@ func TestDefaultConfigPathReportsMissingUserConfigDirectory(t *testing.T) {
 }
 
 func TestDefaultConfigPathUsesHerdrPluginConfigDirectory(t *testing.T) {
-	t.Setenv("HERDR_PLUGIN_CONFIG_DIR", "/tmp/pr-board-config")
-
-	path, err := defaultConfigPath()
+	path, err := resolveDefaultConfigPath("/tmp/pr-board-config", func() (string, error) {
+		t.Fatal("user config directory resolver was called")
+		return "", nil
+	})
 	if err != nil {
 		t.Fatal(err)
 	}
