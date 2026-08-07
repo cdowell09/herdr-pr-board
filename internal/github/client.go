@@ -178,6 +178,23 @@ func (c *Client) resolveScope(ctx context.Context, scope string) (string, error)
 	return strings.ReplaceAll(scope, "@me", c.login), nil
 }
 
+func (c *Client) CIBatchCount(prs []PullRequest) int {
+	now := time.Now()
+	pending := 0
+	c.ciMu.Lock()
+	for _, pr := range prs {
+		entry, cached := c.ciCache[pr.URL]
+		if !cached || !now.Before(entry.expiresAt) {
+			pending++
+		}
+	}
+	c.ciMu.Unlock()
+	if pending == 0 {
+		return 0
+	}
+	return (pending + c.cfg.CIBatchSize - 1) / c.cfg.CIBatchSize
+}
+
 func (c *Client) EnrichCI(ctx context.Context, prs []PullRequest) (RateResource, error) {
 	if len(prs) == 0 {
 		return RateResource{}, nil
@@ -201,6 +218,14 @@ func (c *Client) EnrichCI(ctx context.Context, prs []PullRequest) (RateResource,
 	batchSize := c.cfg.CIBatchSize
 	var latest RateResource
 	for start := 0; start < len(pending); start += batchSize {
+		remainingBatches := (len(pending) - start + batchSize - 1) / batchSize
+		if latest.Limit > 0 && latest.Remaining < remainingBatches && time.Now().Before(latest.Reset) {
+			return latest, fmt.Errorf(
+				"GraphQL rate limit has %d points remaining but CI refresh needs at least %d",
+				latest.Remaining,
+				remainingBatches,
+			)
+		}
 		end := min(start+batchSize, len(pending))
 		rate, err := c.enrichBatch(ctx, pending[start:end])
 		if err != nil {

@@ -2,6 +2,7 @@ package board
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"strings"
 	"testing"
@@ -12,21 +13,36 @@ import (
 )
 
 type serviceRunner struct {
-	rateRemaining []int
-	rateCalls     int
-	searchCalls   int
+	rateRemaining   []int
+	graphRemainings []int
+	searchOutput    string
+	rateCalls       int
+	searchCalls     int
+	graphqlCalls    int
 }
 
 func (r *serviceRunner) Run(_ context.Context, args ...string) ([]byte, error) {
 	if len(args) >= 2 && args[0] == "api" && args[1] == "rate_limit" {
-		remaining := r.rateRemaining[min(r.rateCalls, len(r.rateRemaining)-1)]
+		index := min(r.rateCalls, len(r.rateRemaining)-1)
+		remaining := r.rateRemaining[index]
+		graphRemaining := 5000
+		if len(r.graphRemainings) > 0 {
+			graphRemaining = r.graphRemainings[min(index, len(r.graphRemainings)-1)]
+		}
 		r.rateCalls++
 		reset := time.Now().Add(time.Hour).Unix()
-		return fmt.Appendf(nil, `{"resources":{"search":{"limit":30,"remaining":%d,"reset":%d},"graphql":{"limit":5000,"remaining":5000,"reset":%d}}}`, remaining, reset, reset), nil
+		return fmt.Appendf(nil, `{"resources":{"search":{"limit":30,"remaining":%d,"reset":%d},"graphql":{"limit":5000,"remaining":%d,"reset":%d}}}`, remaining, reset, graphRemaining, reset), nil
 	}
 	if len(args) >= 2 && args[0] == "search" && args[1] == "prs" {
 		r.searchCalls++
+		if r.searchOutput != "" {
+			return []byte(r.searchOutput), nil
+		}
 		return []byte("[]"), nil
+	}
+	if len(args) >= 2 && args[0] == "api" && args[1] == "graphql" {
+		r.graphqlCalls++
+		return nil, errors.New("unexpected GraphQL request")
 	}
 	return nil, fmt.Errorf("unexpected command: %v", args)
 }
@@ -81,6 +97,64 @@ func TestRefreshAllDoesNotExceedSearchBudget(t *testing.T) {
 	}
 	if !strings.Contains(snapshot.Views[0].Err.Error(), "requires 4") {
 		t.Fatalf("budget error = %q", snapshot.Views[0].Err)
+	}
+}
+
+func TestRefreshAllBudgetsSearchPagination(t *testing.T) {
+	cfg := serviceTestConfig(config.View{ID: "mine", Title: "Mine", Query: "is:open", Scope: config.ScopeGlobal})
+	cfg.GitHub.LimitPerScope = 250
+	runner := &serviceRunner{rateRemaining: []int{2}}
+	service := NewService(cfg, gh.NewClient(runner, cfg.GitHub))
+
+	snapshot := service.RefreshAll(context.Background())
+	if runner.searchCalls != 0 {
+		t.Fatalf("search calls = %d, want 0", runner.searchCalls)
+	}
+	if !strings.Contains(snapshot.Views[0].Err.Error(), "requires 3") {
+		t.Fatalf("budget error = %q", snapshot.Views[0].Err)
+	}
+}
+
+func TestRefreshAllDoesNotExceedGraphQLBudget(t *testing.T) {
+	cfg := serviceTestConfig(config.View{ID: "mine", Title: "Mine", Query: "is:open", Scope: config.ScopeGlobal})
+	cfg.GitHub.CIBatchSize = 1
+	runner := &serviceRunner{
+		rateRemaining:   []int{30, 29},
+		graphRemainings: []int{1, 1},
+		searchOutput:    `[{"number":1,"title":"One","url":"https://github.com/acme/api/pull/1","repository":{"nameWithOwner":"acme/api"}},{"number":2,"title":"Two","url":"https://github.com/acme/api/pull/2","repository":{"nameWithOwner":"acme/api"}}]`,
+	}
+	service := NewService(cfg, gh.NewClient(runner, cfg.GitHub))
+
+	snapshot := service.RefreshAll(context.Background())
+	if runner.graphqlCalls != 0 {
+		t.Fatalf("GraphQL calls = %d, want 0", runner.graphqlCalls)
+	}
+	if !strings.Contains(snapshot.Warning, "needs at least 2") {
+		t.Fatalf("warning = %q", snapshot.Warning)
+	}
+}
+
+func TestRefreshAllUpdatesRatesAfterGraphQLError(t *testing.T) {
+	cfg := serviceTestConfig(config.View{ID: "mine", Title: "Mine", Query: "is:open", Scope: config.ScopeGlobal})
+	runner := &serviceRunner{
+		rateRemaining:   []int{30, 29, 29},
+		graphRemainings: []int{5, 5, 4},
+		searchOutput:    `[{"number":1,"title":"One","url":"https://github.com/acme/api/pull/1","repository":{"nameWithOwner":"acme/api"}}]`,
+	}
+	service := NewService(cfg, gh.NewClient(runner, cfg.GitHub))
+
+	snapshot := service.RefreshAll(context.Background())
+	if runner.graphqlCalls != 1 {
+		t.Fatalf("GraphQL calls = %d, want 1", runner.graphqlCalls)
+	}
+	if runner.rateCalls != 3 {
+		t.Fatalf("rate-limit calls = %d, want 3", runner.rateCalls)
+	}
+	if snapshot.Rates.GraphQL.Remaining != 4 {
+		t.Fatalf("displayed GraphQL remaining = %d, want 4", snapshot.Rates.GraphQL.Remaining)
+	}
+	if !strings.Contains(snapshot.Warning, "unexpected GraphQL request") {
+		t.Fatalf("warning = %q", snapshot.Warning)
 	}
 }
 

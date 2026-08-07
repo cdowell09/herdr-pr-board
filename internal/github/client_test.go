@@ -2,6 +2,7 @@ package github
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"slices"
 	"strings"
@@ -102,6 +103,9 @@ func TestEnrichCIBatchesAndMapsRollups(t *testing.T) {
 		{Repository: "acme/two", Number: 2, URL: "https://github.com/acme/two/pull/2"},
 		{Repository: "acme/three", Number: 3, URL: "https://github.com/acme/three/pull/3"},
 	}
+	if batches := client.CIBatchCount(prs); batches != 2 {
+		t.Fatalf("CI batches = %d, want 2", batches)
+	}
 	rate, err := client.EnrichCI(context.Background(), prs)
 	if err != nil {
 		t.Fatal(err)
@@ -120,6 +124,36 @@ func TestEnrichCIBatchesAndMapsRollups(t *testing.T) {
 	}
 	if calls != 2 {
 		t.Fatalf("cached enrichment made another request; calls = %d", calls)
+	}
+	if batches := client.CIBatchCount(prs); batches != 0 {
+		t.Fatalf("cached CI batches = %d, want 0", batches)
+	}
+}
+
+func TestEnrichCIStopsBeforeUnbudgetedBatch(t *testing.T) {
+	calls := 0
+	runner := runnerFunc(func(_ context.Context, _ ...string) ([]byte, error) {
+		calls++
+		if calls > 1 {
+			return nil, errors.New("unexpected second GraphQL request")
+		}
+		return []byte(`{"data":{"rateLimit":{"limit":5000,"remaining":0,"resetAt":"2027-08-07T13:00:00Z","cost":1},"p0":{"pullRequest":{"commits":{"nodes":[{"commit":{"statusCheckRollup":{"state":"SUCCESS"}}}]}}}}}`), nil
+	})
+	client := NewClient(runner, config.GitHubConfig{CIBatchSize: 1})
+	prs := []PullRequest{
+		{Repository: "acme/one", Number: 1, URL: "https://github.com/acme/one/pull/1"},
+		{Repository: "acme/two", Number: 2, URL: "https://github.com/acme/two/pull/2"},
+	}
+
+	rate, err := client.EnrichCI(context.Background(), prs)
+	if err == nil || !strings.Contains(err.Error(), "needs at least 1") {
+		t.Fatalf("error = %v", err)
+	}
+	if calls != 1 {
+		t.Fatalf("GraphQL calls = %d, want 1", calls)
+	}
+	if rate.Limit != 5000 || rate.Remaining != 0 {
+		t.Fatalf("rate = %#v", rate)
 	}
 }
 

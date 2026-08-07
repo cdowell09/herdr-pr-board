@@ -94,17 +94,19 @@ type View struct {
 	Scope ScopeMode `toml:"scope"`
 }
 
-func (v View) SearchRequestCount(configuredScopes int) int {
+func (v View) SearchRequestCount(configuredScopes, limitPerScope int) int {
+	queries := 1
 	if v.Scope == ScopeConfigured {
-		return configuredScopes
+		queries = configuredScopes
 	}
-	return 1
+	pagesPerQuery := (limitPerScope + 99) / 100
+	return queries * pagesPerQuery
 }
 
 func (c Config) SearchRequestCount() int {
 	count := 0
 	for _, view := range c.Views {
-		count += view.SearchRequestCount(len(c.GitHub.Scopes))
+		count += view.SearchRequestCount(len(c.GitHub.Scopes), c.GitHub.LimitPerScope)
 	}
 	return count
 }

@@ -93,15 +93,18 @@ func (s *Service) RefreshAll(ctx context.Context) Snapshot {
 	for _, pr := range unique {
 		prs = append(prs, pr)
 	}
-	if len(prs) > 0 && graphQLCapacityAvailable(snapshot.Rates.GraphQL) {
+	ciRequests := s.client.CIBatchCount(prs)
+	if len(prs) > 0 && (ciRequests == 0 || graphQLCapacityAvailable(snapshot.Rates.GraphQL, ciRequests)) {
 		graphRate, err := s.client.EnrichCI(ctx, prs)
-		if err != nil {
-			snapshot.Warning = appendWarning(snapshot.Warning, err.Error())
-		} else if graphRate.Limit > 0 {
+		if graphRate.Limit > 0 {
 			snapshot.Rates.GraphQL = graphRate
 		}
+		if err != nil {
+			snapshot.Warning = appendWarning(snapshot.Warning, err.Error())
+			s.refreshRates(ctx, &snapshot.Rates, &snapshot.Warning)
+		}
 	} else if len(prs) > 0 {
-		snapshot.Warning = appendWarning(snapshot.Warning, "GraphQL rate limit exhausted; CI status is stale")
+		snapshot.Warning = appendWarning(snapshot.Warning, graphQLCapacityWarning(snapshot.Rates.GraphQL, ciRequests))
 	}
 
 	ciByURL := make(map[string]gh.CIState, len(prs))
@@ -125,7 +128,7 @@ func (s *Service) RefreshOne(ctx context.Context, view config.View) ViewSnapshot
 	if rateErr != nil {
 		result.Warning = "rate limits unavailable: " + rateErr.Error()
 	}
-	requests := view.SearchRequestCount(len(s.cfg.GitHub.Scopes))
+	requests := view.SearchRequestCount(len(s.cfg.GitHub.Scopes), s.cfg.GitHub.LimitPerScope)
 	if rateErr == nil && !searchCapacityAvailable(rates.Search, requests) {
 		result.Data.Err = searchCapacityError(rates.Search, requests)
 		return result
@@ -136,15 +139,18 @@ func (s *Service) RefreshOne(ctx context.Context, view config.View) ViewSnapshot
 	if result.Data.Err != nil || len(result.Data.PRs) == 0 {
 		return result
 	}
-	if !graphQLCapacityAvailable(result.Rates.GraphQL) {
-		result.Warning = appendWarning(result.Warning, "GraphQL rate limit exhausted; CI status is stale")
+	ciRequests := s.client.CIBatchCount(result.Data.PRs)
+	if ciRequests > 0 && !graphQLCapacityAvailable(result.Rates.GraphQL, ciRequests) {
+		result.Warning = appendWarning(result.Warning, graphQLCapacityWarning(result.Rates.GraphQL, ciRequests))
 		return result
 	}
 	graphRate, err := s.client.EnrichCI(ctx, result.Data.PRs)
+	if graphRate.Limit > 0 {
+		result.Rates.GraphQL = graphRate
+	}
 	if err != nil {
 		result.Warning = appendWarning(result.Warning, "PRs loaded; CI unavailable: "+err.Error())
-	} else if graphRate.Limit > 0 {
-		result.Rates.GraphQL = graphRate
+		s.refreshRates(ctx, &result.Rates, &result.Warning)
 	}
 	return result
 }
@@ -176,8 +182,16 @@ func searchCapacityError(rate gh.RateResource, requests int) error {
 	)
 }
 
-func graphQLCapacityAvailable(rate gh.RateResource) bool {
-	return rate.Limit == 0 || rate.Remaining > 0 || !time.Now().Before(rate.Reset)
+func graphQLCapacityAvailable(rate gh.RateResource, requests int) bool {
+	return rate.Limit == 0 || rate.Remaining >= requests || !time.Now().Before(rate.Reset)
+}
+
+func graphQLCapacityWarning(rate gh.RateResource, requests int) string {
+	return fmt.Sprintf(
+		"GraphQL rate limit has %d points remaining but CI refresh needs at least %d; CI status is stale",
+		rate.Remaining,
+		requests,
+	)
 }
 
 func appendWarning(current, next string) string {

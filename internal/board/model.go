@@ -197,7 +197,7 @@ func (m Model) updateKey(key tea.KeyMsg) (tea.Model, tea.Cmd) {
 			m.cursor, m.offset = 0, 0
 		}
 	case "r":
-		requests := m.currentView().View.SearchRequestCount(len(m.cfg.GitHub.Scopes))
+		requests := m.currentView().View.SearchRequestCount(len(m.cfg.GitHub.Scopes), m.cfg.GitHub.LimitPerScope)
 		if !m.loading && searchCapacityAvailable(m.rates.Search, requests) {
 			m.loading = true
 			return m, m.refreshOneCmd(m.active)
