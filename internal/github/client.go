@@ -114,12 +114,16 @@ func (c *Client) SearchView(ctx context.Context, view config.View) ([]PullReques
 }
 
 func (c *Client) search(ctx context.Context, query string) ([]PullRequest, error) {
-	args := []string{
-		"search", "prs", query,
+	terms, err := splitQuery(query)
+	if err != nil {
+		return nil, err
+	}
+	args := append([]string{"search", "prs"}, terms...)
+	args = append(args,
 		"--limit", strconv.Itoa(c.cfg.LimitPerScope),
 		"--sort", "updated", "--order", "desc",
 		"--json", "number,title,url,author,isDraft,updatedAt,repository",
-	}
+	)
 	output, err := c.runner.Run(ctx, args...)
 	if err != nil {
 		return nil, err

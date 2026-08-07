@@ -23,11 +23,19 @@ func TestSearchViewResolvesScopesDeduplicatesAndSorts(t *testing.T) {
 			return []byte("cdowell09\n"), nil
 		}
 		if len(args) >= 3 && args[0] == "search" && args[1] == "prs" {
-			queries = append(queries, args[2])
+			limit := len(args)
+			for i, arg := range args {
+				if arg == "--limit" {
+					limit = i
+					break
+				}
+			}
+			query := strings.Join(args[2:limit], " ")
+			queries = append(queries, query)
 			switch {
-			case strings.Contains(args[2], "user:cdowell09"):
+			case strings.Contains(query, "user:cdowell09"):
 				return []byte(`[{"number":2,"title":"Cookies","url":"https://github.com/cdowell09/cookies/pull/2","isDraft":false,"updatedAt":"2026-08-07T10:00:00Z","author":{"login":"cdowell09"},"repository":{"nameWithOwner":"cdowell09/cookies"}}]`), nil
-			case strings.Contains(args[2], "repo:acme/api"):
+			case strings.Contains(query, "repo:acme/api"):
 				return []byte(`[{"number":9,"title":"API","url":"https://github.com/acme/api/pull/9","isDraft":true,"updatedAt":"2026-08-07T12:00:00Z","author":{"login":"bot"},"repository":{"nameWithOwner":"acme/api"}},{"number":2,"title":"Cookies","url":"https://github.com/cdowell09/cookies/pull/2","isDraft":false,"updatedAt":"2026-08-07T10:00:00Z","author":{"login":"cdowell09"},"repository":{"nameWithOwner":"cdowell09/cookies"}}]`), nil
 			}
 		}
