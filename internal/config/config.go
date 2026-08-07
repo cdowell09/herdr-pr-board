@@ -12,36 +12,62 @@ import (
 	"github.com/pelletier/go-toml/v2"
 )
 
-const DefaultFile = `[ui]
-title = "Pull Requests"
+type ScopeMode string
+
+const (
+	ScopeGlobal     ScopeMode = "global"
+	ScopeConfigured ScopeMode = "configured"
+
+	defaultTitle           = "Pull Requests"
+	defaultRefreshInterval = "5m"
+	defaultLimitPerScope   = 100
+	defaultMaxConcurrency  = 4
+	defaultCIBatchSize     = 25
+
+	defaultFileTemplate = `[ui]
+title = %q
 
 [github]
-refresh_interval = "5m"
-limit_per_scope = 100
-max_concurrency = 4
-ci_batch_size = 25
+refresh_interval = %q
+limit_per_scope = %d
+max_concurrency = %d
+ci_batch_size = %d
 scopes = ["user:@me"]
 
 [[views]]
 id = "authored"
 title = "Opened by me"
 query = "is:open author:@me"
-scope = "global"
+scope = %q
 
 [[views]]
 id = "review"
 title = "Review requested"
 query = "is:open review-requested:@me"
-scope = "global"
+scope = %q
 
 [[views]]
 id = "all"
 title = "All open"
 query = "is:open"
-scope = "configured"
+scope = %q
 `
+)
 
-var idPattern = regexp.MustCompile(`^[a-z][a-z0-9_-]*$`)
+var (
+	DefaultFile = fmt.Sprintf(
+		defaultFileTemplate,
+		defaultTitle,
+		defaultRefreshInterval,
+		defaultLimitPerScope,
+		defaultMaxConcurrency,
+		defaultCIBatchSize,
+		ScopeGlobal,
+		ScopeGlobal,
+		ScopeConfigured,
+	)
+	idPattern = regexp.MustCompile(`^[a-z][a-z0-9_-]*$`)
+)
 
 type Config struct {
 	UI     UIConfig     `toml:"ui"`
@@ -62,10 +88,10 @@ type GitHubConfig struct {
 }
 
 type View struct {
-	ID    string `toml:"id"`
-	Title string `toml:"title"`
-	Query string `toml:"query"`
-	Scope string `toml:"scope"`
+	ID    string    `toml:"id"`
+	Title string    `toml:"title"`
+	Query string    `toml:"query"`
+	Scope ScopeMode `toml:"scope"`
 }
 
 func Load(path string) (Config, error) {
@@ -100,19 +126,19 @@ func Load(path string) (Config, error) {
 
 func applyDefaults(cfg *Config) {
 	if strings.TrimSpace(cfg.UI.Title) == "" {
-		cfg.UI.Title = "Pull Requests"
+		cfg.UI.Title = defaultTitle
 	}
 	if strings.TrimSpace(cfg.GitHub.RefreshInterval) == "" {
-		cfg.GitHub.RefreshInterval = "5m"
+		cfg.GitHub.RefreshInterval = defaultRefreshInterval
 	}
 	if cfg.GitHub.LimitPerScope == 0 {
-		cfg.GitHub.LimitPerScope = 100
+		cfg.GitHub.LimitPerScope = defaultLimitPerScope
 	}
 	if cfg.GitHub.MaxConcurrency == 0 {
-		cfg.GitHub.MaxConcurrency = 4
+		cfg.GitHub.MaxConcurrency = defaultMaxConcurrency
 	}
 	if cfg.GitHub.CIBatchSize == 0 {
-		cfg.GitHub.CIBatchSize = 25
+		cfg.GitHub.CIBatchSize = defaultCIBatchSize
 	}
 }
 
@@ -149,10 +175,10 @@ func (c Config) Validate() error {
 		if strings.TrimSpace(view.Query) == "" {
 			return fmt.Errorf("%s.query is required", prefix)
 		}
-		if view.Scope != "global" && view.Scope != "configured" {
+		if view.Scope != ScopeGlobal && view.Scope != ScopeConfigured {
 			return fmt.Errorf("%s.scope must be global or configured", prefix)
 		}
-		if view.Scope == "configured" && len(c.GitHub.Scopes) == 0 {
+		if view.Scope == ScopeConfigured && len(c.GitHub.Scopes) == 0 {
 			return fmt.Errorf("%s uses configured scope but github.scopes is empty", prefix)
 		}
 	}

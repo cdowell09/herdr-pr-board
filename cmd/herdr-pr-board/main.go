@@ -14,8 +14,12 @@ import (
 )
 
 func main() {
-	configPath := flag.String("config", defaultConfigPath(), "path to config.toml")
+	defaultPath, defaultPathErr := defaultConfigPath()
+	configPath := flag.String("config", defaultPath, "path to config.toml")
 	flag.Parse()
+	if *configPath == "" && defaultPathErr != nil {
+		fatal(defaultPathErr.Error())
+	}
 
 	if _, err := exec.LookPath("gh"); err != nil {
 		fatal("GitHub CLI (gh) is required and must be on PATH")
@@ -36,15 +40,15 @@ func main() {
 	}
 }
 
-func defaultConfigPath() string {
+func defaultConfigPath() (string, error) {
 	if directory := os.Getenv("HERDR_PLUGIN_CONFIG_DIR"); directory != "" {
-		return filepath.Join(directory, "config.toml")
+		return filepath.Join(directory, "config.toml"), nil
 	}
 	directory, err := os.UserConfigDir()
 	if err != nil {
-		return "config.toml"
+		return "", fmt.Errorf("resolve user config directory: %w", err)
 	}
-	return filepath.Join(directory, "herdr", "plugins", "config", "cdowell09.pr-board", "config.toml")
+	return filepath.Join(directory, "herdr", "plugins", "config", "cdowell09.pr-board", "config.toml"), nil
 }
 
 func fatal(message string) {

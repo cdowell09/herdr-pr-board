@@ -120,6 +120,23 @@ func TestModelMouseSelectsViewsRowsAndURL(t *testing.T) {
 		t.Fatalf("active view = %d, want 1", model.active)
 	}
 
+	lines := strings.Split(model.View(), "\n")
+	secondRowY, urlY := -1, -1
+	for y, line := range lines {
+		switch {
+		case strings.Contains(line, "Second"):
+			secondRowY = y
+		case strings.Contains(line, "https://github.com/acme/web/pull/1"):
+			urlY = y
+		}
+	}
+	if secondRowY != firstPRRowY+1 {
+		t.Fatalf("second rendered row Y = %d, mouse Y = %d", secondRowY, firstPRRowY+1)
+	}
+	if urlY != model.selectedURLY() {
+		t.Fatalf("rendered URL Y = %d, mouse URL Y = %d", urlY, model.selectedURLY())
+	}
+
 	updated, command = model.Update(tea.MouseMsg(tea.MouseEvent{
 		X: 2, Y: firstPRRowY + 1, Action: tea.MouseActionPress, Button: tea.MouseButtonLeft,
 	}))
@@ -147,6 +164,25 @@ func TestModelMouseSelectsViewsRowsAndURL(t *testing.T) {
 		t.Fatal("URL click did not return a browser command")
 	}
 	_ = updated
+}
+
+func TestModelDoesNotRefreshWhenSearchRateIsExhausted(t *testing.T) {
+	cfg := testConfig()
+	model, err := NewModel(cfg, fakeLoader{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	model.loading = false
+	model.rates.Search = gh.RateResource{Limit: 30, Remaining: 0, Reset: time.Now().Add(time.Minute)}
+
+	updated, command := model.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'r'}})
+	model = updated.(Model)
+	if command != nil {
+		t.Fatal("active refresh returned a command with an exhausted search rate limit")
+	}
+	if model.loading {
+		t.Fatal("active refresh entered loading state with an exhausted search rate limit")
+	}
 }
 
 func TestModelKeepsLoadedRowsWhenRefreshFails(t *testing.T) {

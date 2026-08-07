@@ -82,7 +82,7 @@ type searchRow struct {
 
 func (c *Client) SearchView(ctx context.Context, view config.View) ([]PullRequest, error) {
 	queries := []string{strings.TrimSpace(view.Query)}
-	if view.Scope == "configured" {
+	if view.Scope == config.ScopeConfigured {
 		queries = queries[:0]
 		for _, scope := range c.cfg.Scopes {
 			resolved, err := c.resolveScope(ctx, scope)
@@ -118,12 +118,14 @@ func (c *Client) search(ctx context.Context, query string) ([]PullRequest, error
 	if err != nil {
 		return nil, err
 	}
-	args := append([]string{"search", "prs"}, terms...)
-	args = append(args,
+	args := []string{
+		"search", "prs",
 		"--limit", strconv.Itoa(c.cfg.LimitPerScope),
 		"--sort", "updated", "--order", "desc",
 		"--json", "number,title,url,author,isDraft,updatedAt,repository",
-	)
+		"--",
+	}
+	args = append(args, terms...)
 	output, err := c.runner.Run(ctx, args...)
 	if err != nil {
 		return nil, err

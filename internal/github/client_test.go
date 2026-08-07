@@ -3,6 +3,7 @@ package github
 import (
 	"context"
 	"fmt"
+	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -16,6 +17,28 @@ func (f runnerFunc) Run(ctx context.Context, args ...string) ([]byte, error) {
 	return f(ctx, args...)
 }
 
+func TestSearchSeparatesFlagsFromNegativeQueryTerms(t *testing.T) {
+	var got []string
+	runner := runnerFunc(func(_ context.Context, args ...string) ([]byte, error) {
+		got = append([]string(nil), args...)
+		return []byte("[]"), nil
+	})
+	client := NewClient(runner, config.GitHubConfig{LimitPerScope: 1})
+	if _, err := client.search(context.Background(), "is:open -is:draft"); err != nil {
+		t.Fatal(err)
+	}
+	want := []string{
+		"search", "prs",
+		"--limit", "1",
+		"--sort", "updated", "--order", "desc",
+		"--json", "number,title,url,author,isDraft,updatedAt,repository",
+		"--", "is:open", "-is:draft",
+	}
+	if !slices.Equal(got, want) {
+		t.Fatalf("arguments = %#v, want %#v", got, want)
+	}
+}
+
 func TestSearchViewResolvesScopesDeduplicatesAndSorts(t *testing.T) {
 	var queries []string
 	runner := runnerFunc(func(_ context.Context, args ...string) ([]byte, error) {
@@ -23,14 +46,11 @@ func TestSearchViewResolvesScopesDeduplicatesAndSorts(t *testing.T) {
 			return []byte("cdowell09\n"), nil
 		}
 		if len(args) >= 3 && args[0] == "search" && args[1] == "prs" {
-			limit := len(args)
-			for i, arg := range args {
-				if arg == "--limit" {
-					limit = i
-					break
-				}
+			separator := slices.Index(args, "--")
+			if separator == -1 {
+				return nil, fmt.Errorf("missing query separator: %v", args)
 			}
-			query := strings.Join(args[2:limit], " ")
+			query := strings.Join(args[separator+1:], " ")
 			queries = append(queries, query)
 			switch {
 			case strings.Contains(query, "user:cdowell09"):

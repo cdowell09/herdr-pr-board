@@ -193,7 +193,7 @@ func (m Model) updateKey(key tea.KeyMsg) (tea.Model, tea.Cmd) {
 			m.cursor, m.offset = 0, 0
 		}
 	case "r":
-		if !m.loading {
+		if !m.loading && !m.searchRateExhausted() {
 			m.loading = true
 			return m, m.refreshOneCmd(m.active)
 		}
