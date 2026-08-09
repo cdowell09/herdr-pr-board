@@ -1,6 +1,6 @@
 id = "cdowell09.pr-board"
 name = "PR Board"
-version = "0.1.0"
+version = "0.1.1"
 min_herdr_version = "0.8.0"
 description = "Configurable cross-repository GitHub pull request dashboard with CI status."
 platforms = ["macos", "linux"]

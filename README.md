@@ -21,7 +21,7 @@ The plugin supplies these default views:
 
 You can add, remove, rename, or move views in `config.toml`.
 
-The board shows the URL of the selected PR. If you install [herdr-pickr](https://github.com/tomasvarga/herdr-pickr), Ctrl+click the URL to send the PR to it.
+The board shows the URL of the selected PR.
 
 The CI column uses a symbol and a color:
 
@@ -188,7 +188,6 @@ refresh_interval = "0"
 | `r` | Refresh the active view. |
 | `R` | Refresh all views. |
 | `Enter`, `o` | Open the selected PR in a browser. |
-| Ctrl+click URL | Send the PR to `herdr-pickr`, if it is installed. |
 | `q` | Close the board. |
 
 ## API limits

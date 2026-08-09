@@ -54,7 +54,7 @@ Read [`README.md`](README.md) for user behavior and configuration. Read [`herdr-
 - Keep rendered tab labels and mouse hitboxes derived from the same label function.
 - When layout lines change, verify mouse row and URL coordinates against actual `View()` output.
 - Keep keyboard and mouse documentation synchronized with behavior.
-- Keep PR URLs visible so Herdr link handlers can route them. Ctrl+click review requires `herdr-pickr`.
+- Keep the selected PR URL visible and keep browser-open behavior generic.
 
 ## Completion gates
 
