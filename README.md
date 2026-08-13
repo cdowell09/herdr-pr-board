@@ -1,6 +1,8 @@
 # herdr-pr-board
 
-`herdr-pr-board` is a plugin for [Herdr](https://herdr.dev). It shows GitHub pull requests from multiple repositories in one Herdr tab.
+`herdr-pr-board` is a plugin for [Herdr](https://herdr.dev). It brings pull requests from multiple repositories and GitHub organizations into one Herdr tab.
+
+![PR Board showing pull requests across multiple GitHub organizations and repositories, with CI status, authors, update times, controls, and API capacity](docs/images/herdr-pr-board.png)
 
 ## Terms
 
