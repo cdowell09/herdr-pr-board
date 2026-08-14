@@ -1,24 +1,29 @@
 # Contributing to PR Board
 
-Thank you for contributing to `herdr-pr-board`. This guide explains how the plugin is organized and what a change must include before it is ready for review.
+This guide explains how the plugin is organized. It also explains what a change must include before review.
 
 ## Setup
 
-Clone the repository and build the plugin:
+Clone the repository:
 
 ```sh
 git clone https://github.com/cdowell09/herdr-pr-board.git
 cd herdr-pr-board
+```
+
+Build the plugin:
+
+```sh
 go build -o bin/herdr-pr-board ./cmd/herdr-pr-board
 ```
 
-Requirements:
+You need these tools:
 
 - Go 1.24 or later
-- GitHub CLI (`gh`) for any manual verification against GitHub
+- GitHub CLI (`gh`) for manual verification against GitHub
 - Herdr 0.8.0 or later for manual plugin testing
 
-Install the plugin as a link so you can iterate locally:
+Install the plugin as a link for local work:
 
 ```sh
 herdr plugin link "$PWD"
@@ -38,31 +43,42 @@ Keep the behavior in its owning package:
 - `config.example.toml` — public configuration reference.
 - `.github/workflows/ci.yml` — release gates enforced on pull requests and `main`.
 
-Keep GitHub transport in `internal/github`, refresh policy in `internal/board`, and configuration rules in `internal/config`. `bin/open` and `bin/run` stay plain `bash`.
+Keep GitHub transport in `internal/github`. Keep refresh policy in `internal/board`. Keep configuration rules in `internal/config`. Keep `bin/open` and `bin/run` in plain `bash`.
 
 ## Regression tests
 
-Add or update a regression test at the package boundary that owns the behavior:
+Add a regression test at the package boundary that owns the behavior:
 
 - Configuration rules → `internal/config/config_test.go`.
 - `gh` execution, tokenization, CI enrichment, and rate limits → `internal/github/client_test.go` (and `query_test.go` for tokenization).
 - Refresh orchestration and API budgeting → `internal/board/service_test.go`.
 - Bubble Tea state, rendering, and input → `internal/board/model_test.go`.
 
-Tests exercise the real packages with fake `gh` runners; they never call out to GitHub or launch a real browser.
+Tests use fake `gh` runners. Tests never call GitHub. Tests never launch a real browser.
 
 ## Documentation expectations
 
-Update these when user-visible behavior, configuration, controls, or requirements change:
+Update these files when behavior, configuration, controls, or requirements change:
 
 - `README.md` — user behavior and configuration.
 - `config.example.toml` — public configuration reference.
 - `docs/` — troubleshooting and plugin lifecycle guidance.
-- Keyboard and mouse documentation must stay synchronized with the rendered UI.
+- Keyboard and mouse documentation must match the rendered UI.
+
+## Documentation style
+
+Write all technical documentation in ASD-STE100 Simplified Technical English (STE):
+
+- Write one idea per sentence. Keep sentences under 20 words.
+- Use the active voice.
+- Write instructions in the imperative mood.
+- Use the same word for the same thing. Do not use synonyms.
+- Use the present tense.
+- Use `must` for requirements. Use `do not` for prohibitions.
 
 ## Completion gates
 
-Run every gate from the repository root before opening a pull request:
+Run every gate from the repository root before you open a pull request:
 
 ```sh
 gofmt -w cmd internal
@@ -74,7 +90,14 @@ bash -n bin/open bin/run
 git diff --check
 ```
 
-A change is complete when all applicable gates pass, regression coverage exercises the changed behavior, documentation matches the UI and configuration, and `git status --short` contains only intended files. The built `bin/herdr-pr-board` file is ignored and must not be committed.
+A change is complete when these are true:
+
+- All applicable gates pass.
+- Regression coverage exercises the changed behavior.
+- Documentation matches the UI and configuration.
+- `git status --short` contains only intended files.
+
+Do not commit the built `bin/herdr-pr-board` file. The `.gitignore` ignores it.
 
 ## Invariants
 
@@ -110,4 +133,4 @@ A change is complete when all applicable gates pass, regression coverage exercis
 
 ## Security
 
-Report security problems privately through GitHub's private vulnerability reporting instead of opening a public issue. See [`SECURITY.md`](SECURITY.md).
+Report security problems through GitHub private vulnerability reporting. Do not open a public issue. See [`SECURITY.md`](SECURITY.md).

@@ -192,7 +192,7 @@ refresh_interval = "0"
 | `Enter`, `o` | Open the selected PR in a browser. |
 | `q` | Close the board. |
 
-If the operating system cannot open the browser, the board keeps the selected URL visible and reports the failure at the bottom of the screen.
+If the operating system cannot open the browser, the board keeps the selected URL visible. It reports the failure at the bottom of the screen.
 
 ## API limits
 
@@ -210,11 +210,11 @@ The footer reports when the active view last refreshed successfully. A failed re
 
 ## Troubleshooting and plugin lifecycle
 
-See [`docs/troubleshooting.md`](docs/troubleshooting.md) for help diagnosing common failures and for how install, configuration, upgrades, and removal affect plugin files.
+See [`docs/troubleshooting.md`](docs/troubleshooting.md) for help with common failures. It also explains how install, configuration, upgrades, and removal affect plugin files.
 
 ## Develop the plugin
 
-Read [`CONTRIBUTING.md`](CONTRIBUTING.md) before contributing. Report security problems through GitHub private vulnerability reporting; see [`SECURITY.md`](SECURITY.md).
+Read [`CONTRIBUTING.md`](CONTRIBUTING.md) before you contribute. Report security problems through GitHub private vulnerability reporting. See [`SECURITY.md`](SECURITY.md).
 
 Run these checks:
 
