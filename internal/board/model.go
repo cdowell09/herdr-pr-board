@@ -43,7 +43,7 @@ var (
 	headerStyle   = lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("252")).BorderBottom(true).BorderStyle(lipgloss.NormalBorder()).BorderForeground(lipgloss.Color("238"))
 	selectedStyle = lipgloss.NewStyle().Foreground(lipgloss.Color("255")).Background(lipgloss.Color("237"))
 	dimStyle      = lipgloss.NewStyle().Foreground(lipgloss.Color("242"))
-	helpStyle     = lipgloss.NewStyle().Foreground(lipgloss.Color("252"))
+	keyStyle      = lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("252"))
 	warningStyle  = lipgloss.NewStyle().Foreground(lipgloss.Color("214"))
 	errorStyle    = lipgloss.NewStyle().Foreground(lipgloss.Color("196"))
 	urlStyle      = lipgloss.NewStyle().Foreground(lipgloss.Color("81")).Underline(true)
@@ -68,22 +68,22 @@ type browserMsg struct {
 }
 
 type keyHelpEntry struct {
-	label    string
-	controls string
+	keys   string
+	action string
 }
 
 // keyHelp is the single source of truth for the footer control list.
 var keyHelp = []keyHelpEntry{
-	{"VIEW", "[1–9] [Tab/Shift+Tab] [h/l] [←/→]  switch view"},
-	{"SELECT", "[j/k] [↑/↓]  select PR"},
-	{"JUMP", "[g/G] [Home/End]  first/last"},
-	{"FILTER", "[/] start · [Enter] finish"},
-	{"CLEAR", "[Ctrl+U]/[Esc]  clear filter"},
-	{"EDIT", "[Backspace]  delete last character"},
-	{"REFRESH", "[r] active · [R] all"},
-	{"OPEN", "[Enter]/[o]  open selected PR"},
-	{"MOUSE", "[wheel] scroll · [click] view/PR/URL"},
-	{"QUIT", "[q]/[Ctrl+C] quit"},
+	{"1–9 Tab ⇧Tab h/l ←/→", "view"},
+	{"j/k ↑/↓", "select"},
+	{"g/G Home/End", "first/last"},
+	{"/ Enter", "filter"},
+	{"Ctrl+U Esc", "clear"},
+	{"Backspace", "edit"},
+	{"r R", "refresh"},
+	{"Enter o", "open"},
+	{"wheel/click", "mouse"},
+	{"q Ctrl+C", "quit"},
 }
 
 // documentedKeys lists every key literal the README must document. The
@@ -456,9 +456,6 @@ func (m Model) renderSelected() string {
 
 func (m Model) renderFooter() string {
 	help := m.footerHelpLines()
-	for i := range help {
-		help[i] = helpStyle.Render(help[i])
-	}
 
 	meta := ""
 	freshness := m.currentView().UpdatedAt
@@ -480,50 +477,18 @@ func (m Model) renderFooter() string {
 	return strings.Join(append(help, warningStyle.Render(truncate(meta, m.width))), "\n")
 }
 
-// footerHelpLines wraps the control reference at group boundaries so each
-// shortcut keeps its label and its meaning visible on narrow terminals.
+// footerHelpLines wraps the control reference at pair boundaries so each
+// keybinding stays next to its action on narrow terminals. Keys render
+// bright and actions dim so the two never blend together.
 func (m Model) footerHelpLines() []string {
 	width := max(1, m.width)
 	var lines []string
 	current := ""
 	for _, entry := range keyHelp {
-		group := entry.label + "  " + entry.controls
+		pair := keyStyle.Render(entry.keys) + " " + dimStyle.Render(entry.action)
+		candidate := pair
 		if current != "" {
-			candidate := current + "    ·    " + group
-			if lipgloss.Width(candidate) <= width {
-				current = candidate
-				continue
-			}
-			lines = append(lines, current)
-			current = ""
-		}
-
-		wrapped := wrapFooterText(group, width)
-		if len(wrapped) == 0 {
-			continue
-		}
-		lines = append(lines, wrapped[:len(wrapped)-1]...)
-		current = wrapped[len(wrapped)-1]
-	}
-	if current != "" {
-		lines = append(lines, current)
-	}
-
-	if m.editing {
-		lines = append(lines, truncate("FILTERING  "+m.filter+"▌", width))
-	} else if m.filter != "" {
-		lines = append(lines, truncate("FILTERED  "+m.filter, width))
-	}
-	return lines
-}
-
-func wrapFooterText(text string, width int) []string {
-	var lines []string
-	current := ""
-	for _, word := range strings.Fields(text) {
-		candidate := word
-		if current != "" {
-			candidate = current + " " + word
+			candidate = current + "  " + pair
 		}
 		if lipgloss.Width(candidate) <= width {
 			current = candidate
@@ -532,10 +497,16 @@ func wrapFooterText(text string, width int) []string {
 		if current != "" {
 			lines = append(lines, current)
 		}
-		current = truncate(word, width)
+		current = pair
 	}
 	if current != "" {
 		lines = append(lines, current)
+	}
+
+	if m.editing {
+		lines = append(lines, dimStyle.Render("filter: ")+truncate(m.filter+"▌", max(1, width-8)))
+	} else if m.filter != "" {
+		lines = append(lines, dimStyle.Render("filter: ")+truncate(m.filter, max(1, width-8)))
 	}
 	return lines
 }

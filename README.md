@@ -265,7 +265,7 @@ refresh_interval = "0"
 
 If the operating system cannot open the browser, the board keeps the selected URL visible. It reports the failure at the bottom of the screen.
 
-The footer groups controls by task and wraps them for narrow terminals.
+The footer pairs each keybinding with its action and wraps them for narrow terminals.
 
 ![Grouped keyboard shortcuts in the board footer](docs/images/keyboard-shortcuts.png)
 
