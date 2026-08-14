@@ -29,14 +29,17 @@ jobs:
             exit 1
           fi
       - name: Check whitespace
+        env:
+          PR_BASE: ${{ github.event.pull_request.base.sha }}
+          PR_HEAD: ${{ github.event.pull_request.head.sha }}
+          PUSH_BEFORE: ${{ github.event.before }}
+          PUSH_AFTER: ${{ github.event.after }}
         run: |
-          base="${{ github.event.pull_request.base.sha }}"
-          head="${{ github.event.pull_request.head.sha }}"
-          if [ -z "$base" ] || [ -z "$head" ]; then
-            base="HEAD^"
-            head="HEAD"
+          if [ -n "$PR_BASE" ] && [ -n "$PR_HEAD" ]; then
+            git diff --check "$PR_BASE...$PR_HEAD"
+          else
+            git diff --check "$PUSH_BEFORE...$PUSH_AFTER"
           fi
-          git diff --check "$base" "$head"
       - name: Test
         run: go test ./...
       - name: Race test
