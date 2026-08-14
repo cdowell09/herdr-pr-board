@@ -40,6 +40,7 @@ Keep the behavior in its owning package:
 - `internal/board/` — refresh orchestration, API budgeting, Bubble Tea state, rendering, keyboard input, and mouse input.
 - `bin/open` — focus an existing plugin pane or open one dedicated tab.
 - `bin/run` — record pane ownership, name the tab, run the board, and clean owned state.
+- `internal/plugin/` — end-to-end tests for the `bin/open` and `bin/run` entrypoints.
 - `config.example.toml` — public configuration reference.
 - `.github/workflows/ci.yml` — release gates enforced on pull requests and `main`.
 
@@ -53,6 +54,7 @@ Add a regression test at the package boundary that owns the behavior:
 - `gh` execution, tokenization, CI enrichment, and rate limits → `internal/github/client_test.go` (and `query_test.go` for tokenization).
 - Refresh orchestration and API budgeting → `internal/board/service_test.go`.
 - Bubble Tea state, rendering, and input → `internal/board/model_test.go`.
+- Plugin entrypoint pane reuse and state ownership → `internal/plugin/entrypoint_test.go`.
 
 Tests use fake `gh` runners. Tests never call GitHub. Tests never launch a real browser.
 
