@@ -42,7 +42,9 @@ Keep the behavior in its owning package:
 - `bin/run` — record pane ownership, name the tab, run the board, and clean owned state.
 - `internal/plugin/` — end-to-end tests for the `bin/open` and `bin/run` entrypoints.
 - `config.example.toml` — public configuration reference.
+- `cmd/herdr-release-check/` — release tag and plugin manifest validation.
 - `.github/workflows/ci.yml` — release gates enforced on pull requests and `main`.
+- `.github/workflows/release.yml` — source release validation and publication.
 
 Keep GitHub transport in `internal/github`. Keep refresh policy in `internal/board`. Keep configuration rules in `internal/config`. Keep `bin/open` and `bin/run` in plain `bash`.
 
@@ -77,6 +79,10 @@ Write all technical documentation in ASD-STE100 Simplified Technical English (ST
 - Use the same word for the same thing. Do not use synonyms.
 - Use the present tense.
 - Use `must` for requirements. Use `do not` for prohibitions.
+
+## Release
+
+Follow [`docs/releasing.md`](docs/releasing.md) to change the version, create a tag, and upgrade an installation.
 
 ## Completion gates
 

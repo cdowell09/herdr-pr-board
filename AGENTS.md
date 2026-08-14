@@ -9,6 +9,7 @@ Read [`README.md`](README.md) for user behavior and configuration. Read [`herdr-
 ## Source map
 
 - `cmd/herdr-pr-board/`: process startup and dependency wiring.
+- `cmd/herdr-release-check/`: release tag and plugin manifest validation.
 - `internal/config/`: TOML defaults, parsing, validation, scope modes, and Search request counts.
 - `internal/github/`: `gh` execution, query tokenization, Search results, GraphQL CI enrichment, caching, and rate-limit decoding.
 - `internal/board/`: refresh orchestration, API budgeting, Bubble Tea state, rendering, keyboard input, and mouse input.
@@ -17,6 +18,7 @@ Read [`README.md`](README.md) for user behavior and configuration. Read [`herdr-
 - `internal/plugin/`: end-to-end tests for the `bin/open` and `bin/run` entrypoints against a fake Herdr and isolated directories.
 - `config.example.toml`: public configuration reference.
 - `.github/workflows/ci.yml`: release gates enforced on pull requests and `main`.
+- `.github/workflows/release.yml`: source release validation and publication.
 
 ## Workflow
 
