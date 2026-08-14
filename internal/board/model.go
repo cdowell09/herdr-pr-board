@@ -23,6 +23,15 @@ const (
 	mouseStep   = 3
 )
 
+// firstPRRowYFor returns the screen row of the first PR row, which shifts down
+// by one when the stale notice occupies the separator line.
+func firstPRRowYFor(stale bool) int {
+	if stale {
+		return firstPRRowY + 1
+	}
+	return firstPRRowY
+}
+
 var (
 	titleStyle    = lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("212"))
 	activeTab     = lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("230")).Background(lipgloss.Color("62")).Padding(0, 1)
@@ -59,7 +68,6 @@ type Model struct {
 	loading bool
 	warning string
 	rates   gh.RateLimits
-	updated time.Time
 }
 
 func NewModel(cfg config.Config, loader Loader) (Model, error) {
@@ -93,17 +101,20 @@ func (m Model) Update(message tea.Msg) (tea.Model, tea.Cmd) {
 		warning := msg.Warning
 		for i := range nextViews {
 			if nextViews[i].Err == nil {
+				nextViews[i].UpdatedAt = msg.UpdatedAt
 				continue
 			}
 			warning = appendWarning(warning, nextViews[i].View.Title+": "+nextViews[i].Err.Error())
-			if len(nextViews[i].PRs) == 0 && i < len(m.views) && len(m.views[i].PRs) > 0 {
-				nextViews[i].PRs = m.views[i].PRs
+			if i < len(m.views) {
+				if len(nextViews[i].PRs) == 0 && len(m.views[i].PRs) > 0 {
+					nextViews[i].PRs = m.views[i].PRs
+				}
+				nextViews[i].UpdatedAt = m.views[i].UpdatedAt
 			}
 		}
 		m.views = nextViews
 		m.rates = msg.Rates
 		m.warning = warning
-		m.updated = msg.UpdatedAt
 		m.loading = false
 		m.clampCursor()
 		return m, nil
@@ -111,8 +122,13 @@ func (m Model) Update(message tea.Msg) (tea.Model, tea.Cmd) {
 		refresh := msg.snapshot
 		data := refresh.Data
 		if msg.index >= 0 && msg.index < len(m.views) {
-			if data.Err != nil && len(data.PRs) == 0 && len(m.views[msg.index].PRs) > 0 {
-				data.PRs = m.views[msg.index].PRs
+			if data.Err == nil {
+				data.UpdatedAt = refresh.UpdatedAt
+			} else {
+				if len(data.PRs) == 0 && len(m.views[msg.index].PRs) > 0 {
+					data.PRs = m.views[msg.index].PRs
+				}
+				data.UpdatedAt = m.views[msg.index].UpdatedAt
 			}
 			m.views[msg.index] = data
 		}
@@ -122,7 +138,6 @@ func (m Model) Update(message tea.Msg) (tea.Model, tea.Cmd) {
 			m.warning = appendWarning(m.warning, data.Err.Error())
 		}
 		m.loading = false
-		m.updated = refresh.UpdatedAt
 		m.clampCursor()
 		return m, nil
 	case tickMsg:
@@ -246,9 +261,10 @@ func (m Model) updateMouse(message tea.MouseMsg) (tea.Model, tea.Cmd) {
 	}
 
 	rows := m.filteredPRs()
-	row := m.offset + event.Y - firstPRRowY
+	firstRow := firstPRRowYFor(m.currentView().Stale())
+	row := m.offset + event.Y - firstRow
 	visible := min(m.visibleRows(), max(0, len(rows)-m.offset))
-	if event.Y >= firstPRRowY && event.Y < firstPRRowY+visible && row >= 0 && row < len(rows) {
+	if event.Y >= firstRow && event.Y < firstRow+visible && row >= 0 && row < len(rows) {
 		m.cursor = row
 		m.clampCursor()
 		return m, nil
@@ -276,11 +292,12 @@ func (m Model) tabAtX(x int) (int, bool) {
 }
 
 func (m Model) selectedURLY() int {
+	firstRow := firstPRRowYFor(m.currentView().Stale())
 	if len(m.filteredPRs()) == 0 {
-		return 5
+		return firstRow
 	}
 	visible := min(m.visibleRows(), max(0, len(m.filteredPRs())-m.offset))
-	return 6 + visible
+	return firstRow + 1 + visible
 }
 
 func (m *Model) selectView(index int) {
@@ -315,7 +332,11 @@ func (m Model) View() string {
 		status = warningStyle.Render("  refreshing…")
 	}
 	output.WriteString(titleStyle.Render(m.cfg.UI.Title) + status + "\n")
-	output.WriteString(m.renderTabs() + "\n\n")
+	output.WriteString(m.renderTabs() + "\n")
+	if notice := m.renderStaleNotice(); notice != "" {
+		output.WriteString(notice + "\n")
+	}
+	output.WriteString("\n")
 	output.WriteString(m.renderTable())
 	output.WriteString("\n" + m.renderSelected())
 	output.WriteString("\n" + m.renderFooter())
@@ -333,6 +354,14 @@ func (m Model) renderTabs() string {
 		}
 	}
 	return strings.Join(tabs, " ")
+}
+
+func (m Model) renderStaleNotice() string {
+	view := m.currentView()
+	if !view.Stale() {
+		return ""
+	}
+	return warningStyle.Render(fmt.Sprintf("stale — showing %d rows retained from the last successful refresh", len(view.PRs)))
 }
 
 func (m Model) renderTable() string {
@@ -391,8 +420,12 @@ func (m Model) renderFooter() string {
 	}
 	keys := "click view/PR · wheel scroll · click URL browser · 1–9 view · / filter · r refresh · R refresh all · q quit"
 	meta := ""
-	if !m.updated.IsZero() {
-		meta = fmt.Sprintf("updated %s", relativeTime(m.updated))
+	freshness := m.currentView().UpdatedAt
+	if !freshness.IsZero() {
+		meta = fmt.Sprintf("updated %s", relativeTime(freshness))
+	}
+	if m.currentView().Stale() {
+		meta += " · stale"
 	}
 	if m.rates.Search.Limit > 0 {
 		meta += fmt.Sprintf(" · Search %d/%d", m.rates.Search.Remaining, m.rates.Search.Limit)
