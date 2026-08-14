@@ -255,7 +255,9 @@ bash -n bin/open bin/run
 git diff --check
 ```
 
-The CI workflow enforces the same checks on pull requests and on `main`.
+The CI workflow enforces the same checks on pull requests and on `main`:
+
+![CI completion gates](docs/images/ci-checks.png)
 
 Herdr runs each plugin command from the plugin directory. Store user configuration in `HERDR_PLUGIN_CONFIG_DIR`.
 
