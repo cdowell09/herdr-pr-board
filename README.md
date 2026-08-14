@@ -150,6 +150,33 @@ Each view uses a GitHub PR search query.
 
 The plugin combines the scoped results. The plugin removes duplicate PR URLs.
 
+### Settings reference
+
+| Setting | Default | Valid values | Effect |
+| --- | --- | --- | --- |
+| `ui.title` | `"Pull Requests"` | Non-empty string | Header shown above the board. |
+| `github.refresh_interval` | `"5m"` | `"0"` or a Go duration of at least `1m` (`"5m"`, `"1h"`, ...) | Time between automatic refreshes. `"0"` disables automatic refresh. |
+| `github.limit_per_scope` | `100` | Integer from 1 to 1000 | Maximum PRs returned by each search query. |
+| `github.max_concurrency` | `4` | Integer from 1 to 8 | Maximum simultaneous Search API requests during a refresh. |
+| `github.ci_batch_size` | `25` | Integer from 1 to 50 | PRs enriched per GraphQL CI query. |
+| `github.scopes` | `["user:@me"]` | Non-empty list of unique `user:name`, `org:name`, or `repo:owner/name` entries | Scopes used by views with `scope = "configured"`. `@me` resolves to your GitHub account. |
+| `[[views]].id` | None | Lowercase letters, digits, `-`, and `_`; starts with a letter; unique | Identifies the view. |
+| `[[views]].title` | None | Non-empty string | Name shown in the UI for the view. |
+| `[[views]].query` | None | Non-empty GitHub PR search | PRs listed in the view. |
+| `[[views]].scope` | None | `"global"` or `"configured"` | `"global"` runs the query once. `"configured"` runs it once per `github.scopes` entry. |
+
+The board validates the configuration when it starts. A mistake prevents the board from starting, and the error message names the setting that is wrong.
+
+### Validate your configuration
+
+Check a configuration without starting the board:
+
+```sh
+bin/herdr-pr-board -config path/to/config.toml -validate
+```
+
+The command prints `configuration is valid` and exits with code 0 when the configuration is valid. It prints the problem and exits with a non-zero code when it is not. Validation never creates a missing file and does not require GitHub CLI.
+
 ### Add a custom view
 
 Add another `[[views]]` section:
