@@ -243,14 +243,19 @@ See [`docs/troubleshooting.md`](docs/troubleshooting.md) for help with common fa
 
 Read [`CONTRIBUTING.md`](CONTRIBUTING.md) before you contribute. Report security problems through GitHub private vulnerability reporting. See [`SECURITY.md`](SECURITY.md).
 
-Run these checks:
+Run these checks from the repository root:
 
 ```sh
+gofmt -w cmd internal
 go test ./...
 go vet ./...
+go test -race ./...
 go build -o bin/herdr-pr-board ./cmd/herdr-pr-board
 bash -n bin/open bin/run
+git diff --check
 ```
+
+The CI workflow enforces the same checks on pull requests and on `main`.
 
 Herdr runs each plugin command from the plugin directory. Store user configuration in `HERDR_PLUGIN_CONFIG_DIR`.
 
