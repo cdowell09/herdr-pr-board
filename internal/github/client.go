@@ -113,11 +113,14 @@ func (c *Client) SearchView(ctx context.Context, view config.View) ([]PullReques
 			rows, err := c.search(ctx, query)
 			if err != nil {
 				errMu.Lock()
-				if firstErr == nil {
+				shouldCancel := firstErr == nil
+				if shouldCancel {
 					firstErr = err
-					cancel()
 				}
 				errMu.Unlock()
+				if shouldCancel {
+					cancel()
+				}
 				return
 			}
 			results[i] = rows
@@ -131,7 +134,9 @@ func (c *Client) SearchView(ctx context.Context, view config.View) ([]PullReques
 	byURL := make(map[string]PullRequest)
 	for _, rows := range results {
 		for _, pr := range rows {
-			byURL[pr.URL] = pr
+			if existing, ok := byURL[pr.URL]; !ok || pr.UpdatedAt.After(existing.UpdatedAt) {
+				byURL[pr.URL] = pr
+			}
 		}
 	}
 	result := make([]PullRequest, 0, len(byURL))

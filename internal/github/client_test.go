@@ -363,9 +363,9 @@ func TestSearchViewRunsScopeSearchesConcurrently(t *testing.T) {
 			separator := slices.Index(args, "--")
 			query := strings.Join(args[separator+1:], " ")
 			if strings.Contains(query, "repo:acme/one") {
-				return []byte(`[{"number":1,"title":"Overlap","url":"https://github.com/acme/one/pull/1","isDraft":false,"updatedAt":"2026-08-07T10:00:00Z","author":{"login":"alice"},"repository":{"nameWithOwner":"acme/one"}}]`), nil
+				return []byte(`[{"number":1,"title":"Overlap","url":"https://github.com/acme/one/pull/1","isDraft":false,"updatedAt":"2026-08-07T11:00:00Z","author":{"login":"alice"},"repository":{"nameWithOwner":"acme/one"}}]`), nil
 			}
-			return []byte(`[{"number":1,"title":"Overlap","url":"https://github.com/acme/one/pull/1","isDraft":false,"updatedAt":"2026-08-07T11:00:00Z","author":{"login":"alice"},"repository":{"nameWithOwner":"acme/one"}}]`), nil
+			return []byte(`[{"number":1,"title":"Overlap","url":"https://github.com/acme/one/pull/1","isDraft":false,"updatedAt":"2026-08-07T10:00:00Z","author":{"login":"alice"},"repository":{"nameWithOwner":"acme/one"}}]`), nil
 		}
 		return nil, fmt.Errorf("unexpected command: %v", args)
 	})
@@ -460,7 +460,7 @@ func TestSearchViewConcurrencyDoesNotExceedMaxConcurrency(t *testing.T) {
 }
 
 func TestSearchViewStopsRemainingSearchesOnError(t *testing.T) {
-	secondWaiting := make(chan struct{})
+	otherScopeWaiting := make(chan struct{})
 	var secondCanceled atomic.Bool
 	runner := runnerFunc(func(ctx context.Context, args ...string) ([]byte, error) {
 		if len(args) >= 3 && args[0] == "search" && args[1] == "prs" {
@@ -468,13 +468,13 @@ func TestSearchViewStopsRemainingSearchesOnError(t *testing.T) {
 			query := strings.Join(args[separator+1:], " ")
 			if strings.Contains(query, "repo:acme/one") {
 				select {
-				case <-secondWaiting:
+				case <-otherScopeWaiting:
 					return nil, errors.New("scope one failed")
 				case <-time.After(2 * time.Second):
 					return nil, errors.New("second scope search never started")
 				}
 			}
-			close(secondWaiting)
+			close(otherScopeWaiting)
 			select {
 			case <-ctx.Done():
 				secondCanceled.Store(true)
