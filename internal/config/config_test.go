@@ -26,8 +26,76 @@ func TestLoadCreatesDefaultConfig(t *testing.T) {
 	if got, err := cfg.RefreshEvery(); err != nil || got != 5*time.Minute {
 		t.Fatalf("refresh = %s, %v", got, err)
 	}
+	if !cfg.Sidebar.SidebarEnabled() {
+		t.Fatal("sidebar reporting disabled by default")
+	}
+	if got, err := cfg.Sidebar.TTLEvery(); err != nil || got != 15*time.Minute {
+		t.Fatalf("sidebar ttl = %s, %v", got, err)
+	}
+	if cfg.Sidebar.ReviewView != "review" {
+		t.Fatalf("sidebar review_view = %q", cfg.Sidebar.ReviewView)
+	}
+	written, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(written), "[sidebar]") || !strings.Contains(string(written), "review_view = \"review\"") {
+		t.Fatalf("default config lacks the sidebar section:\n%s", written)
+	}
 	if _, err := os.Stat(path); err != nil {
 		t.Fatalf("default config not written: %v", err)
+	}
+}
+
+func TestLoadPreservesExplicitSidebarSettings(t *testing.T) {
+	path := writeConfigFile(t, `[ui]
+title = "Engineering queue"
+[github]
+refresh_interval = "10m"
+scopes = ["org:acme"]
+[sidebar]
+enabled = false
+ttl = "1h"
+review_view = "needs-review"
+[[views]]
+id = "needs-review"
+title = "Needs review"
+query = "is:open review-requested:@me"
+scope = "global"
+`)
+	cfg, err := Load(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if cfg.Sidebar.SidebarEnabled() {
+		t.Fatal("sidebar reporting enabled after explicit disable")
+	}
+	if got, err := cfg.Sidebar.TTLEvery(); err != nil || got != time.Hour {
+		t.Fatalf("sidebar ttl = %s, %v", got, err)
+	}
+	if cfg.Sidebar.ReviewView != "needs-review" {
+		t.Fatalf("sidebar review_view = %q", cfg.Sidebar.ReviewView)
+	}
+}
+
+func TestSidebarTTLZeroDisablesExpiry(t *testing.T) {
+	path := writeConfigFile(t, `[github]
+refresh_interval = "5m"
+scopes = ["user:@me"]
+[sidebar]
+ttl = "0"
+[[views]]
+id = "mine"
+title = "Mine"
+query = "is:open author:@me"
+scope = "global"
+`)
+	cfg, err := Load(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got, err := cfg.Sidebar.TTLEvery(); err != nil || got != 0 {
+		t.Fatalf("sidebar ttl = %s, %v", got, err)
 	}
 }
 
@@ -92,6 +160,42 @@ scope = "configured"
 		"too frequent": `
 [github]
 refresh_interval = "10s"
+[[views]]
+id = "mine"
+title = "Mine"
+query = "is:open author:@me"
+scope = "global"
+`,
+		"sidebar ttl too short": `
+[github]
+refresh_interval = "5m"
+scopes = ["user:@me"]
+[sidebar]
+ttl = "30s"
+[[views]]
+id = "mine"
+title = "Mine"
+query = "is:open author:@me"
+scope = "global"
+`,
+		"sidebar ttl not a duration": `
+[github]
+refresh_interval = "5m"
+scopes = ["user:@me"]
+[sidebar]
+ttl = "soon"
+[[views]]
+id = "mine"
+title = "Mine"
+query = "is:open author:@me"
+scope = "global"
+`,
+		"sidebar review view not an id": `
+[github]
+refresh_interval = "5m"
+scopes = ["user:@me"]
+[sidebar]
+review_view = "Review Queue"
 [[views]]
 id = "mine"
 title = "Mine"

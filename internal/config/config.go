@@ -24,6 +24,8 @@ const (
 	defaultLimitPerScope   = 100
 	defaultMaxConcurrency  = 4
 	defaultCIBatchSize     = 25
+	defaultSidebarTTL      = "15m"
+	defaultSidebarReview   = "review"
 
 	defaultFileTemplate = `[ui]
 title = %q
@@ -52,6 +54,11 @@ id = "all"
 title = "All open"
 query = "is:open"
 scope = %q
+
+[sidebar]
+enabled = true
+ttl = %q
+review_view = %q
 `
 )
 
@@ -66,14 +73,32 @@ var (
 		ScopeGlobal,
 		ScopeGlobal,
 		ScopeConfigured,
+		defaultSidebarTTL,
+		defaultSidebarReview,
 	)
 	idPattern = regexp.MustCompile(`^[a-z][a-z0-9_-]*$`)
 )
 
 type Config struct {
-	UI     UIConfig     `toml:"ui"`
-	GitHub GitHubConfig `toml:"github"`
-	Views  []View       `toml:"views"`
+	UI      UIConfig      `toml:"ui"`
+	GitHub  GitHubConfig  `toml:"github"`
+	Sidebar SidebarConfig `toml:"sidebar"`
+	Views   []View        `toml:"views"`
+}
+
+// SidebarConfig controls reporting PR counts into Herdr sidebar tokens.
+type SidebarConfig struct {
+	// Enabled defaults to true when the field is absent.
+	Enabled *bool `toml:"enabled"`
+	// TTL is how long reported tokens stay visible after the last report.
+	TTL string `toml:"ttl"`
+	// ReviewView is the view whose PR count reports as the prs_review token.
+	ReviewView string `toml:"review_view"`
+}
+
+// SidebarEnabled reports whether sidebar reporting is enabled.
+func (s SidebarConfig) SidebarEnabled() bool {
+	return s.Enabled == nil || *s.Enabled
 }
 
 type UIConfig struct {
@@ -189,6 +214,12 @@ func applyDefaults(cfg *Config) {
 	if cfg.GitHub.CIBatchSize == 0 {
 		cfg.GitHub.CIBatchSize = defaultCIBatchSize
 	}
+	if strings.TrimSpace(cfg.Sidebar.TTL) == "" {
+		cfg.Sidebar.TTL = defaultSidebarTTL
+	}
+	if strings.TrimSpace(cfg.Sidebar.ReviewView) == "" {
+		cfg.Sidebar.ReviewView = defaultSidebarReview
+	}
 }
 
 func (c Config) Validate() error {
@@ -202,6 +233,12 @@ func (c Config) Validate() error {
 		return errors.New("github.ci_batch_size must be between 1 and 50")
 	}
 	if _, err := c.RefreshEvery(); err != nil {
+		return err
+	}
+	if c.Sidebar.ReviewView != "" && !idPattern.MatchString(c.Sidebar.ReviewView) {
+		return fmt.Errorf("sidebar.review_view must match %s", idPattern)
+	}
+	if _, err := c.Sidebar.TTLEvery(); err != nil {
 		return err
 	}
 	if len(c.Views) == 0 {
@@ -266,6 +303,24 @@ func scopePrefix(scope string) string {
 		}
 	}
 	return ""
+}
+
+// TTLEvery parses the sidebar token lifetime. It mirrors RefreshEvery:
+// "0" disables expiry, otherwise the value must be at least 1m.
+// An empty value means the default applies and reports no TTL.
+func (s SidebarConfig) TTLEvery() (time.Duration, error) {
+	value := strings.TrimSpace(s.TTL)
+	if value == "" || value == "0" {
+		return 0, nil
+	}
+	duration, err := time.ParseDuration(value)
+	if err != nil {
+		return 0, fmt.Errorf("sidebar.ttl: %w", err)
+	}
+	if duration < time.Minute {
+		return 0, errors.New("sidebar.ttl must be 0 or at least 1m")
+	}
+	return duration, nil
 }
 
 func (c Config) RefreshEvery() (time.Duration, error) {

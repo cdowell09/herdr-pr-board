@@ -3,6 +3,7 @@ package board
 import (
 	"context"
 	"fmt"
+	"os"
 	"os/exec"
 	"runtime"
 	"sort"
@@ -13,6 +14,7 @@ import (
 
 	"github.com/cdowell09/herdr-pr-board/internal/config"
 	gh "github.com/cdowell09/herdr-pr-board/internal/github"
+	"github.com/cdowell09/herdr-pr-board/internal/sidebar"
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
 )
@@ -67,6 +69,10 @@ type browserMsg struct {
 	err error
 }
 
+type sidebarMsg struct {
+	err error
+}
+
 type keyHelpEntry struct {
 	keys   string
 	action string
@@ -118,6 +124,8 @@ type Model struct {
 	loading     bool
 	warning     string
 	rates       gh.RateLimits
+	sidebar     *sidebar.Reporter
+	sidebarWarn bool
 }
 
 func NewModel(cfg config.Config, loader Loader) (Model, error) {
@@ -129,7 +137,12 @@ func NewModel(cfg config.Config, loader Loader) (Model, error) {
 	for i, view := range cfg.Views {
 		views[i].View = view
 	}
-	return Model{cfg: cfg, loader: loader, openBrowser: openBrowserCmd, refresh: refresh, views: views, loading: true}, nil
+	var reporter *sidebar.Reporter
+	if cfg.Sidebar.SidebarEnabled() {
+		ttl, _ := cfg.Sidebar.TTLEvery() // validated by config.Load
+		reporter = &sidebar.Reporter{Bin: os.Getenv("HERDR_BIN_PATH"), TTL: ttl}
+	}
+	return Model{cfg: cfg, loader: loader, openBrowser: openBrowserCmd, refresh: refresh, views: views, loading: true, sidebar: reporter}, nil
 }
 
 func (m Model) Init() tea.Cmd {
@@ -164,6 +177,20 @@ func (m Model) Update(message tea.Msg) (tea.Model, tea.Cmd) {
 		m.warning = warning
 		m.loading = false
 		m.clampCursor()
+		var cmd tea.Cmd
+		if m.sidebar != nil {
+			if tokens := sidebar.Tokens(m.cfg.Sidebar.ReviewView, adaptViews(nextViews)); len(tokens) > 0 {
+				cmd = m.sidebarReportCmd(tokens)
+			}
+		}
+		return m, cmd
+	case sidebarMsg:
+		if msg.err == nil {
+			m.sidebarWarn = false
+		} else if !m.sidebarWarn {
+			m.sidebarWarn = true
+			m.warning = appendWarning(m.warning, "sidebar reporting unavailable: "+msg.err.Error())
+		}
 		return m, nil
 	case viewMsg:
 		refresh := msg.snapshot
@@ -659,6 +686,32 @@ func (m Model) tabBudget() int {
 	count := max(1, len(m.views))
 	available := m.width - (count - 1) // separators between tabs
 	return max(6, available/count-tabPadding)
+}
+
+// adaptViews converts retained view data into the sidebar token inputs.
+func adaptViews(views []ViewData) []sidebar.View {
+	adapted := make([]sidebar.View, len(views))
+	for i, view := range views {
+		adapted[i] = sidebar.View{ID: view.View.ID, PRs: view.PRs, Err: view.Err}
+	}
+	return adapted
+}
+
+// sidebarReportCmd reports the tokens to every workspace in the background.
+// It returns a sidebarMsg so the model can warn once when reporting fails.
+func (m Model) sidebarReportCmd(tokens map[string]string) tea.Cmd {
+	return func() tea.Msg {
+		ctx := context.Background()
+		workspaces, err := m.sidebar.Workspaces(ctx)
+		if err == nil {
+			for _, workspace := range workspaces {
+				if err = m.sidebar.Report(ctx, workspace, tokens); err != nil {
+					break
+				}
+			}
+		}
+		return sidebarMsg{err: err}
+	}
 }
 
 func (m Model) refreshAllCmd() tea.Cmd {
