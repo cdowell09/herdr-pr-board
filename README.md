@@ -211,17 +211,38 @@ refresh_interval = "0"
 | Left click the URL | Open the PR in a browser. |
 | Mouse wheel | Move through the PR list. |
 | `1`–`9` | Select a view. |
-| `Tab` | Select the next view. |
-| `Shift+Tab` | Select the previous view. |
-| `j`, `k`, arrow keys | Select a PR. |
-| `/` | Filter the active view. |
-| `Esc` | Clear the filter. |
+| `Tab`, `Shift+Tab`, `h`, `l`, `←`, `→` | Select the next or previous view. |
+| `j`, `k`, `↑`, `↓` | Select a PR. |
+| `g`, `Home` | Select the first PR. |
+| `G`, `End` | Select the last PR. |
+| `/` | Start filter input. |
+| `Enter` | Finish filter input. |
+| `Ctrl+U`, `Esc` | Clear the filter. |
 | `r` | Refresh the active view. |
 | `R` | Refresh all views. |
 | `Enter`, `o` | Open the selected PR in a browser. |
-| `q` | Close the board. |
+| `q`, `Ctrl+C` | Close the board. |
 
 If the operating system cannot open the browser, the board keeps the selected URL visible. It reports the failure at the bottom of the screen.
+
+### Layouts
+
+The board adapts to the terminal width:
+
+| Terminal width | Layout |
+| --- | --- |
+| 100 cells or more | All columns. |
+| 80–99 cells | Compact repository and author columns. |
+| 60–79 cells | No author column. |
+| Fewer than 60 cells | No repository, author, or updated columns. |
+
+The selected PR URL stays visible at every width. Column text truncates by terminal cell width. Emoji, combining characters, and wide glyphs stay aligned.
+
+![Narrow board layout](docs/images/layout-narrow.png)
+
+![Medium board layout](docs/images/layout-medium.png)
+
+![Wide board layout](docs/images/layout-wide.png)
 
 ## API limits
 
