@@ -222,6 +222,33 @@ func TestFooterListsEveryImplementedControl(t *testing.T) {
 	}
 }
 
+func TestFooterNamesShortcutContexts(t *testing.T) {
+	model := layoutModel(t, 200)
+	footer := stripANSI(model.renderFooter())
+	for _, want := range []string{
+		"VIEW", "SELECT", "JUMP", "FILTER", "CLEAR", "EDIT", "REFRESH", "OPEN", "MOUSE", "QUIT",
+		"[Enter] finish", "[Enter]/[o]  open selected PR", "[Backspace]  delete last character",
+	} {
+		if !strings.Contains(footer, want) {
+			t.Fatalf("footer missing %q:\n%s", want, footer)
+		}
+	}
+}
+
+func TestFooterWrapsWithinWidthAndHeight(t *testing.T) {
+	for _, width := range []int{40, 60, 80, 120, 200} {
+		model := layoutModel(t, width)
+		for _, line := range model.footerHelpLines() {
+			if got := lipgloss.Width(stripANSI(line)); got > width {
+				t.Fatalf("width %d: footer line is %d cells wide:\n%q", width, got, line)
+			}
+		}
+		if lines := len(strings.Split(model.View(), "\n")); lines > model.height {
+			t.Fatalf("width %d: rendered %d lines in a %d-line terminal", width, lines, model.height)
+		}
+	}
+}
+
 func TestModelNarrowLayoutsFitStaleAndErrorLines(t *testing.T) {
 	for _, width := range []int{40, 50, 60} {
 		cfg := testConfig()
