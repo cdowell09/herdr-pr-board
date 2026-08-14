@@ -256,6 +256,7 @@ refresh_interval = "0"
 | `G`, `End` | Select the last PR. |
 | `/` | Start filter input. |
 | `Enter` | Finish filter input. |
+| `Backspace` | Remove the last filter character. |
 | `Ctrl+U`, `Esc` | Clear the filter. |
 | `r` | Refresh the active view. |
 | `R` | Refresh all views. |
@@ -263,6 +264,10 @@ refresh_interval = "0"
 | `q`, `Ctrl+C` | Close the board. |
 
 If the operating system cannot open the browser, the board keeps the selected URL visible. It reports the failure at the bottom of the screen.
+
+The footer groups controls by task and wraps them for narrow terminals.
+
+![Grouped keyboard shortcuts in the board footer](docs/images/keyboard-shortcuts.png)
 
 ### Layouts
 

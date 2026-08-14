@@ -43,6 +43,7 @@ var (
 	headerStyle   = lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("252")).BorderBottom(true).BorderStyle(lipgloss.NormalBorder()).BorderForeground(lipgloss.Color("238"))
 	selectedStyle = lipgloss.NewStyle().Foreground(lipgloss.Color("255")).Background(lipgloss.Color("237"))
 	dimStyle      = lipgloss.NewStyle().Foreground(lipgloss.Color("242"))
+	helpStyle     = lipgloss.NewStyle().Foreground(lipgloss.Color("252"))
 	warningStyle  = lipgloss.NewStyle().Foreground(lipgloss.Color("214"))
 	errorStyle    = lipgloss.NewStyle().Foreground(lipgloss.Color("196"))
 	urlStyle      = lipgloss.NewStyle().Foreground(lipgloss.Color("81")).Underline(true)
@@ -67,21 +68,22 @@ type browserMsg struct {
 }
 
 type keyHelpEntry struct {
-	keys   string
-	action string
+	label    string
+	controls string
 }
 
 // keyHelp is the single source of truth for the footer control list.
 var keyHelp = []keyHelpEntry{
-	{"1–9 · Tab · ⇧Tab · h/l · ←/→", "view"},
-	{"j/k · ↑/↓", "select"},
-	{"g/G · Home/End", "first/last"},
-	{"/ · Enter", "filter"},
-	{"Ctrl+U · Esc", "clear"},
-	{"r · R", "refresh"},
-	{"Enter · o", "open"},
-	{"wheel · click", "mouse"},
-	{"q · Ctrl+C", "quit"},
+	{"VIEW", "[1–9] [Tab/Shift+Tab] [h/l] [←/→]  switch view"},
+	{"SELECT", "[j/k] [↑/↓]  select PR"},
+	{"JUMP", "[g/G] [Home/End]  first/last"},
+	{"FILTER", "[/] start · [Enter] finish"},
+	{"CLEAR", "[Ctrl+U]/[Esc]  clear filter"},
+	{"EDIT", "[Backspace]  delete last character"},
+	{"REFRESH", "[r] active · [R] all"},
+	{"OPEN", "[Enter]/[o]  open selected PR"},
+	{"MOUSE", "[wheel] scroll · [click] view/PR/URL"},
+	{"QUIT", "[q]/[Ctrl+C] quit"},
 }
 
 // documentedKeys lists every key literal the README must document. The
@@ -90,7 +92,7 @@ var keyHelp = []keyHelpEntry{
 var documentedKeys = []string{
 	"1", "9", "Tab", "Shift+Tab", "h", "l", "←", "→",
 	"j", "k", "↑", "↓", "g", "G", "Home", "End",
-	"/", "Enter", "Ctrl+U", "Esc", "r", "R", "o", "q", "Ctrl+C",
+	"/", "Enter", "Ctrl+U", "Esc", "Backspace", "r", "R", "o", "q", "Ctrl+C",
 }
 
 // table tiers and their minimum terminal widths in cells.
@@ -453,17 +455,11 @@ func (m Model) renderSelected() string {
 }
 
 func (m Model) renderFooter() string {
-	filter := ""
-	if m.editing {
-		filter = "  filter: " + m.filter + "▌"
-	} else if m.filter != "" {
-		filter = "  filter: " + m.filter
+	help := m.footerHelpLines()
+	for i := range help {
+		help[i] = helpStyle.Render(help[i])
 	}
-	var help []string
-	for _, entry := range keyHelp {
-		help = append(help, entry.keys+" "+entry.action)
-	}
-	keys := strings.Join(help, " · ")
+
 	meta := ""
 	freshness := m.currentView().UpdatedAt
 	if !freshness.IsZero() {
@@ -481,7 +477,67 @@ func (m Model) renderFooter() string {
 	if m.warning != "" {
 		meta += " · " + m.warning
 	}
-	return dimStyle.Render(truncate(keys+filter, m.width)) + "\n" + warningStyle.Render(truncate(meta, m.width))
+	return strings.Join(append(help, warningStyle.Render(truncate(meta, m.width))), "\n")
+}
+
+// footerHelpLines wraps the control reference at group boundaries so each
+// shortcut keeps its label and its meaning visible on narrow terminals.
+func (m Model) footerHelpLines() []string {
+	width := max(1, m.width)
+	var lines []string
+	current := ""
+	for _, entry := range keyHelp {
+		group := entry.label + "  " + entry.controls
+		if current != "" {
+			candidate := current + "    ·    " + group
+			if lipgloss.Width(candidate) <= width {
+				current = candidate
+				continue
+			}
+			lines = append(lines, current)
+			current = ""
+		}
+
+		wrapped := wrapFooterText(group, width)
+		if len(wrapped) == 0 {
+			continue
+		}
+		lines = append(lines, wrapped[:len(wrapped)-1]...)
+		current = wrapped[len(wrapped)-1]
+	}
+	if current != "" {
+		lines = append(lines, current)
+	}
+
+	if m.editing {
+		lines = append(lines, truncate("FILTERING  "+m.filter+"▌", width))
+	} else if m.filter != "" {
+		lines = append(lines, truncate("FILTERED  "+m.filter, width))
+	}
+	return lines
+}
+
+func wrapFooterText(text string, width int) []string {
+	var lines []string
+	current := ""
+	for _, word := range strings.Fields(text) {
+		candidate := word
+		if current != "" {
+			candidate = current + " " + word
+		}
+		if lipgloss.Width(candidate) <= width {
+			current = candidate
+			continue
+		}
+		if current != "" {
+			lines = append(lines, current)
+		}
+		current = truncate(word, width)
+	}
+	if current != "" {
+		lines = append(lines, current)
+	}
+	return lines
 }
 
 func (m Model) currentView() ViewData {
@@ -517,7 +573,8 @@ func (m Model) selectedPR() (gh.PullRequest, bool) {
 }
 
 func (m Model) visibleRows() int {
-	rows := m.height - 9
+	// Keep the table inside the terminal after the help wraps to more lines.
+	rows := m.height - 7 - (len(m.footerHelpLines()) + 1)
 	if m.currentView().Stale() {
 		rows--
 	}
