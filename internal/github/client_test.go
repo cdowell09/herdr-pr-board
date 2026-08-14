@@ -6,6 +6,8 @@ import (
 	"fmt"
 	"slices"
 	"strings"
+	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -103,7 +105,7 @@ func TestEnrichCIBatchesAndMapsRollups(t *testing.T) {
 		{Repository: "acme/two", Number: 2, URL: "https://github.com/acme/two/pull/2"},
 		{Repository: "acme/three", Number: 3, URL: "https://github.com/acme/three/pull/3"},
 	}
-	rate, err := client.EnrichCI(context.Background(), prs, RateResource{})
+	rate, _, err := client.EnrichCI(context.Background(), prs, RateResource{})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -116,11 +118,149 @@ func TestEnrichCIBatchesAndMapsRollups(t *testing.T) {
 	if rate.Remaining != 4988 || !rate.Reset.Equal(time.Date(2026, 8, 7, 13, 0, 0, 0, time.UTC)) {
 		t.Fatalf("rate = %#v", rate)
 	}
-	if _, err := client.EnrichCI(context.Background(), prs, rate); err != nil {
+	if _, _, err := client.EnrichCI(context.Background(), prs, rate); err != nil {
 		t.Fatal(err)
 	}
 	if calls != 2 {
 		t.Fatalf("cached enrichment made another request; calls = %d", calls)
+	}
+}
+
+func TestEnrichCIPreservesCompletedBatchesOnFailure(t *testing.T) {
+	calls := 0
+	runner := runnerFunc(func(_ context.Context, args ...string) ([]byte, error) {
+		calls++
+		switch calls {
+		case 1:
+			return []byte(`{"data":{"rateLimit":{"limit":5000,"remaining":4999,"resetAt":"2026-08-07T13:00:00Z","cost":1},"p0":{"pullRequest":{"commits":{"nodes":[{"commit":{"statusCheckRollup":{"state":"SUCCESS"}}}]}}}}}`), nil
+		case 2:
+			return []byte(`{"data":{"rateLimit":{"limit":5000,"remaining":4998,"resetAt":"2026-08-07T13:00:00Z","cost":1},"p0":{"pullRequest":{"commits":{"nodes":[{"commit":{"statusCheckRollup":{"state":"FAILURE"}}}]}}}}}`), nil
+		}
+		return nil, errors.New("connection reset")
+	})
+	client := NewClient(runner, config.GitHubConfig{CIBatchSize: 1})
+	prs := []PullRequest{
+		{Repository: "acme/one", Number: 1, URL: "https://github.com/acme/one/pull/1", CI: CIUnknown},
+		{Repository: "acme/two", Number: 2, URL: "https://github.com/acme/two/pull/2", CI: CIUnknown},
+		{Repository: "acme/three", Number: 3, URL: "https://github.com/acme/three/pull/3", CI: CIUnknown},
+	}
+
+	rate, warnings, err := client.EnrichCI(context.Background(), prs, RateResource{Limit: 5000, Remaining: 5000, Reset: time.Now().Add(time.Hour)})
+	if err == nil || !strings.Contains(err.Error(), "connection reset") {
+		t.Fatalf("error = %v", err)
+	}
+	if calls != 3 {
+		t.Fatalf("GraphQL calls = %d, want 3", calls)
+	}
+	if prs[0].CI != CISuccess || prs[1].CI != CIFailure || prs[2].CI != CIUnknown {
+		t.Fatalf("CI states = %q, %q, %q", prs[0].CI, prs[1].CI, prs[2].CI)
+	}
+	if rate.Limit != 5000 || rate.Remaining != 4998 {
+		t.Fatalf("rate = %#v, want latest known from successful batches", rate)
+	}
+	if len(warnings) != 0 {
+		t.Fatalf("warnings = %#v", warnings)
+	}
+
+	calls = 0
+	cached := []PullRequest{{Repository: "acme/one", Number: 1, URL: "https://github.com/acme/one/pull/1"}}
+	if _, _, err := client.EnrichCI(context.Background(), cached, rate); err != nil {
+		t.Fatal(err)
+	}
+	if calls != 0 {
+		t.Fatalf("completed batch was not cached; calls = %d", calls)
+	}
+	if cached[0].CI != CISuccess {
+		t.Fatalf("cached CI = %q, want SUCCESS", cached[0].CI)
+	}
+}
+
+func TestEnrichCISurfacesWarningsWhenResponseHasDataAndErrors(t *testing.T) {
+	runner := runnerFunc(func(_ context.Context, _ ...string) ([]byte, error) {
+		return []byte(`{"data":{"rateLimit":{"limit":5000,"remaining":4999,"resetAt":"2026-08-07T13:00:00Z","cost":1},"p0":{"pullRequest":{"commits":{"nodes":[{"commit":{"statusCheckRollup":{"state":"SUCCESS"}}}]}}}},"errors":[{"message":"p1 resolves to a deleted repository"}]}`), nil
+	})
+	client := NewClient(runner, config.GitHubConfig{CIBatchSize: 2})
+	prs := []PullRequest{
+		{Repository: "acme/one", Number: 1, URL: "https://github.com/acme/one/pull/1"},
+		{Repository: "acme/gone", Number: 2, URL: "https://github.com/acme/gone/pull/2"},
+	}
+
+	rate, warnings, err := client.EnrichCI(context.Background(), prs, RateResource{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if prs[0].CI != CISuccess || prs[1].CI != CIUnknown {
+		t.Fatalf("CI states = %q, %q", prs[0].CI, prs[1].CI)
+	}
+	if rate.Remaining != 4999 {
+		t.Fatalf("rate = %#v", rate)
+	}
+	if len(warnings) != 1 || !strings.Contains(warnings[0], "deleted repository") {
+		t.Fatalf("warnings = %#v", warnings)
+	}
+}
+
+func TestEnrichCIKeepsWarningsWithCapacityError(t *testing.T) {
+	calls := 0
+	runner := runnerFunc(func(_ context.Context, _ ...string) ([]byte, error) {
+		calls++
+		return []byte(`{"data":{"rateLimit":{"limit":5000,"remaining":1,"resetAt":"2027-08-07T13:00:00Z","cost":1},"p0":{"pullRequest":{"commits":{"nodes":[{"commit":{"statusCheckRollup":{"state":"SUCCESS"}}}]}}}},"errors":[{"message":"rate limiting may interfere"}]}`), nil
+	})
+	client := NewClient(runner, config.GitHubConfig{CIBatchSize: 1})
+	prs := []PullRequest{
+		{Repository: "acme/one", Number: 1, URL: "https://github.com/acme/one/pull/1", CI: CIUnknown},
+		{Repository: "acme/two", Number: 2, URL: "https://github.com/acme/two/pull/2", CI: CIUnknown},
+		{Repository: "acme/three", Number: 3, URL: "https://github.com/acme/three/pull/3", CI: CIUnknown},
+	}
+	budget := RateResource{Limit: 5000, Remaining: 3, Reset: time.Now().Add(time.Hour)}
+
+	rate, warnings, err := client.EnrichCI(context.Background(), prs, budget)
+	if err == nil || !strings.Contains(err.Error(), "needs at least 2") {
+		t.Fatalf("error = %v", err)
+	}
+	if calls != 1 {
+		t.Fatalf("GraphQL calls = %d, want 1", calls)
+	}
+	if prs[0].CI != CISuccess || prs[1].CI != CIUnknown || prs[2].CI != CIUnknown {
+		t.Fatalf("CI states = %q, %q, %q", prs[0].CI, prs[1].CI, prs[2].CI)
+	}
+	if rate.Limit != 5000 || rate.Remaining != 1 {
+		t.Fatalf("rate = %#v, want latest from completed batch", rate)
+	}
+	if len(warnings) != 1 || !strings.Contains(warnings[0], "rate limiting") {
+		t.Fatalf("warnings = %#v", warnings)
+	}
+}
+
+func TestEnrichCICacheConcurrentAccess(t *testing.T) {
+	var calls atomic.Int64
+	runner := runnerFunc(func(_ context.Context, _ ...string) ([]byte, error) {
+		calls.Add(1)
+		return []byte(`{"data":{"rateLimit":{"limit":5000,"remaining":4999,"resetAt":"2026-08-07T13:00:00Z","cost":1},"p0":{"pullRequest":{"commits":{"nodes":[{"commit":{"statusCheckRollup":{"state":"SUCCESS"}}}]}}}}}`), nil
+	})
+	client := NewClient(runner, config.GitHubConfig{CIBatchSize: 1})
+	results := make([]CIState, 8)
+	var wg sync.WaitGroup
+	for i := range 8 {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			prs := []PullRequest{{Repository: "acme/one", Number: 1, URL: "https://github.com/acme/one/pull/1", CI: CIUnknown}}
+			if _, _, err := client.EnrichCI(context.Background(), prs, RateResource{}); err != nil {
+				t.Error(err)
+				return
+			}
+			results[i] = prs[0].CI
+		}()
+	}
+	wg.Wait()
+	for i, state := range results {
+		if state != CISuccess {
+			t.Fatalf("call %d CI = %q, want SUCCESS", i, state)
+		}
+	}
+	if total := calls.Load(); total < 1 || total > 8 {
+		t.Fatalf("runner calls = %d, want between 1 and 8", total)
 	}
 }
 
@@ -140,7 +280,7 @@ func TestEnrichCIStopsBeforeUnbudgetedBatch(t *testing.T) {
 	}
 
 	budget := RateResource{Limit: 5000, Remaining: 2, Reset: time.Now().Add(time.Hour)}
-	rate, err := client.EnrichCI(context.Background(), prs, budget)
+	rate, _, err := client.EnrichCI(context.Background(), prs, budget)
 	if err == nil || !strings.Contains(err.Error(), "needs at least 1") {
 		t.Fatalf("error = %v", err)
 	}
@@ -163,7 +303,7 @@ func TestEnrichCIRechecksExpiredCacheBeforeFirstBatch(t *testing.T) {
 	client.ciCache[pr.URL] = ciCacheEntry{state: CISuccess, expiresAt: time.Now().Add(-time.Second)}
 	budget := RateResource{Limit: 5000, Remaining: 0, Reset: time.Now().Add(time.Hour)}
 
-	rate, err := client.EnrichCI(context.Background(), []PullRequest{pr}, budget)
+	rate, _, err := client.EnrichCI(context.Background(), []PullRequest{pr}, budget)
 	if err == nil || !strings.Contains(err.Error(), "needs at least 1") {
 		t.Fatalf("error = %v", err)
 	}
