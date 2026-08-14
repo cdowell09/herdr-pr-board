@@ -9,6 +9,7 @@ Read [`README.md`](README.md) for user behavior and configuration. Read [`herdr-
 ## Source map
 
 - `cmd/herdr-pr-board/`: process startup and dependency wiring.
+- `cmd/ci-platform-matrix/`: convert manifest platforms into CI cross-compilation targets.
 - `cmd/herdr-release-check/`: release tag and plugin manifest validation.
 - `internal/config/`: TOML defaults, parsing, validation, scope modes, and Search request counts.
 - `internal/github/`: `gh` execution, query tokenization, Search results, GraphQL CI enrichment, caching, and rate-limit decoding.

@@ -655,15 +655,16 @@ func (m Model) tickCmd() tea.Cmd {
 }
 
 func openBrowserCmd(url string) tea.Cmd {
-	var command *exec.Cmd
-	if runtime.GOOS == "darwin" {
-		command = exec.Command("open", url)
-	} else {
-		command = exec.Command("xdg-open", url)
-	}
-	return tea.ExecProcess(command, func(err error) tea.Msg {
+	return tea.ExecProcess(browserCommand(runtime.GOOS, url), func(err error) tea.Msg {
 		return browserMsg{err: err}
 	})
+}
+
+func browserCommand(goos, url string) *exec.Cmd {
+	if goos == "darwin" {
+		return exec.Command("open", url)
+	}
+	return exec.Command("xdg-open", url)
 }
 
 func renderCI(state gh.CIState) string {
