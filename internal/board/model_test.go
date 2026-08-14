@@ -254,8 +254,8 @@ func TestModelUpdatesRatesAfterActiveRefresh(t *testing.T) {
 	if model.rates.Search.Remaining != 1 {
 		t.Fatalf("Search remaining = %d, want 1", model.rates.Search.Remaining)
 	}
-	if !model.updated.Equal(updatedAt) {
-		t.Fatalf("updated time = %s, want %s", model.updated, updatedAt)
+	if !model.views[0].UpdatedAt.Equal(updatedAt) {
+		t.Fatalf("view updated time = %s, want %s", model.views[0].UpdatedAt, updatedAt)
 	}
 }
 
@@ -282,6 +282,145 @@ func TestModelKeepsLoadedRowsWhenRefreshFails(t *testing.T) {
 	}
 	if !strings.Contains(model.warning, "rate limited") {
 		t.Fatalf("warning = %q", model.warning)
+	}
+}
+
+func TestModelFreshnessAdvancesOnlyOnSuccessfulFullRefresh(t *testing.T) {
+	cfg := testConfig()
+	model, err := NewModel(cfg, fakeLoader{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	model.loading = true
+	successAt := time.Now().Add(-10 * time.Minute)
+	success := Snapshot{
+		Views: []ViewData{
+			{View: cfg.Views[0], PRs: []gh.PullRequest{{Repository: "acme/api", Number: 1, Title: "One"}}},
+			{View: cfg.Views[1], PRs: []gh.PullRequest{{Repository: "acme/web", Number: 2, Title: "Two"}}},
+		},
+		UpdatedAt: successAt,
+	}
+	updated, _ := model.Update(snapshotMsg(success))
+	model = updated.(Model)
+	for i, view := range model.views {
+		if !view.UpdatedAt.Equal(successAt) {
+			t.Fatalf("view %d updated time = %s, want %s", i, view.UpdatedAt, successAt)
+		}
+	}
+
+	failedAt := time.Now()
+	model.loading = true
+	failed := Snapshot{Views: []ViewData{
+		{View: cfg.Views[0], Err: errors.New("GitHub search failed: timeout")},
+		{View: cfg.Views[1], Err: errors.New("GitHub search failed: timeout")},
+	}, UpdatedAt: failedAt}
+	updated, _ = model.Update(snapshotMsg(failed))
+	model = updated.(Model)
+	for i, view := range model.views {
+		if !view.UpdatedAt.Equal(successAt) {
+			t.Fatalf("view %d updated time = %s, want %s after failed refresh", i, view.UpdatedAt, successAt)
+		}
+	}
+}
+
+func TestModelFreshnessPreservedPerViewInMixedFullRefresh(t *testing.T) {
+	cfg := testConfig()
+	model, err := NewModel(cfg, fakeLoader{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	firstSuccessAt := time.Now().Add(-20 * time.Minute)
+	model.views[0] = ViewData{View: cfg.Views[0], PRs: []gh.PullRequest{{Repository: "acme/api", Number: 1, Title: "One"}}, UpdatedAt: firstSuccessAt}
+	model.views[1] = ViewData{View: cfg.Views[1], PRs: []gh.PullRequest{{Repository: "acme/web", Number: 2, Title: "Two"}}, UpdatedAt: firstSuccessAt}
+	model.loading = true
+
+	secondSuccessAt := time.Now().Add(-time.Minute)
+	mixed := Snapshot{Views: []ViewData{
+		{View: cfg.Views[0], Err: errors.New("rate limited")},
+		{View: cfg.Views[1], PRs: []gh.PullRequest{{Repository: "acme/web", Number: 3, Title: "Three"}}},
+	}, UpdatedAt: secondSuccessAt}
+	updated, _ := model.Update(snapshotMsg(mixed))
+	model = updated.(Model)
+	if !model.views[0].UpdatedAt.Equal(firstSuccessAt) {
+		t.Fatalf("failed view updated time = %s, want %s", model.views[0].UpdatedAt, firstSuccessAt)
+	}
+	if !model.views[1].UpdatedAt.Equal(secondSuccessAt) {
+		t.Fatalf("successful view updated time = %s, want %s", model.views[1].UpdatedAt, secondSuccessAt)
+	}
+}
+
+func TestModelFreshnessAdvancesOnlyOnSuccessfulActiveRefresh(t *testing.T) {
+	cfg := testConfig()
+	model, err := NewModel(cfg, fakeLoader{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	successAt := time.Now().Add(-15 * time.Minute)
+	model.views[0] = ViewData{View: cfg.Views[0], PRs: []gh.PullRequest{{Repository: "acme/api", Number: 1, Title: "One"}}, UpdatedAt: successAt}
+
+	failedAt := time.Now()
+	model.loading = true
+	failed := ViewSnapshot{
+		Data:      ViewData{View: cfg.Views[0], Err: errors.New("GitHub search failed: timeout")},
+		UpdatedAt: failedAt,
+	}
+	updated, _ := model.Update(viewMsg{index: 0, snapshot: failed})
+	model = updated.(Model)
+	if !model.views[0].UpdatedAt.Equal(successAt) {
+		t.Fatalf("updated time = %s, want %s after failed active refresh", model.views[0].UpdatedAt, successAt)
+	}
+	if len(model.views[0].PRs) != 1 {
+		t.Fatalf("retained rows were discarded: %#v", model.views[0].PRs)
+	}
+}
+
+func TestModelMarksRetainedRowsStaleWithoutHidingError(t *testing.T) {
+	cfg := testConfig()
+	model, err := NewModel(cfg, fakeLoader{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	successAt := time.Now().Add(-30 * time.Minute)
+	model.views[0] = ViewData{View: cfg.Views[0], PRs: []gh.PullRequest{{Repository: "acme/api", Number: 1, Title: "One", URL: "https://github.com/acme/api/pull/1"}}, UpdatedAt: successAt}
+	model.width, model.height = 120, 30
+	model.active = 0
+
+	model.loading = true
+	failed := Snapshot{Views: []ViewData{
+		{View: cfg.Views[0], Err: errors.New("GitHub search failed: timeout")},
+	}, UpdatedAt: time.Now()}
+	failed.Views = append(failed.Views, ViewData{View: cfg.Views[1]})
+	updated, _ := model.Update(snapshotMsg(failed))
+	model = updated.(Model)
+
+	output := model.View()
+	if !strings.Contains(output, "stale") {
+		t.Fatalf("output missing stale marker:\n%s", output)
+	}
+	if !strings.Contains(output, "GitHub search failed: timeout") {
+		t.Fatalf("output missing refresh error:\n%s", output)
+	}
+	if !strings.Contains(output, "One") {
+		t.Fatalf("retained rows were not rendered:\n%s", output)
+	}
+	if len(model.views[0].PRs) != 1 {
+		t.Fatalf("retained rows were discarded: %#v", model.views[0].PRs)
+	}
+
+	rowY, urlY := -1, -1
+	for y, line := range strings.Split(output, "\n") {
+		switch {
+		case strings.Contains(line, "acme/api") && strings.Contains(line, "#1"):
+			rowY = y
+		case strings.HasPrefix(line, "https://github.com/acme/api/pull/1") || strings.HasSuffix(line, "https://github.com/acme/api/pull/1"):
+			urlY = y
+		}
+	}
+	if rowY != firstPRRowYFor(true) {
+		t.Fatalf("stale rendered row Y = %d, mouse Y = %d", rowY, firstPRRowYFor(true))
+	}
+	if urlY != model.selectedURLY() {
+		t.Fatalf("stale rendered URL Y = %d, mouse URL Y = %d", urlY, model.selectedURLY())
 	}
 }
 

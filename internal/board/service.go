@@ -11,9 +11,15 @@ import (
 )
 
 type ViewData struct {
-	View config.View
-	PRs  []gh.PullRequest
-	Err  error
+	View      config.View
+	PRs       []gh.PullRequest
+	Err       error
+	UpdatedAt time.Time
+}
+
+// Stale reports whether the view kept rows from an earlier refresh after a failed one.
+func (v ViewData) Stale() bool {
+	return v.Err != nil && len(v.PRs) > 0
 }
 
 type Snapshot struct {
