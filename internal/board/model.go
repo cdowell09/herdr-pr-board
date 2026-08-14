@@ -61,6 +61,24 @@ type browserMsg struct {
 	err error
 }
 
+type keyHelpEntry struct {
+	keys   string
+	action string
+}
+
+// keyHelp is the single source of truth for the footer control list.
+var keyHelp = []keyHelpEntry{
+	{"1–9 · Tab · ⇧Tab · h/l · ←/→", "view"},
+	{"j/k · ↑/↓", "select"},
+	{"g/G · Home/End", "first/last"},
+	{"/ · Enter", "filter"},
+	{"Ctrl+U · Esc", "clear"},
+	{"r · R", "refresh"},
+	{"Enter · o", "open"},
+	{"wheel · click", "mouse"},
+	{"q · Ctrl+C", "quit"},
+}
+
 type Model struct {
 	cfg         config.Config
 	loader      Loader
@@ -289,7 +307,7 @@ func (m Model) updateMouse(message tea.MouseMsg) (tea.Model, tea.Cmd) {
 func (m Model) tabAtX(x int) (int, bool) {
 	position := 0
 	for i, view := range m.views {
-		label := tabLabel(i, view)
+		label := m.tabLabel(i, view)
 		width := lipgloss.Width(inactiveTab.Render(label))
 		if x >= position && x < position+width {
 			return i, true
@@ -354,7 +372,7 @@ func (m Model) View() string {
 func (m Model) renderTabs() string {
 	var tabs []string
 	for i, view := range m.views {
-		label := tabLabel(i, view)
+		label := m.tabLabel(i, view)
 		if i == m.active {
 			tabs = append(tabs, activeTab.Render(label))
 		} else {
@@ -388,21 +406,14 @@ func (m Model) renderTable() string {
 		return dimStyle.Render("No pull requests in this view.") + "\n"
 	}
 
-	repoWidth, titleWidth, authorWidth := m.columnWidths()
-	header := fmt.Sprintf("%-*s  %-6s  %-3s  %-*s  %-*s  %s", repoWidth, "REPOSITORY", "PR", "CI", titleWidth, "TITLE", authorWidth, "AUTHOR", "UPDATED")
+	layout := m.tableLayout()
+	header := m.renderHeader(layout)
 	var output strings.Builder
-	output.WriteString(headerStyle.Width(m.width).Render(header) + "\n")
+	output.WriteString(header + "\n")
 	end := min(m.offset+m.visibleRows(), len(rows))
 	for i := m.offset; i < end; i++ {
 		pr := rows[i]
-		repo := truncate(pr.Repository, repoWidth)
-		title := truncate(pr.Title, titleWidth)
-		author := truncate(pr.Author, authorWidth)
-		if pr.Draft {
-			title = "[draft] " + title
-			title = truncate(title, titleWidth)
-		}
-		line := fmt.Sprintf("%-*s  #%-5d  %s  %-*s  %-*s  %s", repoWidth, repo, pr.Number, renderCI(pr.CI), titleWidth, title, authorWidth, author, relativeTime(pr.UpdatedAt))
+		line := m.renderPRRow(pr, layout)
 		if i == m.cursor {
 			line = selectedStyle.Width(m.width).Render(line)
 		}
@@ -416,7 +427,7 @@ func (m Model) renderSelected() string {
 	if !ok {
 		return dimStyle.Render("No PR selected")
 	}
-	return urlStyle.Render(pr.URL)
+	return urlStyle.Render(fitCells(pr.URL, m.width))
 }
 
 func (m Model) renderFooter() string {
@@ -426,7 +437,11 @@ func (m Model) renderFooter() string {
 	} else if m.filter != "" {
 		filter = "  filter: " + m.filter
 	}
-	keys := "click view/PR · wheel scroll · click URL browser · 1–9 view · / filter · r refresh · R refresh all · q quit"
+	var help []string
+	for _, entry := range keyHelp {
+		help = append(help, entry.keys+" "+entry.action)
+	}
+	keys := strings.Join(help, " · ")
 	meta := ""
 	freshness := m.currentView().UpdatedAt
 	if !freshness.IsZero() {
@@ -444,7 +459,7 @@ func (m Model) renderFooter() string {
 	if m.warning != "" {
 		meta += " · " + m.warning
 	}
-	return dimStyle.Render(keys+filter) + "\n" + warningStyle.Render(meta)
+	return dimStyle.Render(fitCells(keys+filter, m.width)) + "\n" + warningStyle.Render(fitCells(meta, m.width))
 }
 
 func (m Model) currentView() ViewData {
@@ -487,20 +502,113 @@ func (m Model) visibleRows() int {
 	return max(1, rows)
 }
 
-func (m Model) columnWidths() (repo, title, author int) {
-	repo, author = 24, 14
-	fixed := repo + author + 6 + 3 + 8 + 12
-	title = max(18, m.width-fixed)
-	if m.width < 100 {
-		repo, author = 18, 10
-		fixed = repo + author + 6 + 3 + 8 + 12
-		title = max(12, m.width-fixed)
-	}
-	return repo, title, author
+// tableLayout picks column sizes for the current terminal width. A width of
+// zero hides the column. The title absorbs all remaining width.
+//
+// Tiers: wide keeps every column; medium compacts repository and author;
+// narrow drops the author; very narrow drops the repository, author, and
+// updated columns while the selected PR URL stays visible.
+type tableLayout struct {
+	repo    int
+	title   int
+	author  int
+	updated bool
 }
 
-func tabLabel(index int, view ViewData) string {
-	return fmt.Sprintf("%d %s %d", index+1, view.View.Title, len(view.PRs))
+func (m Model) tableLayout() tableLayout {
+	var layout tableLayout
+	switch {
+	case m.width >= 100:
+		layout.repo, layout.author, layout.updated = 24, 14, true
+	case m.width >= 80:
+		layout.repo, layout.author, layout.updated = 18, 10, true
+	case m.width >= 60:
+		layout.repo, layout.updated = 16, true
+	}
+	layout.title = max(0, m.width-layout.fixedWidth())
+	return layout
+}
+
+// fixedWidth returns the cell width of every column except the title.
+func (l tableLayout) fixedWidth() int {
+	width := 6 + 2 + 3 + 2 // PR column, CI column, and their separators
+	if l.repo > 0 {
+		width += l.repo + 2
+	}
+	if l.author > 0 {
+		width += l.author + 2
+	}
+	if l.updated {
+		width += 8 + 1 // UPDATED column
+	}
+	return width
+}
+
+func (m Model) renderHeader(layout tableLayout) string {
+	var b strings.Builder
+	if layout.repo > 0 {
+		b.WriteString(padCells("REPOSITORY", layout.repo))
+		b.WriteString("  ")
+	}
+	b.WriteString("PR    ")
+	b.WriteString("  ")
+	b.WriteString("CI ")
+	b.WriteString("  ")
+	b.WriteString(padCells("TITLE", layout.title))
+	if layout.author > 0 {
+		b.WriteString("  ")
+		b.WriteString(padCells("AUTHOR", layout.author))
+	}
+	if layout.updated {
+		b.WriteString(" ")
+		b.WriteString(padCells("UPDATED", 8))
+	}
+	return headerStyle.Width(m.width).Render(fitCells(b.String(), m.width))
+}
+
+func (m Model) renderPRRow(pr gh.PullRequest, layout tableLayout) string {
+	var b strings.Builder
+	if layout.repo > 0 {
+		b.WriteString(padCells(truncate(pr.Repository, layout.repo), layout.repo))
+		b.WriteString("  ")
+	}
+	b.WriteString(fmt.Sprintf("#%-5d", pr.Number))
+	b.WriteString("  ")
+	b.WriteString(renderCI(pr.CI))
+	b.WriteString("  ")
+	title := pr.Title
+	if pr.Draft {
+		title = "[draft] " + title
+	}
+	b.WriteString(padCells(truncate(title, layout.title), layout.title))
+	if layout.author > 0 {
+		b.WriteString("  ")
+		b.WriteString(padCells(truncate(pr.Author, layout.author), layout.author))
+	}
+	if layout.updated {
+		b.WriteString(" ")
+		b.WriteString(padCells(relativeTime(pr.UpdatedAt), 8))
+	}
+	return fitCells(b.String(), m.width)
+}
+
+// tabLabel builds the rendered label for a tab. Render and mouse hitboxes
+// must share this function so both see the same label at every width. When a
+// full label would not fit its share of the row, the label compacts and
+// truncates.
+func (m Model) tabLabel(index int, view ViewData) string {
+	budget := m.tabBudget()
+	label := fmt.Sprintf("%d %s %d", index+1, view.View.Title, len(view.PRs))
+	if lipgloss.Width(label) <= budget {
+		return label
+	}
+	return truncate(fmt.Sprintf("%d %s", index+1, view.View.Title), budget)
+}
+
+func (m Model) tabBudget() int {
+	count := max(1, len(m.views))
+	available := m.width - (count - 1) // separators between tabs
+	return max(6, available/count-2)   // tab style padding
 }
 
 func (m Model) refreshAllCmd() tea.Cmd {
@@ -553,15 +661,42 @@ func renderCI(state gh.CIState) string {
 	return " " + icon + " "
 }
 
+// truncate shortens value to at most width terminal cells, adding an
+// ellipsis when it cuts. It measures display width, so emoji, combining
+// characters, and wide glyphs stay aligned.
 func truncate(value string, width int) string {
-	runes := []rune(value)
-	if len(runes) <= width {
+	if lipgloss.Width(value) <= width {
 		return value
 	}
 	if width <= 1 {
 		return "…"
 	}
-	return string(runes[:width-1]) + "…"
+	budget := width - 1
+	used := 0
+	var keep strings.Builder
+	for _, r := range value {
+		cellWidth := lipgloss.Width(string(r))
+		if used+cellWidth > budget {
+			break
+		}
+		keep.WriteRune(r)
+		used += cellWidth
+	}
+	return keep.String() + "…"
+}
+
+// padCells right-pads value with spaces to exactly width terminal cells.
+func padCells(value string, width int) string {
+	padding := width - lipgloss.Width(value)
+	if padding <= 0 {
+		return value
+	}
+	return value + strings.Repeat(" ", padding)
+}
+
+// fitCells shortens value to at most width terminal cells.
+func fitCells(value string, width int) string {
+	return truncate(value, width)
 }
 
 func relativeTime(value time.Time) string {
