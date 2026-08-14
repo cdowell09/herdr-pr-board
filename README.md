@@ -192,6 +192,8 @@ refresh_interval = "0"
 | `Enter`, `o` | Open the selected PR in a browser. |
 | `q` | Close the board. |
 
+If the operating system cannot open the browser, the board keeps the selected URL visible and reports the failure at the bottom of the screen.
+
 ## API limits
 
 The plugin refreshes the board when it starts. The default automatic refresh interval is five minutes.
@@ -206,7 +208,13 @@ The board shows the remaining Search API and GraphQL capacity. The board keeps o
 
 The footer reports when the active view last refreshed successfully. A failed refresh does not advance that time. When a refresh fails and the board keeps old data, the view is marked `stale` in the footer and a `stale` notice above the table counts the retained rows until a refresh succeeds.
 
+## Troubleshooting and plugin lifecycle
+
+See [`docs/troubleshooting.md`](docs/troubleshooting.md) for help diagnosing common failures and for how install, configuration, upgrades, and removal affect plugin files.
+
 ## Develop the plugin
+
+Read [`CONTRIBUTING.md`](CONTRIBUTING.md) before contributing. Report security problems through GitHub private vulnerability reporting; see [`SECURITY.md`](SECURITY.md).
 
 Run these checks:
 

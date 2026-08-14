@@ -461,6 +461,95 @@ func TestModelMarksRetainedRowsStaleWithoutHidingError(t *testing.T) {
 	}
 }
 
+func TestModelReportsBrowserOpenFailure(t *testing.T) {
+	model := browserModel(t, testConfig())
+	model.openBrowser = func(_ string) tea.Cmd {
+		return func() tea.Msg { return browserMsg{err: errors.New("open: could not launch browser")} }
+	}
+
+	updated, command := model.Update(tea.KeyMsg{Type: tea.KeyEnter})
+	if command == nil {
+		t.Fatal("Enter did not return a browser command")
+	}
+	model = updated.(Model)
+	msg := command()
+	updated, command = model.Update(msg)
+	if command != nil {
+		t.Fatal("browser result returned an unexpected command")
+	}
+	model = updated.(Model)
+	if !strings.Contains(model.warning, "could not launch browser") {
+		t.Fatalf("warning = %q", model.warning)
+	}
+	output := model.View()
+	if !strings.Contains(output, "https://github.com/acme/api/pull/1") {
+		t.Fatalf("URL no longer visible after failure:\n%s", output)
+	}
+	if model.loading {
+		t.Fatal("board entered loading state after a browser failure")
+	}
+}
+
+func TestModelBrowserOpenSuccessKeepsBoardUsable(t *testing.T) {
+	model := browserModel(t, testConfig())
+	model.openBrowser = func(_ string) tea.Cmd {
+		return func() tea.Msg { return browserMsg{} }
+	}
+
+	updated, command := model.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'o'}})
+	if command == nil {
+		t.Fatal("o did not return a browser command")
+	}
+	model = updated.(Model)
+	msg := command()
+	updated, command = model.Update(msg)
+	if command != nil {
+		t.Fatal("browser result returned an unexpected command")
+	}
+	model = updated.(Model)
+	if strings.Contains(model.warning, "browser") {
+		t.Fatalf("success produced a warning: %q", model.warning)
+	}
+	if model.loading {
+		t.Fatal("board entered loading state after a successful open")
+	}
+}
+
+func TestModelBrowserOpenTriggersFromURLMouseClick(t *testing.T) {
+	model := browserModel(t, testConfig())
+	var opened string
+	model.openBrowser = func(url string) tea.Cmd {
+		opened = url
+		return func() tea.Msg { return browserMsg{} }
+	}
+
+	updated, command := model.Update(tea.MouseMsg(tea.MouseEvent{
+		X: 2, Y: model.selectedURLY(), Action: tea.MouseActionPress, Button: tea.MouseButtonLeft,
+	}))
+	if command == nil {
+		t.Fatal("URL click did not return a browser command")
+	}
+	_ = updated
+	if opened != "https://github.com/acme/api/pull/1" {
+		t.Fatalf("opened = %q", opened)
+	}
+}
+
+func browserModel(t *testing.T, cfg config.Config) Model {
+	t.Helper()
+	model, err := NewModel(cfg, fakeLoader{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	model.views = []ViewData{
+		{View: cfg.Views[0], PRs: []gh.PullRequest{{Repository: "acme/api", Number: 1, Title: "API fix", URL: "https://github.com/acme/api/pull/1"}}},
+		{View: cfg.Views[1]},
+	}
+	model.loading = false
+	model.width, model.height = 120, 30
+	return model
+}
+
 func testConfig() config.Config {
 	return config.Config{
 		UI: config.UIConfig{Title: "Engineering PRs"},

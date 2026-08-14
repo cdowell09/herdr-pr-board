@@ -1,0 +1,66 @@
+name: Bug report
+description: Report a problem with the PR Board plugin.
+title: "fix: "
+labels: [bug]
+body:
+  - type: textarea
+    id: behavior
+    attributes:
+      label: What happened?
+      description: Describe the problem and what you expected to happen instead.
+    validations:
+      required: true
+  - type: textarea
+    id: reproduce
+    attributes:
+      label: Steps to reproduce
+      description: Give the exact steps, including any custom views, scopes, or configuration involved.
+      placeholder: |
+        1. Set up config with ...
+        2. Press ...
+        3. See ...
+    validations:
+      required: true
+  - type: textarea
+    id: output
+    attributes:
+      label: Board output
+      description: Paste the warning, error, or screen text the board showed, including any rate-limit or GraphQL message.
+      render: text
+    validations:
+      required: false
+  - type: textarea
+    id: config
+    attributes:
+      label: Configuration
+      description: Paste the relevant section of `config.toml` (view queries, scopes, limits). Remove any values you keep private.
+      render: toml
+    validations:
+      required: false
+  - type: textarea
+    id: environment
+    attributes:
+      label: Environment
+      description: Operating system, Herdr version, `gh` version, and the plugin version.
+      placeholder: |
+        - OS: macOS 15
+        - herdr: 0.8.0
+        - gh: 2.96.0
+        - plugin: 0.1.1
+    validations:
+      required: true
+  - type: textarea
+    id: logs
+    attributes:
+      label: Plugin logs
+      description: Optional. Run `herdr plugin log list --plugin cdowell09.pr-board` and paste the relevant records.
+      render: text
+    validations:
+      required: false
+  - type: textarea
+    id: related
+    attributes:
+      label: Related PRs or issues
+      description: Link to any pull requests or issues that introduced or observed this behavior.
+    validations:
+      required: false

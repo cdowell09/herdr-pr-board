@@ -57,21 +57,26 @@ type viewMsg struct {
 
 type tickMsg struct{}
 
+type browserMsg struct {
+	err error
+}
+
 type Model struct {
-	cfg     config.Config
-	loader  Loader
-	refresh time.Duration
-	views   []ViewData
-	active  int
-	cursor  int
-	offset  int
-	width   int
-	height  int
-	filter  string
-	editing bool
-	loading bool
-	warning string
-	rates   gh.RateLimits
+	cfg         config.Config
+	loader      Loader
+	openBrowser func(url string) tea.Cmd
+	refresh     time.Duration
+	views       []ViewData
+	active      int
+	cursor      int
+	offset      int
+	width       int
+	height      int
+	filter      string
+	editing     bool
+	loading     bool
+	warning     string
+	rates       gh.RateLimits
 }
 
 func NewModel(cfg config.Config, loader Loader) (Model, error) {
@@ -83,7 +88,7 @@ func NewModel(cfg config.Config, loader Loader) (Model, error) {
 	for i, view := range cfg.Views {
 		views[i].View = view
 	}
-	return Model{cfg: cfg, loader: loader, refresh: refresh, views: views, loading: true}, nil
+	return Model{cfg: cfg, loader: loader, openBrowser: openBrowserCmd, refresh: refresh, views: views, loading: true}, nil
 }
 
 func (m Model) Init() tea.Cmd {
@@ -145,6 +150,11 @@ func (m Model) Update(message tea.Msg) (tea.Model, tea.Cmd) {
 			commands = append(commands, m.refreshAllCmd())
 		}
 		return m, tea.Batch(commands...)
+	case browserMsg:
+		if msg.err != nil {
+			m.warning = appendWarning(m.warning, "could not open the PR in a browser: "+msg.err.Error()+"; use the URL above or press Enter/click again")
+		}
+		return m, nil
 	case tea.MouseMsg:
 		return m.updateMouse(msg)
 	case tea.KeyMsg:
@@ -222,7 +232,7 @@ func (m Model) updateKey(key tea.KeyMsg) (tea.Model, tea.Cmd) {
 		}
 	case "enter", "o":
 		if pr, ok := m.selectedPR(); ok {
-			return m, openBrowserCmd(pr.URL)
+			return m, m.openBrowser(pr.URL)
 		}
 	default:
 		if number, err := strconv.Atoi(key.String()); err == nil && number >= 1 && number <= len(m.views) {
@@ -270,7 +280,7 @@ func (m Model) updateMouse(message tea.MouseMsg) (tea.Model, tea.Cmd) {
 
 	if event.Y == m.selectedURLY() {
 		if pr, ok := m.selectedPR(); ok {
-			return m, openBrowserCmd(pr.URL)
+			return m, m.openBrowser(pr.URL)
 		}
 	}
 	return m, nil
@@ -521,7 +531,9 @@ func openBrowserCmd(url string) tea.Cmd {
 	} else {
 		command = exec.Command("xdg-open", url)
 	}
-	return tea.ExecProcess(command, func(error) tea.Msg { return nil })
+	return tea.ExecProcess(command, func(err error) tea.Msg {
+		return browserMsg{err: err}
+	})
 }
 
 func renderCI(state gh.CIState) string {

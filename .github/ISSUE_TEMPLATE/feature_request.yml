@@ -1,0 +1,46 @@
+name: Feature request
+description: Propose a change or new behavior for the PR Board plugin.
+title: "feat: "
+labels: [enhancement]
+body:
+  - type: textarea
+    id: problem
+    attributes:
+      label: What problem does this solve?
+      description: Describe the scenario and why the current plugin does not meet it.
+    validations:
+      required: true
+  - type: textarea
+    id: behavior
+    attributes:
+      label: Proposed behavior
+      description: Describe how the feature should behave, including any new configuration, keyboard shortcuts, or rendering.
+    validations:
+      required: true
+  - type: dropdown
+    id: surface
+    attributes:
+      label: Where does the change live?
+      description: Select the part of the plugin the feature affects.
+      options:
+        - Configuration and views
+        - GitHub requests, CI, or rate limits
+        - Board UI, keyboard, or mouse
+        - Installation, lifecycle, or documentation
+    validations:
+      required: true
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternatives you considered
+      description: Note any other ways to meet the need and why you prefer this one.
+    validations:
+      required: false
+  - type: textarea
+    id: example
+    attributes:
+      label: Example use
+      description: A concrete example of configuration or behavior that would exercise the feature.
+      render: toml
+    validations:
+      required: false
