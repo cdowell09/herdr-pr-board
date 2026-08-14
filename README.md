@@ -154,28 +154,28 @@ The plugin combines the scoped results. The plugin removes duplicate PR URLs.
 
 | Setting | Default | Valid values | Effect |
 | --- | --- | --- | --- |
-| `ui.title` | `"Pull Requests"` | Non-empty string | Header shown above the board. |
-| `github.refresh_interval` | `"5m"` | `"0"` or a Go duration of at least `1m` (`"5m"`, `"1h"`, ...) | Time between automatic refreshes. `"0"` disables automatic refresh. |
-| `github.limit_per_scope` | `100` | Integer from 1 to 1000 | Maximum PRs returned by each search query. |
-| `github.max_concurrency` | `4` | Integer from 1 to 8 | Maximum simultaneous Search API requests during a refresh. |
-| `github.ci_batch_size` | `25` | Integer from 1 to 50 | PRs enriched per GraphQL CI query. |
-| `github.scopes` | `["user:@me"]` | Non-empty list of unique `user:name`, `org:name`, or `repo:owner/name` entries | Scopes used by views with `scope = "configured"`. `@me` resolves to your GitHub account. |
-| `[[views]].id` | None | Lowercase letters, digits, `-`, and `_`; starts with a letter; unique | Identifies the view. |
-| `[[views]].title` | None | Non-empty string | Name shown in the UI for the view. |
-| `[[views]].query` | None | Non-empty GitHub PR search | PRs listed in the view. |
-| `[[views]].scope` | None | `"global"` or `"configured"` | `"global"` runs the query once. `"configured"` runs it once per `github.scopes` entry. |
+| `ui.title` | `"Pull Requests"` | A string that is not empty. | The header of the board. |
+| `github.refresh_interval` | `"5m"` | `"0"` or a Go duration of `1m` or more, for example `"5m"` or `"1h"` | The time between automatic refreshes. `"0"` stops automatic refresh. |
+| `github.limit_per_scope` | `100` | An integer from 1 through 1000 | The maximum number of PRs that each search query returns. |
+| `github.max_concurrency` | `4` | An integer from 1 through 8 | The maximum number of Search API requests that the plugin sends at the same time during a refresh. |
+| `github.ci_batch_size` | `25` | An integer from 1 through 50 | The number of PRs in one GraphQL CI query. |
+| `github.scopes` | `["user:@me"]` | A list that is not empty. Each entry must be `user:name`, `org:name`, or `repo:owner/name`. Each entry must be unique. | The scopes that views with `scope = "configured"` use. `@me` refers to your GitHub account. |
+| `[[views]].id` | None | Lowercase letters, digits, `-`, and `_`. The ID must start with a letter. Each ID must be unique. | The ID of the view. |
+| `[[views]].title` | None | A string that is not empty. | The name of the view in the board. |
+| `[[views]].query` | None | A GitHub PR search that is not empty. | The PRs that the view shows. |
+| `[[views]].scope` | None | `"global"` or `"configured"` | `"global"` runs the query one time. `"configured"` runs the query one time for each entry in `github.scopes`. |
 
-The board validates the configuration when it starts. A mistake prevents the board from starting, and the error message names the setting that is wrong.
+When the board starts, it makes sure that the configuration is correct. If the configuration has a mistake, the board does not start. The error message gives the name of the setting that is wrong.
 
 ### Validate your configuration
 
-Check a configuration without starting the board:
+Run this command to check a configuration. The command does not start the board:
 
 ```sh
 bin/herdr-pr-board -config path/to/config.toml -validate
 ```
 
-The command prints `configuration is valid` and exits with code 0 when the configuration is valid. It prints the problem and exits with a non-zero code when it is not. Validation never creates a missing file and does not require GitHub CLI.
+If the configuration is correct, the command prints `configuration is valid` and exits with code 0. If the configuration has a mistake, the command prints the problem and exits with a non-zero code. The command does not create a missing file. The command does not need GitHub CLI.
 
 ### Add a custom view
 
