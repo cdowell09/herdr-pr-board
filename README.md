@@ -59,14 +59,47 @@ Run this command:
 herdr plugin install cdowell09/herdr-pr-board
 ```
 
-## Install for local development
+## Use a local source build
+
+Use this procedure to test the current checkout instead of the GitHub version.
 
 Build and link the plugin:
 
 ```sh
 go build -o bin/herdr-pr-board ./cmd/herdr-pr-board
-herdr plugin link "$PWD"
+herdr plugin link "$PWD" --enabled
 ```
+
+`herdr plugin link` registers this checkout as `cdowell09.pr-board`. It does not copy the source files. The linked plugin runs `bin/herdr-pr-board` from this checkout. Herdr preserves the existing configuration and runtime state.
+
+Verify the local link:
+
+```sh
+herdr plugin list --plugin cdowell09.pr-board --json
+```
+
+The link is ready when `source.kind` is `local`, `plugin_root` points to this checkout, and `enabled` is `true`.
+
+If the board is open, press `q` first.
+The open action focuses an existing board.
+The action does not rebuild a running board.
+
+Open the source build:
+
+```sh
+herdr plugin action invoke open --plugin cdowell09.pr-board
+```
+
+Rebuild the binary after each source change.
+
+Return to the GitHub version:
+
+```sh
+herdr plugin unlink cdowell09.pr-board
+herdr plugin install cdowell09/herdr-pr-board
+```
+
+`herdr plugin unlink` removes the local registration. It preserves the configuration and runtime state.
 
 ## Release the plugin
 

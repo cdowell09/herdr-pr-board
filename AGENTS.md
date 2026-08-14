@@ -29,7 +29,7 @@ Read [`README.md`](README.md) for user behavior and configuration. Read [`herdr-
 
 ## Documentation style
 
-Write all technical documentation in ASD-STE100 Simplified Technical English (STE), the standard referenced by the `wait-what` skill. This covers `README.md`, `CONTRIBUTING.md`, `SECURITY.md`, `docs/`, and all issue and pull-request templates.
+Write all technical documentation in ASD-STE100 Simplified Technical English (STE). This covers `README.md`, `CONTRIBUTING.md`, `SECURITY.md`, `docs/`, and all issue and pull-request templates.
 
 - Write one idea per sentence. Keep sentences under 20 words.
 - Use the active voice.
