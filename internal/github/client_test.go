@@ -43,7 +43,13 @@ func TestSearchSeparatesFlagsFromNegativeQueryTerms(t *testing.T) {
 }
 
 func TestSearchViewResolvesScopesDeduplicatesAndSorts(t *testing.T) {
+	var queryMu sync.Mutex
 	var queries []string
+	recordQuery := func(query string) {
+		queryMu.Lock()
+		defer queryMu.Unlock()
+		queries = append(queries, query)
+	}
 	runner := runnerFunc(func(_ context.Context, args ...string) ([]byte, error) {
 		if len(args) >= 2 && args[0] == "api" && args[1] == "user" {
 			return []byte("cdowell09\n"), nil
@@ -54,7 +60,7 @@ func TestSearchViewResolvesScopesDeduplicatesAndSorts(t *testing.T) {
 				return nil, fmt.Errorf("missing query separator: %v", args)
 			}
 			query := strings.Join(args[separator+1:], " ")
-			queries = append(queries, query)
+			recordQuery(query)
 			switch {
 			case strings.Contains(query, "user:cdowell09"):
 				return []byte(`[{"number":2,"title":"Cookies","url":"https://github.com/cdowell09/cookies/pull/2","isDraft":false,"updatedAt":"2026-08-07T10:00:00Z","author":{"login":"cdowell09"},"repository":{"nameWithOwner":"cdowell09/cookies"}}]`), nil
@@ -73,8 +79,12 @@ func TestSearchViewResolvesScopesDeduplicatesAndSorts(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(queries) != 2 || queries[0] != "is:open user:cdowell09" {
-		t.Fatalf("queries = %#v", queries)
+	queryMu.Lock()
+	gotQueries := slices.Sorted(slices.Values(queries))
+	queryMu.Unlock()
+	wantQueries := []string{"is:open repo:acme/api", "is:open user:cdowell09"}
+	if !slices.Equal(gotQueries, wantQueries) {
+		t.Fatalf("queries = %#v, want %#v", gotQueries, wantQueries)
 	}
 	if len(prs) != 2 {
 		t.Fatalf("PR count = %d, want 2", len(prs))
@@ -326,5 +336,165 @@ func TestRateLimits(t *testing.T) {
 	}
 	if rates.Search.Remaining != 27 || rates.GraphQL.Limit != 5000 {
 		t.Fatalf("rates = %#v", rates)
+	}
+}
+
+func updateMaxAtomic(value *atomic.Int64, candidate int64) {
+	for {
+		current := value.Load()
+		if candidate <= current || value.CompareAndSwap(current, candidate) {
+			return
+		}
+	}
+}
+
+func TestSearchViewRunsScopeSearchesConcurrently(t *testing.T) {
+	var started atomic.Int64
+	var inFlight atomic.Int64
+	var maxInFlight atomic.Int64
+	release := make(chan struct{})
+	runner := runnerFunc(func(_ context.Context, args ...string) ([]byte, error) {
+		if len(args) >= 3 && args[0] == "search" && args[1] == "prs" {
+			now := inFlight.Add(1)
+			updateMaxAtomic(&maxInFlight, now)
+			started.Add(1)
+			<-release
+			inFlight.Add(-1)
+			separator := slices.Index(args, "--")
+			query := strings.Join(args[separator+1:], " ")
+			if strings.Contains(query, "repo:acme/one") {
+				return []byte(`[{"number":1,"title":"Overlap","url":"https://github.com/acme/one/pull/1","isDraft":false,"updatedAt":"2026-08-07T10:00:00Z","author":{"login":"alice"},"repository":{"nameWithOwner":"acme/one"}}]`), nil
+			}
+			return []byte(`[{"number":1,"title":"Overlap","url":"https://github.com/acme/one/pull/1","isDraft":false,"updatedAt":"2026-08-07T11:00:00Z","author":{"login":"alice"},"repository":{"nameWithOwner":"acme/one"}}]`), nil
+		}
+		return nil, fmt.Errorf("unexpected command: %v", args)
+	})
+	client := NewClient(runner, config.GitHubConfig{
+		LimitPerScope:  100,
+		MaxConcurrency: 2,
+		Scopes:         []string{"repo:acme/one", "repo:acme/two"},
+	})
+	type outcome struct {
+		prs []PullRequest
+		err error
+	}
+	done := make(chan outcome, 1)
+	go func() {
+		prs, err := client.SearchView(context.Background(), config.View{Title: "All", Query: "is:open", Scope: "configured"})
+		done <- outcome{prs: prs, err: err}
+	}()
+
+	deadline := time.Now().Add(2 * time.Second)
+	for started.Load() < 2 && time.Now().Before(deadline) {
+		time.Sleep(time.Millisecond)
+	}
+	if started.Load() < 2 {
+		t.Fatal("scope searches did not run concurrently")
+	}
+	if got := maxInFlight.Load(); got > 2 {
+		t.Fatalf("concurrent searches = %d, want at most 2", got)
+	}
+	close(release)
+
+	result := <-done
+	if result.err != nil {
+		t.Fatal(result.err)
+	}
+	if len(result.prs) != 1 {
+		t.Fatalf("PR count = %d, want 1 after deduplication", len(result.prs))
+	}
+	if result.prs[0].URL != "https://github.com/acme/one/pull/1" || !result.prs[0].UpdatedAt.Equal(time.Date(2026, 8, 7, 11, 0, 0, 0, time.UTC)) {
+		t.Fatalf("PR = %#v, want the most recently updated row", result.prs[0])
+	}
+}
+
+func TestSearchViewConcurrencyDoesNotExceedMaxConcurrency(t *testing.T) {
+	var inFlight atomic.Int64
+	var maxInFlight atomic.Int64
+	var total atomic.Int64
+	release := make(chan struct{})
+	runner := runnerFunc(func(_ context.Context, args ...string) ([]byte, error) {
+		if len(args) >= 3 && args[0] == "search" && args[1] == "prs" {
+			now := inFlight.Add(1)
+			updateMaxAtomic(&maxInFlight, now)
+			total.Add(1)
+			<-release
+			inFlight.Add(-1)
+			return []byte("[]"), nil
+		}
+		return nil, fmt.Errorf("unexpected command: %v", args)
+	})
+	client := NewClient(runner, config.GitHubConfig{
+		LimitPerScope:  100,
+		MaxConcurrency: 2,
+		Scopes: []string{
+			"repo:acme/one", "repo:acme/two", "repo:acme/three",
+			"repo:acme/four", "repo:acme/five", "repo:acme/six",
+		},
+	})
+	type outcome struct {
+		prs []PullRequest
+		err error
+	}
+	done := make(chan outcome, 1)
+	go func() {
+		prs, err := client.SearchView(context.Background(), config.View{Title: "All", Query: "is:open", Scope: "configured"})
+		done <- outcome{prs: prs, err: err}
+	}()
+
+	deadline := time.Now().Add(2 * time.Second)
+	for inFlight.Load() < 2 && time.Now().Before(deadline) {
+		time.Sleep(time.Millisecond)
+	}
+	close(release)
+	result := <-done
+	if result.err != nil {
+		t.Fatal(result.err)
+	}
+	if got := total.Load(); got != 6 {
+		t.Fatalf("search calls = %d, want 6", got)
+	}
+	if got := maxInFlight.Load(); got != 2 {
+		t.Fatalf("concurrent searches = %d, want exactly 2", got)
+	}
+}
+
+func TestSearchViewStopsRemainingSearchesOnError(t *testing.T) {
+	secondWaiting := make(chan struct{})
+	var secondCanceled atomic.Bool
+	runner := runnerFunc(func(ctx context.Context, args ...string) ([]byte, error) {
+		if len(args) >= 3 && args[0] == "search" && args[1] == "prs" {
+			separator := slices.Index(args, "--")
+			query := strings.Join(args[separator+1:], " ")
+			if strings.Contains(query, "repo:acme/one") {
+				select {
+				case <-secondWaiting:
+					return nil, errors.New("scope one failed")
+				case <-time.After(2 * time.Second):
+					return nil, errors.New("second scope search never started")
+				}
+			}
+			close(secondWaiting)
+			select {
+			case <-ctx.Done():
+				secondCanceled.Store(true)
+				return nil, ctx.Err()
+			case <-time.After(2 * time.Second):
+				return nil, errors.New("search kept running after another scope failed")
+			}
+		}
+		return nil, fmt.Errorf("unexpected command: %v", args)
+	})
+	client := NewClient(runner, config.GitHubConfig{
+		LimitPerScope:  100,
+		MaxConcurrency: 2,
+		Scopes:         []string{"repo:acme/one", "repo:acme/two"},
+	})
+	_, err := client.SearchView(context.Background(), config.View{Title: "All", Query: "is:open", Scope: "configured"})
+	if err == nil || !strings.Contains(err.Error(), `search "All"`) || !strings.Contains(err.Error(), "scope one failed") {
+		t.Fatalf("error = %v, want the first failure wrapped with the view title", err)
+	}
+	if !secondCanceled.Load() {
+		t.Fatal("in-flight scope search kept running after another scope failed")
 	}
 }
