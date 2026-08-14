@@ -182,9 +182,9 @@ func graphQLCapacityAvailable(rate RateResource, requests int) bool {
 	return rate.Limit == 0 || rate.Remaining >= requests || !time.Now().Before(rate.Reset)
 }
 
-func (c *Client) EnrichCI(ctx context.Context, prs []PullRequest, budget RateResource) (RateResource, error) {
+func (c *Client) EnrichCI(ctx context.Context, prs []PullRequest, budget RateResource) (RateResource, []string, error) {
 	if len(prs) == 0 {
-		return budget, nil
+		return budget, nil, nil
 	}
 
 	now := time.Now()
@@ -204,35 +204,41 @@ func (c *Client) EnrichCI(ctx context.Context, prs []PullRequest, budget RateRes
 
 	batchSize := c.cfg.CIBatchSize
 	latest := budget
+	var warnings []string
+	applyBatch := func(batch []PullRequest, indexes []int) {
+		for i, index := range indexes {
+			prs[index].CI = batch[i].CI
+		}
+		c.ciMu.Lock()
+		for _, pr := range batch {
+			if pr.CI != CIUnknown {
+				c.ciCache[pr.URL] = ciCacheEntry{state: pr.CI, expiresAt: now.Add(c.ciTTL)}
+			}
+		}
+		c.ciMu.Unlock()
+	}
 	for start := 0; start < len(pending); start += batchSize {
 		remainingBatches := (len(pending) - start + batchSize - 1) / batchSize
 		if !graphQLCapacityAvailable(latest, remainingBatches) {
-			return latest, fmt.Errorf(
+			return latest, warnings, fmt.Errorf(
 				"GraphQL rate limit has %d points remaining but CI refresh needs at least %d; CI status is stale",
 				latest.Remaining,
 				remainingBatches,
 			)
 		}
 		end := min(start+batchSize, len(pending))
-		rate, err := c.enrichBatch(ctx, pending[start:end])
+		rate, batchWarnings, err := c.enrichBatch(ctx, pending[start:end])
+		warnings = append(warnings, batchWarnings...)
 		if err != nil {
-			return latest, err
+			return latest, warnings, err
 		}
 		latest = rate
+		applyBatch(pending[start:end], pendingIndexes[start:end])
 	}
-
-	c.ciMu.Lock()
-	defer c.ciMu.Unlock()
-	for i, index := range pendingIndexes {
-		prs[index].CI = pending[i].CI
-		if pending[i].CI != CIUnknown {
-			c.ciCache[pending[i].URL] = ciCacheEntry{state: pending[i].CI, expiresAt: now.Add(c.ciTTL)}
-		}
-	}
-	return latest, nil
+	return latest, warnings, nil
 }
 
-func (c *Client) enrichBatch(ctx context.Context, prs []PullRequest) (RateResource, error) {
+func (c *Client) enrichBatch(ctx context.Context, prs []PullRequest) (RateResource, []string, error) {
 	var query strings.Builder
 	query.WriteString("query { rateLimit { limit remaining resetAt cost } ")
 	for i, pr := range prs {
@@ -247,7 +253,7 @@ func (c *Client) enrichBatch(ctx context.Context, prs []PullRequest) (RateResour
 
 	output, err := c.runner.Run(ctx, "api", "graphql", "-f", "query="+query.String())
 	if err != nil {
-		return RateResource{}, fmt.Errorf("load CI checks: %w", err)
+		return RateResource{}, nil, fmt.Errorf("load CI checks: %w", err)
 	}
 	var response struct {
 		Data   map[string]json.RawMessage `json:"data"`
@@ -256,10 +262,16 @@ func (c *Client) enrichBatch(ctx context.Context, prs []PullRequest) (RateResour
 		} `json:"errors"`
 	}
 	if err := json.Unmarshal(output, &response); err != nil {
-		return RateResource{}, fmt.Errorf("decode CI response: %w", err)
+		return RateResource{}, nil, fmt.Errorf("decode CI response: %w", err)
 	}
-	if len(response.Errors) > 0 && len(response.Data) == 0 {
-		return RateResource{}, fmt.Errorf("load CI checks: %s", response.Errors[0].Message)
+	var warnings []string
+	if len(response.Errors) > 0 {
+		if len(response.Data) == 0 {
+			return RateResource{}, nil, fmt.Errorf("load CI checks: %s", response.Errors[0].Message)
+		}
+		for _, graphErr := range response.Errors {
+			warnings = append(warnings, "load CI checks: "+graphErr.Message)
+		}
 	}
 
 	rate := decodeGraphQLRate(response.Data["rateLimit"])
@@ -271,7 +283,7 @@ func (c *Client) enrichBatch(ctx context.Context, prs []PullRequest) (RateResour
 		}
 		prs[i].CI = decodeCI(raw)
 	}
-	return rate, nil
+	return rate, warnings, nil
 }
 
 func decodeCI(raw json.RawMessage) CIState {

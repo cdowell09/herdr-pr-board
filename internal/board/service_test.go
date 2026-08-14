@@ -16,6 +16,7 @@ type serviceRunner struct {
 	rateRemaining   []int
 	graphRemainings []int
 	searchOutput    string
+	graphqlOutputs  []string
 	rateCalls       int
 	searchCalls     int
 	graphqlCalls    int
@@ -41,7 +42,11 @@ func (r *serviceRunner) Run(_ context.Context, args ...string) ([]byte, error) {
 		return []byte("[]"), nil
 	}
 	if len(args) >= 2 && args[0] == "api" && args[1] == "graphql" {
+		index := r.graphqlCalls
 		r.graphqlCalls++
+		if index < len(r.graphqlOutputs) {
+			return []byte(r.graphqlOutputs[index]), nil
+		}
 		return nil, errors.New("unexpected GraphQL request")
 	}
 	return nil, fmt.Errorf("unexpected command: %v", args)
@@ -152,6 +157,46 @@ func TestRefreshAllUpdatesRatesAfterGraphQLError(t *testing.T) {
 	}
 	if snapshot.Rates.GraphQL.Remaining != 4 {
 		t.Fatalf("displayed GraphQL remaining = %d, want 4", snapshot.Rates.GraphQL.Remaining)
+	}
+	if !strings.Contains(snapshot.Warning, "unexpected GraphQL request") {
+		t.Fatalf("warning = %q", snapshot.Warning)
+	}
+	if len(snapshot.Views) != 1 || len(snapshot.Views[0].PRs) != 1 || snapshot.Views[0].PRs[0].CI != gh.CIUnknown {
+		t.Fatalf("PR CI = %#v, want UNKNOWN after failed batch", snapshot.Views[0].PRs)
+	}
+}
+
+func TestRefreshAllKeepsCompletedCIBatchesOnGraphQLFailure(t *testing.T) {
+	cfg := serviceTestConfig(config.View{ID: "mine", Title: "Mine", Query: "is:open", Scope: config.ScopeGlobal})
+	cfg.GitHub.CIBatchSize = 1
+	runner := &serviceRunner{
+		rateRemaining:   []int{30, 29, 29},
+		graphRemainings: []int{5, 5, 4},
+		searchOutput:    `[{"number":1,"title":"One","url":"https://github.com/acme/api/pull/1","repository":{"nameWithOwner":"acme/api"}},{"number":2,"title":"Two","url":"https://github.com/acme/api/pull/2","repository":{"nameWithOwner":"acme/api"}}]`,
+		graphqlOutputs: []string{
+			`{"data":{"rateLimit":{"limit":5000,"remaining":4,"resetAt":"2026-08-07T13:00:00Z","cost":1},"p0":{"pullRequest":{"commits":{"nodes":[{"commit":{"statusCheckRollup":{"state":"SUCCESS"}}}]}}}}}`,
+		},
+	}
+	service := NewService(cfg, gh.NewClient(runner, cfg.GitHub))
+
+	snapshot := service.RefreshAll(context.Background())
+	if runner.graphqlCalls != 2 {
+		t.Fatalf("GraphQL calls = %d, want 2", runner.graphqlCalls)
+	}
+	if len(snapshot.Views) != 1 || len(snapshot.Views[0].PRs) != 2 {
+		t.Fatalf("views = %#v", snapshot.Views)
+	}
+	successes, unknowns := 0, 0
+	for _, pr := range snapshot.Views[0].PRs {
+		switch pr.CI {
+		case gh.CISuccess:
+			successes++
+		case gh.CIUnknown:
+			unknowns++
+		}
+	}
+	if successes != 1 || unknowns != 1 {
+		t.Fatalf("CI states = %#v, want one SUCCESS and one UNKNOWN", snapshot.Views[0].PRs)
 	}
 	if !strings.Contains(snapshot.Warning, "unexpected GraphQL request") {
 		t.Fatalf("warning = %q", snapshot.Warning)

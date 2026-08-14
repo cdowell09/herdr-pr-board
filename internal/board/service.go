@@ -94,9 +94,12 @@ func (s *Service) RefreshAll(ctx context.Context) Snapshot {
 		prs = append(prs, pr)
 	}
 	if len(prs) > 0 {
-		graphRate, err := s.client.EnrichCI(ctx, prs, snapshot.Rates.GraphQL)
+		graphRate, warnings, err := s.client.EnrichCI(ctx, prs, snapshot.Rates.GraphQL)
 		if graphRate.Limit > 0 {
 			snapshot.Rates.GraphQL = graphRate
+		}
+		for _, warning := range warnings {
+			snapshot.Warning = appendWarning(snapshot.Warning, warning)
 		}
 		if err != nil {
 			snapshot.Warning = appendWarning(snapshot.Warning, err.Error())
@@ -136,9 +139,12 @@ func (s *Service) RefreshOne(ctx context.Context, view config.View) ViewSnapshot
 	if result.Data.Err != nil || len(result.Data.PRs) == 0 {
 		return result
 	}
-	graphRate, err := s.client.EnrichCI(ctx, result.Data.PRs, result.Rates.GraphQL)
+	graphRate, warnings, err := s.client.EnrichCI(ctx, result.Data.PRs, result.Rates.GraphQL)
 	if graphRate.Limit > 0 {
 		result.Rates.GraphQL = graphRate
+	}
+	for _, warning := range warnings {
+		result.Warning = appendWarning(result.Warning, warning)
 	}
 	if err != nil {
 		result.Warning = appendWarning(result.Warning, "PRs loaded; CI unavailable: "+err.Error())
