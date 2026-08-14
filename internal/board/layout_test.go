@@ -226,8 +226,9 @@ func TestFooterNamesShortcutContexts(t *testing.T) {
 	model := layoutModel(t, 200)
 	footer := stripANSI(model.renderFooter())
 	for _, want := range []string{
-		"VIEW", "SELECT", "JUMP", "FILTER", "CLEAR", "EDIT", "REFRESH", "OPEN", "MOUSE", "QUIT",
-		"[Enter] finish", "[Enter]/[o]  open selected PR", "[Backspace]  delete last character",
+		"h/l ←/→ view", "j/k ↑/↓ select", "g/G Home/End first/last",
+		"/ Enter filter", "Ctrl+U Esc clear", "Backspace edit",
+		"r R refresh", "Enter o open", "wheel/click mouse", "q Ctrl+C quit",
 	} {
 		if !strings.Contains(footer, want) {
 			t.Fatalf("footer missing %q:\n%s", want, footer)
