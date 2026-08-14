@@ -68,6 +68,12 @@ go build -o bin/herdr-pr-board ./cmd/herdr-pr-board
 herdr plugin link "$PWD"
 ```
 
+## Release the plugin
+
+Maintainers must follow the [release guide](docs/releasing.md).
+The release workflow validates the tag against `herdr-plugin.toml`.
+The release contains source only.
+
 ## Open the board
 
 Run this command:
