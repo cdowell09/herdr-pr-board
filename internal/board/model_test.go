@@ -3,6 +3,7 @@ package board
 import (
 	"context"
 	"errors"
+	"regexp"
 	"strings"
 	"testing"
 	"time"
@@ -10,7 +11,22 @@ import (
 	"github.com/cdowell09/herdr-pr-board/internal/config"
 	gh "github.com/cdowell09/herdr-pr-board/internal/github"
 	tea "github.com/charmbracelet/bubbletea"
+	"github.com/charmbracelet/lipgloss"
 )
+
+var ansiPattern = regexp.MustCompile(`\x1b\[[0-9;]*m`)
+
+func stripANSI(value string) string {
+	return ansiPattern.ReplaceAllString(value, "")
+}
+
+func displayColumn(line, needle string) (int, bool) {
+	idx := strings.Index(line, needle)
+	if idx < 0 {
+		return 0, false
+	}
+	return lipgloss.Width(line[:idx]), true
+}
 
 type fakeLoader struct {
 	snapshot Snapshot
@@ -57,6 +73,87 @@ func TestModelRendersConfigTitlesPRAndCI(t *testing.T) {
 	for _, want := range []string{"Engineering PRs", "Opened by me", "Cookie schedule", "https://github.com/cdowell09/cookies/pull/2", "✓", "Search 28/30"} {
 		if !strings.Contains(output, want) {
 			t.Fatalf("output missing %q:\n%s", want, output)
+		}
+	}
+}
+
+func TestModelCentersCIIconsInColumn(t *testing.T) {
+	cfg := testConfig()
+	prs := []gh.PullRequest{
+		{Repository: "acme/api", Number: 1, Title: "Success PR", URL: "https://github.com/acme/api/pull/1", Author: "cdowell09", UpdatedAt: time.Now(), CI: gh.CISuccess},
+		{Repository: "acme/api", Number: 2, Title: "Pending PR", URL: "https://github.com/acme/api/pull/2", Author: "cdowell09", UpdatedAt: time.Now(), CI: gh.CIPending},
+		{Repository: "acme/api", Number: 3, Title: "Failure PR", URL: "https://github.com/acme/api/pull/3", Author: "cdowell09", UpdatedAt: time.Now(), CI: gh.CIFailure},
+		{Repository: "acme/api", Number: 4, Title: "Error PR", URL: "https://github.com/acme/api/pull/4", Author: "cdowell09", UpdatedAt: time.Now(), CI: gh.CIError},
+		{Repository: "acme/api", Number: 5, Title: "No checks PR", URL: "https://github.com/acme/api/pull/5", Author: "cdowell09", UpdatedAt: time.Now(), CI: gh.CINone},
+		{Repository: "acme/api", Number: 6, Title: "Unknown PR", URL: "https://github.com/acme/api/pull/6", Author: "cdowell09", UpdatedAt: time.Now(), CI: gh.CIUnknown},
+	}
+	model, err := NewModel(cfg, fakeLoader{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	model.views = []ViewData{{View: cfg.Views[0], PRs: prs}, {View: cfg.Views[1]}}
+	model.loading = false
+	model.width, model.height = 130, 30
+
+	output := model.View()
+	lines := strings.Split(output, "\n")
+
+	var header string
+	for _, line := range lines {
+		if strings.Contains(stripANSI(line), "REPOSITORY") {
+			header = stripANSI(line)
+			break
+		}
+	}
+	if header == "" {
+		t.Fatalf("no header rendered:\n%s", output)
+	}
+	ciCol, ok := displayColumn(header, "CI")
+	if !ok {
+		t.Fatalf("header missing CI:\n%s", header)
+	}
+	titleCol, ok := displayColumn(header, "TITLE")
+	if !ok {
+		t.Fatalf("header missing TITLE:\n%s", header)
+	}
+	wantIconCol := ciCol + 1
+
+	iconGlyphs := map[gh.CIState]string{
+		gh.CISuccess: "✓",
+		gh.CIPending: "●",
+		gh.CIFailure: "✗",
+		gh.CIError:   "✗",
+		gh.CINone:    "–",
+		gh.CIUnknown: "?",
+	}
+	rows := map[string]string{}
+	for _, line := range lines {
+		plain := stripANSI(line)
+		for _, pr := range prs {
+			if strings.Contains(plain, pr.Title) {
+				rows[pr.Title] = plain
+			}
+		}
+	}
+
+	for _, pr := range prs {
+		row, ok := rows[pr.Title]
+		if !ok {
+			t.Fatalf("no row rendered for %q:\n%s", pr.Title, output)
+		}
+		iconCol, ok := displayColumn(row, iconGlyphs[pr.CI])
+		if !ok {
+			t.Fatalf("PR #%d icon missing (row: %q)", pr.Number, row)
+		}
+		if iconCol != wantIconCol {
+			t.Fatalf("PR #%d icon column = %d, want %d (row: %q)", pr.Number, iconCol, wantIconCol, row)
+		}
+		gotTitleCol, ok := displayColumn(row, pr.Title)
+		if !ok {
+			t.Fatalf("PR #%d title missing (row: %q)", pr.Number, row)
+		}
+		if gotTitleCol != titleCol {
+			t.Fatalf("PR #%d title column = %d, want %d (row: %q)", pr.Number, gotTitleCol, titleCol, row)
 		}
 	}
 }

@@ -537,18 +537,20 @@ func openBrowserCmd(url string) tea.Cmd {
 }
 
 func renderCI(state gh.CIState) string {
+	var icon string
 	switch state {
 	case gh.CISuccess:
-		return lipgloss.NewStyle().Foreground(lipgloss.Color("42")).Render("✓") + "  "
+		icon = lipgloss.NewStyle().Foreground(lipgloss.Color("42")).Render("✓")
 	case gh.CIPending:
-		return lipgloss.NewStyle().Foreground(lipgloss.Color("214")).Render("●") + "  "
+		icon = lipgloss.NewStyle().Foreground(lipgloss.Color("214")).Render("●")
 	case gh.CIFailure, gh.CIError:
-		return lipgloss.NewStyle().Foreground(lipgloss.Color("196")).Render("✗") + "  "
+		icon = lipgloss.NewStyle().Foreground(lipgloss.Color("196")).Render("✗")
 	case gh.CINone:
-		return dimStyle.Render("–") + "  "
+		icon = dimStyle.Render("–")
 	default:
-		return dimStyle.Render("?") + "  "
+		icon = dimStyle.Render("?")
 	}
+	return " " + icon + " "
 }
 
 func truncate(value string, width int) string {
