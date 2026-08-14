@@ -14,6 +14,7 @@ Read [`README.md`](README.md) for user behavior and configuration. Read [`herdr-
 - `internal/board/`: refresh orchestration, API budgeting, Bubble Tea state, rendering, keyboard input, and mouse input.
 - `bin/open`: focus an existing plugin pane or open one dedicated tab.
 - `bin/run`: record pane ownership, name the tab, run the board, and clean owned state.
+- `internal/plugin/`: end-to-end tests for the `bin/open` and `bin/run` entrypoints against a fake Herdr and isolated directories.
 - `config.example.toml`: public configuration reference.
 - `.github/workflows/ci.yml`: release gates enforced on pull requests and `main`.
 
