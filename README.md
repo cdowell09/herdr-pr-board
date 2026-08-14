@@ -204,7 +204,7 @@ The plugin gets CI data with batched GraphQL queries. GitHub gives an authentica
 
 The board shows the remaining Search API and GraphQL capacity. The board keeps old data when a refresh fails.
 
-The footer reports when the active view last refreshed successfully. A failed refresh does not advance that time. When a refresh fails and the board keeps old data, the view is marked `stale` until a refresh succeeds.
+The footer reports when the active view last refreshed successfully. A failed refresh does not advance that time. When a refresh fails and the board keeps old data, the view is marked `stale` in the footer and a `stale` notice above the table counts the retained rows until a refresh succeeds.
 
 ## Develop the plugin
 
