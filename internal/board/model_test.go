@@ -101,7 +101,7 @@ func TestModelCentersCIIconsInColumn(t *testing.T) {
 	var header string
 	for _, line := range lines {
 		if strings.Contains(stripANSI(line), "REPOSITORY") {
-			header = stripANSI(line)
+			header = line
 			break
 		}
 	}
@@ -118,20 +118,12 @@ func TestModelCentersCIIconsInColumn(t *testing.T) {
 	}
 	wantIconCol := ciCol + 1
 
-	iconGlyphs := map[gh.CIState]string{
-		gh.CISuccess: "✓",
-		gh.CIPending: "●",
-		gh.CIFailure: "✗",
-		gh.CIError:   "✗",
-		gh.CINone:    "–",
-		gh.CIUnknown: "?",
-	}
 	rows := map[string]string{}
 	for _, line := range lines {
 		plain := stripANSI(line)
 		for _, pr := range prs {
 			if strings.Contains(plain, pr.Title) {
-				rows[pr.Title] = plain
+				rows[pr.Title] = line
 			}
 		}
 	}
@@ -141,7 +133,7 @@ func TestModelCentersCIIconsInColumn(t *testing.T) {
 		if !ok {
 			t.Fatalf("no row rendered for %q:\n%s", pr.Title, output)
 		}
-		iconCol, ok := displayColumn(row, iconGlyphs[pr.CI])
+		iconCol, ok := displayColumn(row, ciGlyph(pr.CI))
 		if !ok {
 			t.Fatalf("PR #%d icon missing (row: %q)", pr.Number, row)
 		}
@@ -156,6 +148,10 @@ func TestModelCentersCIIconsInColumn(t *testing.T) {
 			t.Fatalf("PR #%d title column = %d, want %d (row: %q)", pr.Number, gotTitleCol, titleCol, row)
 		}
 	}
+}
+
+func ciGlyph(state gh.CIState) string {
+	return strings.TrimSpace(stripANSI(renderCI(state)))
 }
 
 func TestModelSwitchesViewsAndFilters(t *testing.T) {
