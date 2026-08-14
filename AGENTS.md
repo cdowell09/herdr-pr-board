@@ -14,6 +14,7 @@ Read [`README.md`](README.md) for user behavior and configuration. Read [`herdr-
 - `internal/config/`: TOML defaults, parsing, validation, scope modes, and Search request counts.
 - `internal/github/`: `gh` execution, query tokenization, Search results, GraphQL CI enrichment, caching, and rate-limit decoding.
 - `internal/board/`: refresh orchestration, API budgeting, Bubble Tea state, rendering, keyboard input, and mouse input.
+- `internal/sidebar/`: Herdr sidebar token computation and `herdr` CLI metadata reporting.
 - `bin/open`: focus an existing plugin pane or open one dedicated tab.
 - `bin/run`: record pane ownership, name the tab, run the board, and clean owned state.
 - `internal/plugin/`: end-to-end tests for the `bin/open` and `bin/run` entrypoints against a fake Herdr and isolated directories.
@@ -61,6 +62,7 @@ Write all technical documentation in ASD-STE100 Simplified Technical English (ST
 - Use `ScopeMode`, `ScopeGlobal`, and `ScopeConfigured` instead of new scope string literals in production code.
 - Keep defaults single-sourced in `internal/config/config.go`; generate `DefaultFile` from those values.
 - Validate new fields and test both default creation and invalid input.
+- Keep sidebar reporting free of GitHub requests; derive tokens only from a successful full refresh snapshot.
 
 ### Herdr and UI
 

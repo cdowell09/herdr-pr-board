@@ -10,6 +10,7 @@ import (
 
 	"github.com/cdowell09/herdr-pr-board/internal/config"
 	gh "github.com/cdowell09/herdr-pr-board/internal/github"
+	"github.com/cdowell09/herdr-pr-board/internal/sidebar"
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
 )
@@ -47,6 +48,148 @@ func (f fakeLoader) RefreshOne(_ context.Context, view config.View) ViewSnapshot
 		}
 	}
 	return refresh
+}
+
+type sidebarFakeRunner struct {
+	calls [][]string
+	err   error
+}
+
+func (f *sidebarFakeRunner) Run(_ context.Context, args ...string) ([]byte, error) {
+	f.calls = append(f.calls, append([]string(nil), args...))
+	if f.err != nil {
+		return nil, f.err
+	}
+	if len(args) >= 2 && args[0] == "workspace" && args[1] == "list" {
+		return []byte(`{"id":"cli:workspace:list","result":{"type":"workspace_list","workspaces":[{"workspace_id":"w1"},{"workspace_id":"w2"}]}}`), nil
+	}
+	return []byte(`{"id":"cli:workspace:report-metadata","result":{}}`), nil
+}
+
+func TestModelReportsSidebarTokensAfterFullRefresh(t *testing.T) {
+	cfg := testConfig()
+	cfg.Sidebar.ReviewView = "review"
+	model, err := NewModel(cfg, fakeLoader{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	runner := &sidebarFakeRunner{}
+	model.sidebar = &sidebar.Reporter{Runner: runner, TTL: 15 * time.Minute}
+
+	snapshot := Snapshot{Views: []ViewData{
+		{View: cfg.Views[0], PRs: []gh.PullRequest{
+			{Repository: "acme/api", Number: 1, Title: "One", URL: "https://github.com/acme/api/pull/1", CI: gh.CISuccess},
+			{Repository: "acme/api", Number: 2, Title: "Two", URL: "https://github.com/acme/api/pull/2", CI: gh.CIFailure},
+		}},
+		{View: cfg.Views[1], PRs: []gh.PullRequest{
+			{Repository: "acme/api", Number: 1, Title: "One", URL: "https://github.com/acme/api/pull/1", CI: gh.CISuccess},
+			{Repository: "acme/api", Number: 3, Title: "Three", URL: "https://github.com/acme/api/pull/3", CI: gh.CIPending},
+		}},
+	}}
+	updated, command := model.Update(snapshotMsg(snapshot))
+	model = updated.(Model)
+	if command == nil {
+		t.Fatal("expected a sidebar report command")
+	}
+	updated, _ = model.Update(command())
+	model = updated.(Model)
+	if strings.Contains(model.warning, "sidebar") {
+		t.Fatalf("warning = %q", model.warning)
+	}
+	if len(runner.calls) != 3 {
+		t.Fatalf("runner calls = %d, want 3", len(runner.calls))
+	}
+	if runner.calls[0][0] != "workspace" || runner.calls[0][1] != "list" {
+		t.Fatalf("first call = %#v", runner.calls[0])
+	}
+	for i := 1; i <= 2; i++ {
+		args := runner.calls[i]
+		joined := strings.Join(args, " ")
+		if args[0] != "workspace" || args[1] != "report-metadata" {
+			t.Fatalf("call %d = %#v", i, args)
+		}
+		if args[3] != "--source" || args[4] != sidebar.Source {
+			t.Fatalf("call %d source = %#v", i, args)
+		}
+		if !strings.Contains(joined, "prs_open=3 open") || !strings.Contains(joined, "prs_review=2 review") || !strings.Contains(joined, "prs_ci=1 fail") {
+			t.Fatalf("call %d missing tokens: %#v", i, args)
+		}
+		if !strings.Contains(joined, "--ttl-ms 900000") {
+			t.Fatalf("call %d missing ttl: %#v", i, args)
+		}
+	}
+}
+
+func TestModelSkipsSidebarReportWhenViewFails(t *testing.T) {
+	cfg := testConfig()
+	model, err := NewModel(cfg, fakeLoader{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	model.sidebar = &sidebar.Reporter{Runner: &sidebarFakeRunner{}}
+
+	failed := Snapshot{Views: []ViewData{
+		{View: cfg.Views[0], Err: errors.New("rate limited")},
+		{View: cfg.Views[1], PRs: []gh.PullRequest{{Repository: "acme/api", Number: 1, Title: "One", URL: "https://github.com/acme/api/pull/1"}}},
+	}}
+	updated, command := model.Update(snapshotMsg(failed))
+	if command != nil {
+		t.Fatal("no sidebar report expected after a failed view")
+	}
+	model = updated.(Model)
+	if model.sidebar == nil {
+		t.Fatal("sidebar reporter lost")
+	}
+}
+
+func TestModelWarnsOnceOnSidebarFailureAndResets(t *testing.T) {
+	cfg := testConfig()
+	model, err := NewModel(cfg, fakeLoader{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	runner := &sidebarFakeRunner{err: errors.New("no session")}
+	model.sidebar = &sidebar.Reporter{Runner: runner}
+	snapshot := Snapshot{Views: []ViewData{
+		{View: cfg.Views[0], PRs: []gh.PullRequest{{Repository: "acme/api", Number: 1, Title: "One", URL: "https://github.com/acme/api/pull/1"}}},
+		{View: cfg.Views[1]},
+	}}
+
+	// First failure warns once.
+	updated, command := model.Update(snapshotMsg(snapshot))
+	model = updated.(Model)
+	if command == nil {
+		t.Fatal("expected a sidebar report command")
+	}
+	updated, _ = model.Update(command())
+	model = updated.(Model)
+	if !strings.Contains(model.warning, "sidebar reporting unavailable") {
+		t.Fatalf("warning = %q", model.warning)
+	}
+
+	// A second failure does not repeat the warning.
+	updated, command = model.Update(snapshotMsg(snapshot))
+	model = updated.(Model)
+	updated, _ = model.Update(command())
+	model = updated.(Model)
+	if strings.Contains(model.warning, "sidebar reporting unavailable") {
+		t.Fatalf("warning repeated: %q", model.warning)
+	}
+
+	// A success resets the latch, so the next failure warns again.
+	runner.err = nil
+	updated, command = model.Update(snapshotMsg(snapshot))
+	model = updated.(Model)
+	updated, _ = model.Update(command())
+	model = updated.(Model)
+	runner.err = errors.New("no session")
+	updated, command = model.Update(snapshotMsg(snapshot))
+	model = updated.(Model)
+	updated, _ = model.Update(command())
+	model = updated.(Model)
+	if !strings.Contains(model.warning, "sidebar reporting unavailable") {
+		t.Fatalf("warning not restored after success: %q", model.warning)
+	}
 }
 
 func TestModelRendersConfigTitlesPRAndCI(t *testing.T) {
@@ -671,9 +814,14 @@ func testConfig() config.Config {
 			MaxConcurrency:  2,
 			CIBatchSize:     25,
 		},
+		Sidebar: config.SidebarConfig{Enabled: boolPtr(false)},
 		Views: []config.View{
 			{ID: "mine", Title: "Opened by me", Query: "is:open author:@me", Scope: "global"},
 			{ID: "review", Title: "Review requested", Query: "is:open review-requested:@me", Scope: "global"},
 		},
 	}
+}
+
+func boolPtr(value bool) *bool {
+	return &value
 }

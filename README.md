@@ -183,6 +183,11 @@ id = "all"
 title = "All open"
 query = "is:open"
 scope = "configured"
+
+[sidebar]
+enabled = true
+ttl = "15m"
+review_view = "review"
 ```
 
 Each view uses a GitHub PR search query.
@@ -207,6 +212,9 @@ The plugin combines the scoped results. The plugin removes duplicate PR URLs.
 | `[[views]].title` | None | A string that is not empty. | The name of the view in the board. |
 | `[[views]].query` | None | A GitHub PR search that is not empty. | The PRs that the view shows. |
 | `[[views]].scope` | None | `"global"` or `"configured"` | `"global"` runs the query one time. `"configured"` runs the query one time for each entry in `github.scopes`. |
+| `sidebar.enabled` | `true` | `true` or `false` | Report PR counts into Herdr sidebar tokens after each full refresh. |
+| `sidebar.ttl` | `"15m"` | `"0"` or a Go duration of `1m` or more, for example `"15m"` or `"1h"` | How long the reported tokens stay visible after the last report. `"0"` keeps the tokens until the next report. |
+| `sidebar.review_view` | `"review"` | Lowercase letters, digits, `-`, and `_`. The value must start with a letter. | The view whose PR count reports as the `$prs_review` token. When no view has this ID, the plugin omits the token. |
 
 When the board starts, it makes sure that the configuration is correct. If the configuration has a mistake, the board does not start. The error message gives the name of the setting that is wrong.
 
@@ -242,6 +250,51 @@ Set the refresh interval to zero:
 [github]
 refresh_interval = "0"
 ```
+
+## Show PR counts in the Herdr sidebar
+
+The board reports PR counts into Herdr sidebar tokens after each full refresh.
+The reporting reuses the refresh snapshot. It makes no extra GitHub requests.
+
+The board reports after the initial refresh, after each automatic refresh, and after a manual full refresh (`R`). It does not report after an active-view refresh (`r`).
+
+The sidebar shows the tokens only when you add them to the Herdr configuration.
+Add a row to the space entries in `~/.config/herdr/config.toml`:
+
+```toml
+[ui.sidebar.spaces]
+rows = [
+  ["state_icon", "workspace"],
+  ["branch", "git_status"],
+  ["$prs_open", "$prs_review", "$prs_ci"],
+]
+```
+
+Reload the Herdr configuration:
+
+```sh
+herdr server reload-config
+```
+
+The board reports these tokens:
+
+| Token | Example value | Meaning |
+| --- | --- | --- |
+| `$prs_open` | `12 open` | The number of distinct pull requests on the board. |
+| `$prs_review` | `3 review` | The number of pull requests in the `sidebar.review_view` view. |
+| `$prs_ci` | `2 fail` | The number of distinct pull requests with a failed check. |
+
+The board omits `$prs_ci` when no check failed. It omits `$prs_review` when no view has the configured ID. The board does not report after a refresh with a failed view. It keeps the previous tokens until they expire.
+
+The tokens appear under every workspace in the sidebar. Each token expires after `sidebar.ttl`. When you close the board, the tokens expire, and the sidebar row disappears.
+
+You can style each token with an inline style table, for example:
+
+```toml
+rows = [["state_icon", "workspace"], ["$prs_open", "$prs_review", { token = "$prs_ci", fg = "#f38ba8" }]]
+```
+
+The reporting needs the `herdr` command on `PATH`. The board must run inside Herdr. When the command fails, the board shows one warning in the footer. The board stays usable.
 
 ## Use the board
 

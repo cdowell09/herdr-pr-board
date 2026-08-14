@@ -17,6 +17,19 @@ scopes = [
   # "repo:owner/repository",
 ]
 
+[sidebar]
+# Report PR counts into Herdr sidebar tokens after each full refresh.
+# Add $prs_open, $prs_review, and $prs_ci to [ui.sidebar.spaces] rows in
+# ~/.config/herdr/config.toml to display them. The board never adds GitHub
+# requests for reporting; it reuses the refresh snapshot.
+enabled = true
+# Tokens expire this long after the last report. When the board is closed,
+# the sidebar row disappears. 0 keeps tokens until the next report.
+ttl = "15m"
+# The view whose PR count reports as $prs_review. When a view with this ID
+# does not exist, the $prs_review token is omitted.
+review_view = "review"
+
 [[views]]
 id = "authored"
 title = "Opened by me"
