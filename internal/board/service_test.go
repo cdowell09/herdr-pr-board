@@ -271,6 +271,40 @@ func TestRefreshAllSearchConcurrencyAppliesAcrossScopes(t *testing.T) {
 	}
 }
 
+func TestRefreshAllSearchConcurrencyCappedAcrossViewsAndScopes(t *testing.T) {
+	cfg := serviceTestConfig(config.View{ID: "first", Title: "First", Query: "is:open", Scope: config.ScopeConfigured})
+	cfg.Views = append(cfg.Views, config.View{ID: "second", Title: "Second", Query: "is:open", Scope: config.ScopeConfigured})
+	cfg.GitHub.Scopes = []string{"repo:acme/one", "repo:acme/two"}
+	cfg.GitHub.MaxConcurrency = 2
+	runner := &serviceRunner{
+		rateRemaining: []int{30},
+		blockSearches: make(chan struct{}),
+	}
+	service := NewService(cfg, gh.NewClient(runner, cfg.GitHub))
+	done := make(chan Snapshot, 1)
+	go func() { done <- service.RefreshAll(context.Background()) }()
+
+	deadline := time.Now().Add(2 * time.Second)
+	for runner.searchInFlight.Load() < 2 && time.Now().Before(deadline) {
+		time.Sleep(time.Millisecond)
+	}
+	close(runner.blockSearches)
+	snapshot := <-done
+
+	if got := runner.searchMaxFlight.Load(); got > 2 {
+		t.Fatalf("concurrent searches = %d, want at most 2 across views and scopes", got)
+	}
+	if got := runner.searchMaxFlight.Load(); got < 2 {
+		t.Fatalf("concurrent searches = %d, want 2 to prove overlap", got)
+	}
+	if runner.searchCalls.Load() != 4 {
+		t.Fatalf("search calls = %d, want 4", runner.searchCalls.Load())
+	}
+	if len(snapshot.Views) != 2 || snapshot.Views[0].Err != nil || snapshot.Views[1].Err != nil {
+		t.Fatalf("views = %#v", snapshot.Views)
+	}
+}
+
 func serviceTestConfig(view config.View) config.Config {
 	return config.Config{
 		GitHub: config.GitHubConfig{

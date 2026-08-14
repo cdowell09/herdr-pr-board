@@ -229,7 +229,7 @@ The plugin refreshes the board when it starts. The default automatic refresh int
 
 GitHub permits 30 authenticated Search API requests each minute. GitHub returns a maximum of 1,000 results for each search.
 
-The plugin runs view and scope searches at the same time. `github.max_concurrency` limits the concurrent Search API requests. The plugin removes duplicate PRs before it requests CI data.
+The plugin runs view and scope searches at the same time. `github.max_concurrency` limits the number of Search API requests that run at the same time. The plugin removes duplicate PRs before it requests CI data.
 
 The plugin gets CI data with batched GraphQL queries. GitHub gives an authenticated user 5,000 GraphQL points each hour.
 
