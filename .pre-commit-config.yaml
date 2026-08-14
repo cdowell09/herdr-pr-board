@@ -1,0 +1,40 @@
+repos:
+  - repo: local
+    hooks:
+      - id: gofmt
+        name: gofmt
+        entry: >-
+          bash -c 'files="$(gofmt -l cmd internal)"; if [ -n "$files" ]; then
+          echo "These files need formatting. Run gofmt -w cmd internal." >&2;
+          echo "$files" >&2; exit 1; fi'
+        language: system
+        pass_filenames: false
+        files: \.go$
+
+      - id: go-test
+        name: go test
+        entry: go test ./...
+        language: system
+        pass_filenames: false
+        files: \.(go|mod|sum)$
+
+      - id: go-vet
+        name: go vet
+        entry: go vet ./...
+        language: system
+        pass_filenames: false
+        files: \.(go|mod|sum)$
+
+      - id: bash-syntax
+        name: bash syntax
+        entry: bash -n bin/open bin/run
+        language: system
+        pass_filenames: false
+        files: ^bin/(open|run)$
+
+      - id: git-diff-check
+        name: git diff --check
+        entry: bash -c 'git diff --cached --check'
+        language: system
+        pass_filenames: false
+        always_run: true

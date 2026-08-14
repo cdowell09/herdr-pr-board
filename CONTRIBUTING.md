@@ -17,9 +17,22 @@ Build the plugin:
 go build -o bin/herdr-pr-board ./cmd/herdr-pr-board
 ```
 
+Install the pre-commit framework. Then install the repository hooks:
+
+```sh
+pre-commit install
+```
+
+Run all hooks manually:
+
+```sh
+pre-commit run --all-files
+```
+
 You need these tools:
 
 - Go 1.24 or later
+- `pre-commit`
 - GitHub CLI (`gh`) for manual verification against GitHub
 - Herdr 0.8.0 or later for manual plugin testing
 
