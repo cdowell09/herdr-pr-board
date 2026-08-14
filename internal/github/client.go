@@ -50,17 +50,24 @@ type Client struct {
 	ciMu    sync.Mutex
 	ciCache map[string]ciCacheEntry
 	ciTTL   time.Duration
+
+	searchSem chan struct{}
 }
 
 func NewClient(runner Runner, cfg config.GitHubConfig) *Client {
 	if runner == nil {
 		runner = ExecRunner{}
 	}
+	capacity := cfg.MaxConcurrency
+	if capacity < 1 {
+		capacity = 1
+	}
 	return &Client{
-		runner:  runner,
-		cfg:     cfg,
-		ciCache: make(map[string]ciCacheEntry),
-		ciTTL:   2 * time.Minute,
+		runner:    runner,
+		cfg:       cfg,
+		ciCache:   make(map[string]ciCacheEntry),
+		ciTTL:     2 * time.Minute,
+		searchSem: make(chan struct{}, capacity),
 	}
 }
 
@@ -93,12 +100,36 @@ func (c *Client) SearchView(ctx context.Context, view config.View) ([]PullReques
 		}
 	}
 
+	ctx, cancel := context.WithCancel(ctx)
+	defer cancel()
+	results := make([][]PullRequest, len(queries))
+	var errMu sync.Mutex
+	var firstErr error
+	var wg sync.WaitGroup
+	for i, query := range queries {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			rows, err := c.search(ctx, query)
+			if err != nil {
+				errMu.Lock()
+				if firstErr == nil {
+					firstErr = err
+					cancel()
+				}
+				errMu.Unlock()
+				return
+			}
+			results[i] = rows
+		}()
+	}
+	wg.Wait()
+	if firstErr != nil {
+		return nil, fmt.Errorf("search %q: %w", view.Title, firstErr)
+	}
+
 	byURL := make(map[string]PullRequest)
-	for _, query := range queries {
-		rows, err := c.search(ctx, query)
-		if err != nil {
-			return nil, fmt.Errorf("search %q: %w", view.Title, err)
-		}
+	for _, rows := range results {
 		for _, pr := range rows {
 			byURL[pr.URL] = pr
 		}
@@ -114,6 +145,12 @@ func (c *Client) SearchView(ctx context.Context, view config.View) ([]PullReques
 }
 
 func (c *Client) search(ctx context.Context, query string) ([]PullRequest, error) {
+	select {
+	case c.searchSem <- struct{}{}:
+		defer func() { <-c.searchSem }()
+	case <-ctx.Done():
+		return nil, ctx.Err()
+	}
 	terms, err := splitQuery(query)
 	if err != nil {
 		return nil, err

@@ -148,6 +148,8 @@ Each view uses a GitHub PR search query.
 
 `scope = "global"` runs the query one time. `scope = "configured"` runs the query one time for each configured scope.
 
+The plugin runs the scope searches at the same time. `github.max_concurrency` limits the number of Search API requests that run at the same time.
+
 The plugin combines the scoped results. The plugin removes duplicate PR URLs.
 
 ### Settings reference
@@ -157,7 +159,7 @@ The plugin combines the scoped results. The plugin removes duplicate PR URLs.
 | `ui.title` | `"Pull Requests"` | A string that is not empty. | The header of the board. |
 | `github.refresh_interval` | `"5m"` | `"0"` or a Go duration of `1m` or more, for example `"5m"` or `"1h"` | The time between automatic refreshes. `"0"` stops automatic refresh. |
 | `github.limit_per_scope` | `100` | An integer from 1 through 1000 | The maximum number of PRs that each search query returns. |
-| `github.max_concurrency` | `4` | An integer from 1 through 8 | The maximum number of Search API requests that the plugin sends at the same time during a refresh. |
+| `github.max_concurrency` | `4` | An integer from 1 through 8 | The maximum number of Search API requests that the plugin sends at the same time across all views and scopes during a refresh. |
 | `github.ci_batch_size` | `25` | An integer from 1 through 50 | The number of PRs in one GraphQL CI query. |
 | `github.scopes` | `["user:@me"]` | A list that is not empty. Each entry must be `user:name`, `org:name`, or `repo:owner/name`. Each entry must be unique. | The scopes that views with `scope = "configured"` use. `@me` refers to your GitHub account. |
 | `[[views]].id` | None | Lowercase letters, digits, `-`, and `_`. The ID must start with a letter. Each ID must be unique. | The ID of the view. |
@@ -227,7 +229,7 @@ The plugin refreshes the board when it starts. The default automatic refresh int
 
 GitHub permits 30 authenticated Search API requests each minute. GitHub returns a maximum of 1,000 results for each search.
 
-The plugin limits concurrent searches. It also removes duplicate PRs before it requests CI data.
+The plugin runs view and scope searches at the same time. `github.max_concurrency` limits the concurrent Search API requests. The plugin removes duplicate PRs before it requests CI data.
 
 The plugin gets CI data with batched GraphQL queries. GitHub gives an authenticated user 5,000 GraphQL points each hour.
 

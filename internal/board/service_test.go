@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"strings"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -18,8 +19,13 @@ type serviceRunner struct {
 	searchOutput    string
 	graphqlOutputs  []string
 	rateCalls       int
-	searchCalls     int
+	searchCalls     atomic.Int64
 	graphqlCalls    int
+
+	blockSearches   chan struct{}
+	searchStarted   atomic.Int64
+	searchInFlight  atomic.Int64
+	searchMaxFlight atomic.Int64
 }
 
 func (r *serviceRunner) Run(_ context.Context, args ...string) ([]byte, error) {
@@ -35,7 +41,14 @@ func (r *serviceRunner) Run(_ context.Context, args ...string) ([]byte, error) {
 		return fmt.Appendf(nil, `{"resources":{"search":{"limit":30,"remaining":%d,"reset":%d},"graphql":{"limit":5000,"remaining":%d,"reset":%d}}}`, remaining, reset, graphRemaining, reset), nil
 	}
 	if len(args) >= 2 && args[0] == "search" && args[1] == "prs" {
-		r.searchCalls++
+		r.searchCalls.Add(1)
+		if r.blockSearches != nil {
+			now := r.searchInFlight.Add(1)
+			updateMaxAtomic(&r.searchMaxFlight, now)
+			r.searchStarted.Add(1)
+			<-r.blockSearches
+			r.searchInFlight.Add(-1)
+		}
 		if r.searchOutput != "" {
 			return []byte(r.searchOutput), nil
 		}
@@ -61,8 +74,8 @@ func TestRefreshAllUpdatesSearchRateAfterRequests(t *testing.T) {
 	if runner.rateCalls != 2 {
 		t.Fatalf("rate-limit calls = %d, want 2", runner.rateCalls)
 	}
-	if runner.searchCalls != 1 {
-		t.Fatalf("search calls = %d, want 1", runner.searchCalls)
+	if runner.searchCalls.Load() != 1 {
+		t.Fatalf("search calls = %d, want 1", runner.searchCalls.Load())
 	}
 	if snapshot.Rates.Search.Remaining != 1 {
 		t.Fatalf("displayed Search remaining = %d, want 1", snapshot.Rates.Search.Remaining)
@@ -79,8 +92,8 @@ func TestRefreshOneUpdatesSearchRateAfterRequest(t *testing.T) {
 	if runner.rateCalls != 2 {
 		t.Fatalf("rate-limit calls = %d, want 2", runner.rateCalls)
 	}
-	if runner.searchCalls != 1 {
-		t.Fatalf("search calls = %d, want 1", runner.searchCalls)
+	if runner.searchCalls.Load() != 1 {
+		t.Fatalf("search calls = %d, want 1", runner.searchCalls.Load())
 	}
 	if refresh.Rates.Search.Remaining != 1 {
 		t.Fatalf("displayed Search remaining = %d, want 1", refresh.Rates.Search.Remaining)
@@ -94,8 +107,8 @@ func TestRefreshAllDoesNotExceedSearchBudget(t *testing.T) {
 	service := NewService(cfg, gh.NewClient(runner, cfg.GitHub))
 
 	snapshot := service.RefreshAll(context.Background())
-	if runner.searchCalls != 0 {
-		t.Fatalf("search calls = %d, want 0", runner.searchCalls)
+	if runner.searchCalls.Load() != 0 {
+		t.Fatalf("search calls = %d, want 0", runner.searchCalls.Load())
 	}
 	if len(snapshot.Views) != 1 || snapshot.Views[0].Err == nil {
 		t.Fatalf("budget error missing: %#v", snapshot.Views)
@@ -112,8 +125,8 @@ func TestRefreshAllBudgetsSearchPagination(t *testing.T) {
 	service := NewService(cfg, gh.NewClient(runner, cfg.GitHub))
 
 	snapshot := service.RefreshAll(context.Background())
-	if runner.searchCalls != 0 {
-		t.Fatalf("search calls = %d, want 0", runner.searchCalls)
+	if runner.searchCalls.Load() != 0 {
+		t.Fatalf("search calls = %d, want 0", runner.searchCalls.Load())
 	}
 	if !strings.Contains(snapshot.Views[0].Err.Error(), "requires 3") {
 		t.Fatalf("budget error = %q", snapshot.Views[0].Err)
@@ -200,6 +213,61 @@ func TestRefreshAllKeepsCompletedCIBatchesOnGraphQLFailure(t *testing.T) {
 	}
 	if !strings.Contains(snapshot.Warning, "unexpected GraphQL request") {
 		t.Fatalf("warning = %q", snapshot.Warning)
+	}
+}
+
+func updateMaxAtomic(value *atomic.Int64, candidate int64) {
+	for {
+		current := value.Load()
+		if candidate <= current || value.CompareAndSwap(current, candidate) {
+			return
+		}
+	}
+}
+
+func TestRefreshOneDoesNotExceedSearchBudget(t *testing.T) {
+	view := config.View{ID: "all", Title: "All", Query: "is:open", Scope: config.ScopeConfigured}
+	cfg := serviceTestConfig(view)
+	cfg.GitHub.Scopes = []string{"repo:acme/one", "repo:acme/two", "repo:acme/three", "repo:acme/four"}
+	runner := &serviceRunner{rateRemaining: []int{3}}
+	service := NewService(cfg, gh.NewClient(runner, cfg.GitHub))
+
+	refresh := service.RefreshOne(context.Background(), view)
+	if runner.searchCalls.Load() != 0 {
+		t.Fatalf("search calls = %d, want 0", runner.searchCalls.Load())
+	}
+	if refresh.Data.Err == nil || !strings.Contains(refresh.Data.Err.Error(), "requires 4") {
+		t.Fatalf("budget error = %q", refresh.Data.Err)
+	}
+}
+
+func TestRefreshAllSearchConcurrencyAppliesAcrossScopes(t *testing.T) {
+	cfg := serviceTestConfig(config.View{ID: "all", Title: "All", Query: "is:open", Scope: config.ScopeConfigured})
+	cfg.GitHub.Scopes = []string{"repo:acme/one", "repo:acme/two", "repo:acme/three", "repo:acme/four"}
+	cfg.GitHub.MaxConcurrency = 4
+	runner := &serviceRunner{
+		rateRemaining: []int{30},
+		blockSearches: make(chan struct{}),
+	}
+	service := NewService(cfg, gh.NewClient(runner, cfg.GitHub))
+	done := make(chan Snapshot, 1)
+	go func() { done <- service.RefreshAll(context.Background()) }()
+
+	deadline := time.Now().Add(2 * time.Second)
+	for runner.searchInFlight.Load() < 4 && time.Now().Before(deadline) {
+		time.Sleep(time.Millisecond)
+	}
+	close(runner.blockSearches)
+	snapshot := <-done
+
+	if got := runner.searchMaxFlight.Load(); got != 4 {
+		t.Fatalf("concurrent searches = %d, want 4 across scopes", got)
+	}
+	if runner.searchCalls.Load() != 4 {
+		t.Fatalf("search calls = %d, want 4", runner.searchCalls.Load())
+	}
+	if len(snapshot.Views) != 1 || snapshot.Views[0].Err != nil {
+		t.Fatalf("views = %#v", snapshot.Views)
 	}
 }
 
