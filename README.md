@@ -272,6 +272,20 @@ See [`docs/troubleshooting.md`](docs/troubleshooting.md) for help with common fa
 
 Read [`CONTRIBUTING.md`](CONTRIBUTING.md) before you contribute. Report security problems through GitHub private vulnerability reporting. See [`SECURITY.md`](SECURITY.md).
 
+Install the pre-commit framework. Then install the repository hooks:
+
+```sh
+pre-commit install
+```
+
+Run all hooks manually:
+
+```sh
+pre-commit run --all-files
+```
+
+The hooks run formatting, tests, vet, shell syntax, and whitespace checks. The race test and build run in CI.
+
 Run these checks from the repository root:
 
 ```sh
