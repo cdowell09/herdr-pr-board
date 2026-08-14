@@ -1,6 +1,7 @@
 package config
 
 import (
+	"bytes"
 	"errors"
 	"fmt"
 	"os"
@@ -125,13 +126,30 @@ func Load(path string) (Config, error) {
 	} else if err != nil {
 		return Config{}, fmt.Errorf("stat config: %w", err)
 	}
+	return parseFile(path)
+}
 
+// Check parses and validates an existing configuration without creating it.
+func Check(path string) error {
+	if path == "" {
+		return errors.New("config path is required")
+	}
+	if _, err := os.Stat(path); errors.Is(err, os.ErrNotExist) {
+		return fmt.Errorf("config file not found: %s", path)
+	} else if err != nil {
+		return fmt.Errorf("stat config: %w", err)
+	}
+	_, err := parseFile(path)
+	return err
+}
+
+func parseFile(path string) (Config, error) {
 	data, err := os.ReadFile(path)
 	if err != nil {
 		return Config{}, fmt.Errorf("read config: %w", err)
 	}
 	var cfg Config
-	if err := toml.Unmarshal(data, &cfg); err != nil {
+	if err := decodeStrict(data, &cfg); err != nil {
 		return Config{}, fmt.Errorf("parse config: %w", err)
 	}
 	applyDefaults(&cfg)
@@ -139,6 +157,20 @@ func Load(path string) (Config, error) {
 		return Config{}, err
 	}
 	return cfg, nil
+}
+
+func decodeStrict(data []byte, cfg *Config) error {
+	decoder := toml.NewDecoder(bytes.NewReader(data))
+	decoder.DisallowUnknownFields()
+	err := decoder.Decode(cfg)
+	if err == nil {
+		return nil
+	}
+	var strictErr *toml.StrictMissingError
+	if errors.As(err, &strictErr) {
+		return fmt.Errorf("unknown setting(s):\n%s", strictErr.String())
+	}
+	return err
 }
 
 func applyDefaults(cfg *Config) {
@@ -199,21 +231,41 @@ func (c Config) Validate() error {
 			return fmt.Errorf("%s uses configured scope but github.scopes is empty", prefix)
 		}
 	}
-	for i, scope := range c.GitHub.Scopes {
-		if !validScope(scope) {
-			return fmt.Errorf("github.scopes[%d] must start with user:, org:, or repo:", i)
-		}
+	if err := validateScopes(c.GitHub.Scopes); err != nil {
+		return err
 	}
 	return nil
 }
 
-func validScope(scope string) bool {
+func validateScopes(scopes []string) error {
+	seen := make(map[string]int, len(scopes))
+	for i, scope := range scopes {
+		if strings.TrimSpace(scope) == "" {
+			return fmt.Errorf("github.scopes[%d] is empty", i)
+		}
+		prefix := scopePrefix(scope)
+		if prefix == "" {
+			return fmt.Errorf("github.scopes[%d] %q must start with user:, org:, or repo:", i, scope)
+		}
+		if len(scope) == len(prefix) {
+			return fmt.Errorf("github.scopes[%d] %q has no target after %q", i, scope, prefix)
+		}
+		key := strings.ToLower(scope)
+		if prev, exists := seen[key]; exists {
+			return fmt.Errorf("duplicate github scope %q (github.scopes[%d] and github.scopes[%d])", scope, prev, i)
+		}
+		seen[key] = i
+	}
+	return nil
+}
+
+func scopePrefix(scope string) string {
 	for _, prefix := range []string{"user:", "org:", "repo:"} {
-		if strings.HasPrefix(scope, prefix) && len(scope) > len(prefix) {
-			return true
+		if len(scope) >= len(prefix) && strings.EqualFold(scope[:len(prefix)], prefix) {
+			return scope[:len(prefix)]
 		}
 	}
-	return false
+	return ""
 }
 
 func (c Config) RefreshEvery() (time.Duration, error) {

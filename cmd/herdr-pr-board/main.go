@@ -1,8 +1,10 @@
 package main
 
 import (
+	"errors"
 	"flag"
 	"fmt"
+	"io"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -14,30 +16,56 @@ import (
 )
 
 func main() {
-	defaultPath, defaultPathErr := defaultConfigPath()
-	configPath := flag.String("config", defaultPath, "path to config.toml")
-	flag.Parse()
-	if *configPath == "" && defaultPathErr != nil {
-		fatal(defaultPathErr.Error())
+	os.Exit(run(os.Args[1:], os.Stdout, os.Stderr))
+}
+
+func run(args []string, stdout, stderr io.Writer) int {
+	flags := flag.NewFlagSet("herdr-pr-board", flag.ContinueOnError)
+	flags.SetOutput(stderr)
+	configPath := flags.String("config", "", "path to config.toml")
+	validateOnly := flags.Bool("validate", false, "validate the configuration and exit")
+	if err := flags.Parse(args); err != nil {
+		return 2
+	}
+	if *configPath == "" {
+		path, err := defaultConfigPath()
+		if err != nil {
+			return fail(stderr, err)
+		}
+		*configPath = path
+	}
+
+	if *validateOnly {
+		if err := config.Check(*configPath); err != nil {
+			return fail(stderr, err)
+		}
+		fmt.Fprintf(stdout, "configuration is valid: %s\n", *configPath)
+		return 0
 	}
 
 	if _, err := exec.LookPath("gh"); err != nil {
-		fatal("GitHub CLI (gh) is required and must be on PATH")
+		return fail(stderr, errors.New("GitHub CLI (gh) is required and must be on PATH"))
 	}
 	cfg, err := config.Load(*configPath)
 	if err != nil {
-		fatal(err.Error())
+		return fail(stderr, err)
 	}
 
 	client := gh.NewClient(gh.ExecRunner{}, cfg.GitHub)
 	service := board.NewService(cfg, client)
 	model, err := board.NewModel(cfg, service)
 	if err != nil {
-		fatal(err.Error())
+		return fail(stderr, err)
 	}
 	if _, err := tea.NewProgram(model, tea.WithAltScreen(), tea.WithMouseCellMotion()).Run(); err != nil {
-		fatal(err.Error())
+		return fail(stderr, err)
 	}
+	return 0
+}
+
+func fail(stderr io.Writer, err error) int {
+	fmt.Fprintln(stderr, "herdr-pr-board:", err)
+	return 1
 }
 
 func defaultConfigPath() (string, error) {
@@ -53,9 +81,4 @@ func resolveDefaultConfigPath(pluginConfigDir string, userConfigDir func() (stri
 		return "", fmt.Errorf("resolve user config directory: %w", err)
 	}
 	return filepath.Join(directory, "herdr", "plugins", "config", "cdowell09.pr-board", "config.toml"), nil
-}
-
-func fatal(message string) {
-	fmt.Fprintln(os.Stderr, "herdr-pr-board:", message)
-	os.Exit(1)
 }
