@@ -48,6 +48,11 @@ var (
 	urlStyle      = lipgloss.NewStyle().Foreground(lipgloss.Color("81")).Underline(true)
 )
 
+// tabPadding is the horizontal padding the tab styles add to every label.
+// Deriving it from the style keeps tab hitboxes correct if the padding
+// changes.
+var tabPadding = lipgloss.Width(inactiveTab.Render(""))
+
 type snapshotMsg Snapshot
 
 type viewMsg struct {
@@ -78,6 +83,22 @@ var keyHelp = []keyHelpEntry{
 	{"wheel · click", "mouse"},
 	{"q · Ctrl+C", "quit"},
 }
+
+// documentedKeys lists every key literal the README must document. The
+// README drift test fails when one is missing, so a new binding added to
+// updateKey or updateFilter must be added here and to the README.
+var documentedKeys = []string{
+	"1", "9", "Tab", "Shift+Tab", "h", "l", "←", "→",
+	"j", "k", "↑", "↓", "g", "G", "Home", "End",
+	"/", "Enter", "Ctrl+U", "Esc", "r", "R", "o", "q", "Ctrl+C",
+}
+
+// table tiers and their minimum terminal widths in cells.
+const (
+	tierWide   = 100
+	tierMedium = 80
+	tierNarrow = 60
+)
 
 type Model struct {
 	cfg         config.Config
@@ -387,13 +408,14 @@ func (m Model) renderStaleNotice() string {
 	if !view.Stale() {
 		return ""
 	}
-	return warningStyle.Render(fmt.Sprintf("stale — showing %d rows retained from the last successful refresh", len(view.PRs)))
+	notice := fmt.Sprintf("stale — showing %d rows retained from the last successful refresh", len(view.PRs))
+	return warningStyle.Render(truncate(notice, m.width))
 }
 
 func (m Model) renderTable() string {
 	view := m.currentView()
 	if view.Err != nil && len(view.PRs) == 0 {
-		return errorStyle.Render("GitHub query failed: "+view.Err.Error()) + "\n"
+		return errorStyle.Render(truncate("GitHub query failed: "+view.Err.Error(), m.width)) + "\n"
 	}
 	rows := m.filteredPRs()
 	if len(rows) == 0 {
@@ -427,7 +449,7 @@ func (m Model) renderSelected() string {
 	if !ok {
 		return dimStyle.Render("No PR selected")
 	}
-	return urlStyle.Render(fitCells(pr.URL, m.width))
+	return urlStyle.Render(truncate(pr.URL, m.width))
 }
 
 func (m Model) renderFooter() string {
@@ -459,7 +481,7 @@ func (m Model) renderFooter() string {
 	if m.warning != "" {
 		meta += " · " + m.warning
 	}
-	return dimStyle.Render(fitCells(keys+filter, m.width)) + "\n" + warningStyle.Render(fitCells(meta, m.width))
+	return dimStyle.Render(truncate(keys+filter, m.width)) + "\n" + warningStyle.Render(truncate(meta, m.width))
 }
 
 func (m Model) currentView() ViewData {
@@ -518,11 +540,11 @@ type tableLayout struct {
 func (m Model) tableLayout() tableLayout {
 	var layout tableLayout
 	switch {
-	case m.width >= 100:
+	case m.width >= tierWide:
 		layout.repo, layout.author, layout.updated = 24, 14, true
-	case m.width >= 80:
+	case m.width >= tierMedium:
 		layout.repo, layout.author, layout.updated = 18, 10, true
-	case m.width >= 60:
+	case m.width >= tierNarrow:
 		layout.repo, layout.updated = 16, true
 	}
 	layout.title = max(0, m.width-layout.fixedWidth())
@@ -563,7 +585,7 @@ func (m Model) renderHeader(layout tableLayout) string {
 		b.WriteString(" ")
 		b.WriteString(padCells("UPDATED", 8))
 	}
-	return headerStyle.Width(m.width).Render(fitCells(b.String(), m.width))
+	return headerStyle.Width(m.width).Render(truncate(b.String(), m.width))
 }
 
 func (m Model) renderPRRow(pr gh.PullRequest, layout tableLayout) string {
@@ -589,7 +611,7 @@ func (m Model) renderPRRow(pr gh.PullRequest, layout tableLayout) string {
 		b.WriteString(" ")
 		b.WriteString(padCells(relativeTime(pr.UpdatedAt), 8))
 	}
-	return fitCells(b.String(), m.width)
+	return truncate(b.String(), m.width)
 }
 
 // tabLabel builds the rendered label for a tab. Render and mouse hitboxes
@@ -608,7 +630,7 @@ func (m Model) tabLabel(index int, view ViewData) string {
 func (m Model) tabBudget() int {
 	count := max(1, len(m.views))
 	available := m.width - (count - 1) // separators between tabs
-	return max(6, available/count-2)   // tab style padding
+	return max(6, available/count-tabPadding)
 }
 
 func (m Model) refreshAllCmd() tea.Cmd {
@@ -692,11 +714,6 @@ func padCells(value string, width int) string {
 		return value
 	}
 	return value + strings.Repeat(" ", padding)
-}
-
-// fitCells shortens value to at most width terminal cells.
-func fitCells(value string, width int) string {
-	return truncate(value, width)
 }
 
 func relativeTime(value time.Time) string {

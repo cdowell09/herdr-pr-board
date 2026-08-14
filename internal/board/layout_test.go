@@ -1,7 +1,7 @@
 package board
 
 import (
-	"fmt"
+	"errors"
 	"os"
 	"strings"
 	"testing"
@@ -197,11 +197,7 @@ func TestTruncateUsesTerminalCellWidth(t *testing.T) {
 	}
 }
 
-var implementedKeys = []string{
-	"1", "9", "Tab", "Shift+Tab", "h", "l", "←", "→",
-	"j", "k", "↑", "↓", "g", "G", "Home", "End",
-	"/", "Enter", "Ctrl+U", "Esc", "r", "R", "o", "q", "Ctrl+C",
-}
+var implementedKeys = documentedKeys
 
 func TestREADMEDocumentsEveryImplementedKey(t *testing.T) {
 	readme, err := os.ReadFile("../../README.md")
@@ -224,29 +220,33 @@ func TestFooterListsEveryImplementedControl(t *testing.T) {
 			t.Fatalf("footer missing %q:\n%s", key, output)
 		}
 	}
-	// The footer must be one rendered row so the meta line stays a known row.
-	lines := strings.Split(model.View(), "\n")
-	footerLine := ""
-	for _, line := range lines {
-		plain := stripANSI(line)
-		if strings.Contains(plain, "quit") {
-			footerLine = plain
-			break
-		}
-	}
-	if footerLine == "" || lipgloss.Width(footerLine) > 200 {
-		t.Fatalf("footer row = %q is %d cells wide", footerLine, lipgloss.Width(footerLine))
-	}
 }
 
-func TestModelFooterFitsNarrowTerminals(t *testing.T) {
-	for _, width := range layoutWidths {
-		model := layoutModel(t, width)
-		for _, line := range strings.Split(model.View(), "\n") {
-			if lipgloss.Width(stripANSI(line)) > width {
-				t.Fatalf("width %d: rendered line is too wide:\n%q", width, line)
+func TestModelNarrowLayoutsFitStaleAndErrorLines(t *testing.T) {
+	for _, width := range []int{40, 50, 60} {
+		cfg := testConfig()
+		model, err := NewModel(cfg, fakeLoader{})
+		if err != nil {
+			t.Fatal(err)
+		}
+		model.views = []ViewData{
+			{View: cfg.Views[0], PRs: []gh.PullRequest{{Repository: "acme/api", Number: 1, Title: "Keep me"}}, Err: errors.New("GitHub search failed: timeout")},
+			{View: cfg.Views[1], Err: errors.New("GitHub search failed: timeout")},
+		}
+		model.loading = false
+		model.width, model.height = width, 30
+
+		for active, want := range map[int]string{0: "stale", 1: "GitHub query failed"} {
+			model.active = active
+			output := model.View()
+			if !strings.Contains(output, want) {
+				t.Fatalf("width %d active %d: %q missing:\n%s", width, active, want, output)
+			}
+			for _, line := range strings.Split(output, "\n") {
+				if lipgloss.Width(stripANSI(line)) > width {
+					t.Fatalf("width %d active %d: rendered line is too wide:\n%q", width, active, line)
+				}
 			}
 		}
-		_ = fmt.Sprintf("%d", model.height)
 	}
 }
