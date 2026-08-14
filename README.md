@@ -8,10 +8,8 @@
 
 This document uses these technical terms:
 
-- **PR**: A GitHub pull request.
 - **View**: A named list of PRs from one GitHub search.
 - **Scope**: A GitHub user, organization, or repository.
-- **CI**: Continuous integration checks for a PR.
 
 ## Functions
 
@@ -78,7 +76,11 @@ Verify the local link:
 herdr plugin list --plugin cdowell09.pr-board --json
 ```
 
-The link is ready when `source.kind` is `local`, `plugin_root` points to this checkout, and `enabled` is `true`.
+The link is ready when all these conditions are true:
+
+- `source.kind` is `local`
+- `plugin_root` points to this checkout
+- `enabled` is `true`
 
 If the board is open, press `q` first.
 The open action focuses an existing board.
@@ -265,7 +267,7 @@ refresh_interval = "0"
 
 If the operating system cannot open the browser, the board keeps the selected URL visible. It reports the failure at the bottom of the screen.
 
-The footer pairs each keybinding with its action and wraps them for narrow terminals.
+The footer pairs each keybinding with its action. On narrow terminals, the pairs wrap.
 
 ![Grouped keyboard shortcuts in the board footer](docs/images/keyboard-shortcuts.png)
 
@@ -280,7 +282,7 @@ The board adapts to the terminal width:
 | 60–79 cells | No author column. |
 | Fewer than 60 cells | No repository, author, or updated columns. |
 
-The selected PR URL stays visible at every width. Column text truncates by terminal cell width. Emoji, combining characters, and wide glyphs stay aligned.
+The selected PR URL stays visible at every width. The board truncates column text by terminal cell width. Emoji, combining characters, and wide glyphs stay aligned.
 
 ![Narrow board layout](docs/images/layout-narrow.png)
 
@@ -300,7 +302,7 @@ The plugin gets CI data with batched GraphQL queries. GitHub gives an authentica
 
 The board shows the remaining Search API and GraphQL capacity. The board keeps old data when a refresh fails.
 
-The footer reports when the active view last refreshed successfully. A failed refresh does not advance that time. When a refresh fails and the board keeps old data, the view is marked `stale` in the footer and a `stale` notice above the table counts the retained rows until a refresh succeeds.
+The footer reports when the active view last refreshed successfully. A failed refresh does not advance that time. When a refresh fails, the footer marks the view as `stale`. The board keeps old data. A `stale` notice above the table counts the retained rows until a refresh succeeds.
 
 ## Troubleshooting and plugin lifecycle
 
