@@ -24,6 +24,17 @@ Read [`README.md`](README.md) for user behavior and configuration. Read [`herdr-
 3. Update `README.md` and `config.example.toml` when user-visible configuration, controls, requirements, or behavior changes.
 4. Run the completion gates before reporting the change as complete.
 
+## Documentation style
+
+Write all technical documentation in ASD-STE100 Simplified Technical English (STE), the standard referenced by the `wait-what` skill. This covers `README.md`, `CONTRIBUTING.md`, `SECURITY.md`, `docs/`, and all issue and pull-request templates.
+
+- Write one idea per sentence. Keep sentences under 20 words.
+- Use the active voice.
+- Write instructions in the imperative mood.
+- Use the same word for the same thing. Do not use synonyms.
+- Use the present tense.
+- Use `must` for requirements. Use `do not` for prohibitions.
+
 ## Invariants
 
 ### Persistent data
