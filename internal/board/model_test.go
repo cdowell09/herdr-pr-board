@@ -374,6 +374,40 @@ func TestModelFreshnessAdvancesOnlyOnSuccessfulActiveRefresh(t *testing.T) {
 	}
 }
 
+func TestModelFreshnessNotAdvancedByCapacityRejection(t *testing.T) {
+	cfg := testConfig()
+	model, err := NewModel(cfg, fakeLoader{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	successAt := time.Now().Add(-25 * time.Minute)
+	model.views[0] = ViewData{View: cfg.Views[0], PRs: []gh.PullRequest{{Repository: "acme/api", Number: 1, Title: "One"}}, UpdatedAt: successAt}
+	model.width, model.height = 120, 30
+	model.loading = true
+
+	capacityErr := searchCapacityError(gh.RateResource{Limit: 30, Remaining: 1, Reset: time.Now().Add(time.Minute)}, cfg.SearchRequestCount())
+	rejected := Snapshot{Views: []ViewData{
+		{View: cfg.Views[0], Err: capacityErr},
+		{View: cfg.Views[1], Err: capacityErr},
+	}, UpdatedAt: time.Now()}
+	updated, _ := model.Update(snapshotMsg(rejected))
+	model = updated.(Model)
+
+	if !model.views[0].UpdatedAt.Equal(successAt) {
+		t.Fatalf("updated time = %s, want %s after capacity rejection", model.views[0].UpdatedAt, successAt)
+	}
+	if len(model.views[0].PRs) != 1 {
+		t.Fatalf("retained rows were discarded: %#v", model.views[0].PRs)
+	}
+	output := model.View()
+	if !strings.Contains(output, "stale") {
+		t.Fatalf("output missing stale marker:\n%s", output)
+	}
+	if !strings.Contains(output, "rate limit") {
+		t.Fatalf("output missing capacity error:\n%s", output)
+	}
+}
+
 func TestModelMarksRetainedRowsStaleWithoutHidingError(t *testing.T) {
 	cfg := testConfig()
 	model, err := NewModel(cfg, fakeLoader{})
@@ -421,6 +455,9 @@ func TestModelMarksRetainedRowsStaleWithoutHidingError(t *testing.T) {
 	}
 	if urlY != model.selectedURLY() {
 		t.Fatalf("stale rendered URL Y = %d, mouse URL Y = %d", urlY, model.selectedURLY())
+	}
+	if urlY >= model.height {
+		t.Fatalf("stale rendered URL Y = %d exceeds height %d", urlY, model.height)
 	}
 }
 

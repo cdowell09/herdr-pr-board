@@ -22,6 +22,14 @@ func (v ViewData) Stale() bool {
 	return v.Err != nil && len(v.PRs) > 0
 }
 
+// retainFrom keeps the previous view's rows and freshness after a failed refresh.
+func (v *ViewData) retainFrom(prev ViewData) {
+	if len(v.PRs) == 0 && len(prev.PRs) > 0 {
+		v.PRs = prev.PRs
+	}
+	v.UpdatedAt = prev.UpdatedAt
+}
+
 type Snapshot struct {
 	Views     []ViewData
 	Rates     gh.RateLimits

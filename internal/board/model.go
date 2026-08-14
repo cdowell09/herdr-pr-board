@@ -32,6 +32,10 @@ func firstPRRowYFor(stale bool) int {
 	return firstPRRowY
 }
 
+func (m Model) firstPRRow() int {
+	return firstPRRowYFor(m.currentView().Stale())
+}
+
 var (
 	titleStyle    = lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("212"))
 	activeTab     = lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("230")).Background(lipgloss.Color("62")).Padding(0, 1)
@@ -106,10 +110,7 @@ func (m Model) Update(message tea.Msg) (tea.Model, tea.Cmd) {
 			}
 			warning = appendWarning(warning, nextViews[i].View.Title+": "+nextViews[i].Err.Error())
 			if i < len(m.views) {
-				if len(nextViews[i].PRs) == 0 && len(m.views[i].PRs) > 0 {
-					nextViews[i].PRs = m.views[i].PRs
-				}
-				nextViews[i].UpdatedAt = m.views[i].UpdatedAt
+				nextViews[i].retainFrom(m.views[i])
 			}
 		}
 		m.views = nextViews
@@ -125,10 +126,7 @@ func (m Model) Update(message tea.Msg) (tea.Model, tea.Cmd) {
 			if data.Err == nil {
 				data.UpdatedAt = refresh.UpdatedAt
 			} else {
-				if len(data.PRs) == 0 && len(m.views[msg.index].PRs) > 0 {
-					data.PRs = m.views[msg.index].PRs
-				}
-				data.UpdatedAt = m.views[msg.index].UpdatedAt
+				data.retainFrom(m.views[msg.index])
 			}
 			m.views[msg.index] = data
 		}
@@ -261,7 +259,7 @@ func (m Model) updateMouse(message tea.MouseMsg) (tea.Model, tea.Cmd) {
 	}
 
 	rows := m.filteredPRs()
-	firstRow := firstPRRowYFor(m.currentView().Stale())
+	firstRow := m.firstPRRow()
 	row := m.offset + event.Y - firstRow
 	visible := min(m.visibleRows(), max(0, len(rows)-m.offset))
 	if event.Y >= firstRow && event.Y < firstRow+visible && row >= 0 && row < len(rows) {
@@ -292,7 +290,7 @@ func (m Model) tabAtX(x int) (int, bool) {
 }
 
 func (m Model) selectedURLY() int {
-	firstRow := firstPRRowYFor(m.currentView().Stale())
+	firstRow := m.firstPRRow()
 	if len(m.filteredPRs()) == 0 {
 		return firstRow
 	}
@@ -472,7 +470,11 @@ func (m Model) selectedPR() (gh.PullRequest, bool) {
 }
 
 func (m Model) visibleRows() int {
-	return max(1, m.height-9)
+	rows := m.height - 9
+	if m.currentView().Stale() {
+		rows--
+	}
+	return max(1, rows)
 }
 
 func (m Model) columnWidths() (repo, title, author int) {
