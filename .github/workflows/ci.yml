@@ -15,11 +15,31 @@ jobs:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         with:
           persist-credentials: false
+          fetch-depth: 0
       - uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff # v5
         with:
           go-version-file: go.mod
           cache: true
+      - name: Check formatting
+        run: |
+          files="$(gofmt -l cmd internal)"
+          if [ -n "$files" ]; then
+            echo "These files need formatting. Run 'gofmt -w cmd internal'." >&2
+            echo "$files" >&2
+            exit 1
+          fi
+      - name: Check whitespace
+        run: |
+          base="${{ github.event.pull_request.base.sha }}"
+          head="${{ github.event.pull_request.head.sha }}"
+          if [ -z "$base" ] || [ -z "$head" ]; then
+            base="HEAD^"
+            head="HEAD"
+          fi
+          git diff --check "$base" "$head"
       - name: Test
+        run: go test ./...
+      - name: Race test
         run: go test -race ./...
       - name: Vet
         run: go vet ./...
