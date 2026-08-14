@@ -554,6 +554,25 @@ func TestModelMarksRetainedRowsStaleWithoutHidingError(t *testing.T) {
 	}
 }
 
+func TestBrowserCommandUsesPlatformLauncher(t *testing.T) {
+	tests := []struct {
+		name string
+		goos string
+		want string
+	}{
+		{name: "macOS", goos: "darwin", want: "open"},
+		{name: "Linux", goos: "linux", want: "xdg-open"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			command := browserCommand(tt.goos, "https://github.com/acme/api/pull/1")
+			if command.Args[0] != tt.want {
+				t.Fatalf("browser command = %q, want %q", command.Args[0], tt.want)
+			}
+		})
+	}
+}
+
 func TestModelReportsBrowserOpenFailure(t *testing.T) {
 	model := browserModel(t, testConfig())
 	model.openBrowser = func(_ string) tea.Cmd {

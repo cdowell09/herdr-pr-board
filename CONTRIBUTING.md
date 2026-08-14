@@ -48,6 +48,8 @@ herdr plugin action invoke open --plugin cdowell09.pr-board
 Keep the behavior in its owning package:
 
 - `cmd/herdr-pr-board/` — process startup and dependency wiring.
+- `cmd/ci-platform-matrix/` — convert manifest platforms into CI cross-compilation targets.
+- `cmd/herdr-release-check/` — release tag and plugin manifest validation.
 - `internal/config/` — TOML defaults, parsing, validation, scope modes, and Search request counts.
 - `internal/github/` — `gh` execution, query tokenization, Search results, GraphQL CI enrichment, caching, and rate-limit decoding.
 - `internal/board/` — refresh orchestration, API budgeting, Bubble Tea state, rendering, keyboard input, and mouse input.
@@ -55,7 +57,6 @@ Keep the behavior in its owning package:
 - `bin/run` — record pane ownership, name the tab, run the board, and clean owned state.
 - `internal/plugin/` — end-to-end tests for the `bin/open` and `bin/run` entrypoints.
 - `config.example.toml` — public configuration reference.
-- `cmd/herdr-release-check/` — release tag and plugin manifest validation.
 - `.github/workflows/ci.yml` — release gates enforced on pull requests and `main`.
 - `.github/workflows/release.yml` — source release validation and publication.
 
@@ -119,6 +120,8 @@ A change is complete when these are true:
 - `git status --short` contains only intended files.
 
 Do not commit the built `bin/herdr-pr-board` file. The `.gitignore` ignores it.
+
+CI reads each build platform from `herdr-plugin.toml`. CI cross-compiles each platform on Linux.
 
 ## Invariants
 
