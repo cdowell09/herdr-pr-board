@@ -2,6 +2,18 @@
 
 Use a Git tag that matches the version in `herdr-plugin.toml`.
 
+## Versioning
+
+Use semantic versioning for the plugin version.
+The version has three parts: major, minor, and patch.
+
+- Bump the patch version for a bug fix.
+- Bump the minor version for a new feature.
+- Bump the major version for a breaking change.
+- Do not bump the version for a documentation-only change.
+
+A breaking change changes the user configuration or the user behavior.
+
 ## Prepare a release
 
 1. Change `version` in `herdr-plugin.toml`.
