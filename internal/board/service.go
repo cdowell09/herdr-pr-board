@@ -65,9 +65,6 @@ func NewService(cfg config.Config, client GitHub) *Service {
 	return &Service{cfg: cfg, client: client}
 }
 
-// The production GitHub client is the production adapter for the seam.
-var _ GitHub = (*gh.Client)(nil)
-
 func (s *Service) RefreshAll(ctx context.Context) Snapshot {
 	snapshot := Snapshot{Views: make([]ViewData, len(s.cfg.Views)), UpdatedAt: time.Now()}
 	rates, rateErr := s.client.RateLimits(ctx)

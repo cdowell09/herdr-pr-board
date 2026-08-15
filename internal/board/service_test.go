@@ -18,7 +18,10 @@ type fakeGitHub struct {
 	graphRemainings []int
 	searchResult    []gh.PullRequest
 	searchErr       error
-	enrichResult    enrichResult
+	enrichRate      gh.RateResource
+	enrichStates    []gh.CIState
+	enrichWarnings  []string
+	enrichErr       error
 	rateCalls       int
 	searchCalls     atomic.Int64
 	enrichCalls     int
@@ -26,14 +29,6 @@ type fakeGitHub struct {
 	blockSearches   chan struct{}
 	searchInFlight  atomic.Int64
 	searchMaxFlight atomic.Int64
-}
-
-// enrichResult is the typed outcome board refresh policy consumes from EnrichCI.
-type enrichResult struct {
-	rate     gh.RateResource
-	states   []gh.CIState
-	warnings []string
-	err      error
 }
 
 func (f *fakeGitHub) RateLimits(_ context.Context) (gh.RateLimits, error) {
@@ -66,11 +61,11 @@ func (f *fakeGitHub) SearchView(_ context.Context, _ config.View) ([]gh.PullRequ
 func (f *fakeGitHub) EnrichCI(_ context.Context, prs []gh.PullRequest, _ gh.RateResource) (gh.RateResource, []string, error) {
 	f.enrichCalls++
 	for i := range prs {
-		if i < len(f.enrichResult.states) {
-			prs[i].CI = f.enrichResult.states[i]
+		if i < len(f.enrichStates) {
+			prs[i].CI = f.enrichStates[i]
 		}
 	}
-	return f.enrichResult.rate, f.enrichResult.warnings, f.enrichResult.err
+	return f.enrichRate, f.enrichWarnings, f.enrichErr
 }
 
 func TestRefreshAllUpdatesSearchRateAfterRequests(t *testing.T) {
@@ -149,9 +144,7 @@ func TestRefreshAllPropagatesGraphQLCapacityError(t *testing.T) {
 			{Number: 1, Title: "One", URL: "https://github.com/acme/api/pull/1", Repository: "acme/api", CI: gh.CIUnknown},
 			{Number: 2, Title: "Two", URL: "https://github.com/acme/api/pull/2", Repository: "acme/api", CI: gh.CIUnknown},
 		},
-		enrichResult: enrichResult{
-			err: errors.New("GraphQL rate limit has 1 points remaining but CI refresh needs at least 2; CI status is stale"),
-		},
+		enrichErr: errors.New("GraphQL rate limit has 1 points remaining but CI refresh needs at least 2; CI status is stale"),
 	}
 	service := NewService(cfg, fake)
 
@@ -169,7 +162,7 @@ func TestRefreshAllUpdatesRatesAfterGraphQLError(t *testing.T) {
 		searchResult: []gh.PullRequest{
 			{Number: 1, Title: "One", URL: "https://github.com/acme/api/pull/1", Repository: "acme/api", CI: gh.CIUnknown},
 		},
-		enrichResult: enrichResult{err: errors.New("unexpected GraphQL request")},
+		enrichErr: errors.New("unexpected GraphQL request"),
 	}
 	service := NewService(cfg, fake)
 
@@ -199,11 +192,9 @@ func TestRefreshAllKeepsCompletedCIOnEnrichmentError(t *testing.T) {
 			{Number: 1, Title: "One", URL: "https://github.com/acme/api/pull/1", Repository: "acme/api", CI: gh.CIUnknown},
 			{Number: 2, Title: "Two", URL: "https://github.com/acme/api/pull/2", Repository: "acme/api", CI: gh.CIUnknown},
 		},
-		enrichResult: enrichResult{
-			states:   []gh.CIState{gh.CISuccess},
-			warnings: []string{"CI refresh incomplete"},
-			err:      errors.New("load CI checks: boom"),
-		},
+		enrichStates:   []gh.CIState{gh.CISuccess},
+		enrichWarnings: []string{"CI refresh incomplete"},
+		enrichErr:      errors.New("load CI checks: boom"),
 	}
 	service := NewService(cfg, fake)
 
