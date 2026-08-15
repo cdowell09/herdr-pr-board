@@ -20,22 +20,37 @@ import (
 )
 
 const (
-	tabRowY     = 1
-	firstPRRowY = 5
-	mouseStep   = 3
+	tabRowY   = 1
+	mouseStep = 3
 )
 
-// firstPRRowYFor returns the screen row of the first PR row, which shifts down
-// by one when the stale notice occupies the separator line.
-func firstPRRowYFor(stale bool) int {
-	if stale {
-		return firstPRRowY + 1
-	}
-	return firstPRRowY
+// boardLayout is the screen geometry of the rendered board. View renders at
+// these rows and mouse handling hit-tests the same rows, so the rendered
+// text and the mouse geometry come from one implementation.
+type boardLayout struct {
+	firstPRRow     int // screen row of the first PR row
+	selectedURLRow int // screen row of the selected PR URL
+	visibleRows    int // PR rows that fit on screen
 }
 
-func (m Model) firstPRRow() int {
-	return firstPRRowYFor(m.currentView().Stale())
+// boardLayout computes the screen rows of the rendered board from the model
+// state. The header block above the PR table is the title, the tab row, a
+// blank line, the column header, and the header border. The stale notice
+// occupies the blank line, so every row below shifts down by one. Below the
+// table sit a blank line and the selected URL, then a blank line, then the
+// wrapped footer.
+func (m Model) boardLayout() boardLayout {
+	firstPRRow := 5
+	if m.currentView().Stale() {
+		firstPRRow++
+	}
+	visibleRows := max(1, m.height-firstPRRow-3-len(m.footerHelpLines()))
+	rows := m.filteredPRs()
+	selectedURLRow := firstPRRow
+	if len(rows) > 0 {
+		selectedURLRow = firstPRRow + 1 + min(visibleRows, max(0, len(rows)-m.offset))
+	}
+	return boardLayout{firstPRRow: firstPRRow, selectedURLRow: selectedURLRow, visibleRows: visibleRows}
 }
 
 var (
@@ -339,17 +354,17 @@ func (m Model) updateMouse(message tea.MouseMsg) (tea.Model, tea.Cmd) {
 		return m, nil
 	}
 
+	lay := m.boardLayout()
 	rows := m.filteredPRs()
-	firstRow := m.firstPRRow()
-	row := m.offset + event.Y - firstRow
-	visible := min(m.visibleRows(), max(0, len(rows)-m.offset))
-	if event.Y >= firstRow && event.Y < firstRow+visible && row >= 0 && row < len(rows) {
+	row := m.offset + event.Y - lay.firstPRRow
+	visible := min(lay.visibleRows, max(0, len(rows)-m.offset))
+	if event.Y >= lay.firstPRRow && event.Y < lay.firstPRRow+visible && row >= 0 && row < len(rows) {
 		m.cursor = row
 		m.clampCursor()
 		return m, nil
 	}
 
-	if event.Y == m.selectedURLY() {
+	if event.Y == lay.selectedURLRow {
 		if pr, ok := m.selectedPR(); ok {
 			return m, m.openBrowser(pr.URL)
 		}
@@ -357,26 +372,41 @@ func (m Model) updateMouse(message tea.MouseMsg) (tea.Model, tea.Cmd) {
 	return m, nil
 }
 
-func (m Model) tabAtX(x int) (int, bool) {
-	position := 0
-	for i, view := range m.views {
-		label := m.tabLabel(i, view)
-		width := lipgloss.Width(inactiveTab.Render(label))
-		if x >= position && x < position+width {
-			return i, true
-		}
-		position += width + 1
-	}
-	return 0, false
+// tabBar is one tab's rendered label and its column range on the tab row.
+// renderTabs and tabAtX both come from tabBars, so a tab hitbox always
+// covers exactly the rendered label.
+type tabBar struct {
+	label string
+	x     int
+	width int
 }
 
-func (m Model) selectedURLY() int {
-	firstRow := m.firstPRRow()
-	if len(m.filteredPRs()) == 0 {
-		return firstRow
+// tabBars lays out the tabs across the tab row. The rendered labels and the
+// mouse hitboxes share these positions. The x advance includes the single
+// space renderTabs puts between tabs.
+func (m Model) tabBars() []tabBar {
+	bars := make([]tabBar, len(m.views))
+	x := 0
+	for i, view := range m.views {
+		label := m.tabLabel(i, view)
+		style := inactiveTab
+		if i == m.active {
+			style = activeTab
+		}
+		width := lipgloss.Width(style.Render(label))
+		bars[i] = tabBar{label: label, x: x, width: width}
+		x += width + 1
 	}
-	visible := min(m.visibleRows(), max(0, len(m.filteredPRs())-m.offset))
-	return firstRow + 1 + visible
+	return bars
+}
+
+func (m Model) tabAtX(x int) (int, bool) {
+	for i, bar := range m.tabBars() {
+		if x >= bar.x && x < bar.x+bar.width {
+			return i, true
+		}
+	}
+	return 0, false
 }
 
 func (m *Model) selectView(index int) {
@@ -391,7 +421,7 @@ func (m *Model) clampCursor() {
 		return
 	}
 	m.cursor = max(0, min(m.cursor, len(rows)-1))
-	visible := m.visibleRows()
+	visible := m.boardLayout().visibleRows
 	if m.cursor < m.offset {
 		m.offset = m.cursor
 	}
@@ -416,7 +446,7 @@ func (m Model) View() string {
 		output.WriteString(notice + "\n")
 	}
 	output.WriteString("\n")
-	output.WriteString(m.renderTable())
+	output.WriteString(m.renderTable(m.boardLayout()))
 	output.WriteString("\n" + m.renderSelected())
 	output.WriteString("\n" + m.renderFooter())
 	return output.String()
@@ -424,12 +454,11 @@ func (m Model) View() string {
 
 func (m Model) renderTabs() string {
 	var tabs []string
-	for i, view := range m.views {
-		label := m.tabLabel(i, view)
+	for i, bar := range m.tabBars() {
 		if i == m.active {
-			tabs = append(tabs, activeTab.Render(label))
+			tabs = append(tabs, activeTab.Render(bar.label))
 		} else {
-			tabs = append(tabs, inactiveTab.Render(label))
+			tabs = append(tabs, inactiveTab.Render(bar.label))
 		}
 	}
 	return strings.Join(tabs, " ")
@@ -444,7 +473,7 @@ func (m Model) renderStaleNotice() string {
 	return warningStyle.Render(truncate(notice, m.width))
 }
 
-func (m Model) renderTable() string {
+func (m Model) renderTable(lay boardLayout) string {
 	view := m.currentView()
 	if view.Err != nil && len(view.PRs) == 0 {
 		return errorStyle.Render(truncate("GitHub query failed: "+view.Err.Error(), m.width)) + "\n"
@@ -460,14 +489,14 @@ func (m Model) renderTable() string {
 		return dimStyle.Render("No pull requests in this view.") + "\n"
 	}
 
-	layout := m.tableLayout()
-	header := m.renderHeader(layout)
+	cols := m.tableLayout()
+	header := m.renderHeader(cols)
 	var output strings.Builder
 	output.WriteString(header + "\n")
-	end := min(m.offset+m.visibleRows(), len(rows))
+	end := min(m.offset+lay.visibleRows, len(rows))
 	for i := m.offset; i < end; i++ {
 		pr := rows[i]
-		line := m.renderPRRow(pr, layout)
+		line := m.renderPRRow(pr, cols)
 		if i == m.cursor {
 			line = selectedStyle.Width(m.width).Render(line)
 		}
@@ -571,15 +600,6 @@ func (m Model) selectedPR() (gh.PullRequest, bool) {
 		return gh.PullRequest{}, false
 	}
 	return rows[m.cursor], true
-}
-
-func (m Model) visibleRows() int {
-	// Keep the table inside the terminal after the help wraps to more lines.
-	rows := m.height - 7 - (len(m.footerHelpLines()) + 1)
-	if m.currentView().Stale() {
-		rows--
-	}
-	return max(1, rows)
 }
 
 // tableLayout picks column sizes for the current terminal width. A width of

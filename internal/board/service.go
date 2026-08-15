@@ -44,6 +44,13 @@ type ViewSnapshot struct {
 	UpdatedAt time.Time
 }
 
+// GitHub is the transport surface that board refresh policy depends on.
+type GitHub interface {
+	RateLimits(context.Context) (gh.RateLimits, error)
+	SearchView(context.Context, config.View) ([]gh.PullRequest, error)
+	EnrichCI(context.Context, []gh.PullRequest, gh.RateResource) (gh.RateResource, []string, error)
+}
+
 type Loader interface {
 	RefreshAll(context.Context) Snapshot
 	RefreshOne(context.Context, config.View) ViewSnapshot
@@ -51,12 +58,15 @@ type Loader interface {
 
 type Service struct {
 	cfg    config.Config
-	client *gh.Client
+	client GitHub
 }
 
-func NewService(cfg config.Config, client *gh.Client) *Service {
+func NewService(cfg config.Config, client GitHub) *Service {
 	return &Service{cfg: cfg, client: client}
 }
+
+// The production GitHub client is the production adapter for the seam.
+var _ GitHub = (*gh.Client)(nil)
 
 func (s *Service) RefreshAll(ctx context.Context) Snapshot {
 	snapshot := Snapshot{Views: make([]ViewData, len(s.cfg.Views)), UpdatedAt: time.Now()}
