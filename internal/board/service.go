@@ -31,10 +31,12 @@ func (v *ViewData) retainFrom(prev ViewData) {
 }
 
 type Snapshot struct {
-	Views     []ViewData
-	Rates     gh.RateLimits
-	Warning   string
-	UpdatedAt time.Time
+	Views       []ViewData
+	Rates       gh.RateLimits
+	Warning     string
+	UpdatedAt   time.Time
+	capacityErr error
+	epoch       uint64
 }
 
 type ViewSnapshot struct {
@@ -47,6 +49,7 @@ type ViewSnapshot struct {
 type Loader interface {
 	RefreshAll(context.Context) Snapshot
 	RefreshOne(context.Context, config.View) ViewSnapshot
+	Reconfigured(config.Config) Loader
 }
 
 type Service struct {
@@ -56,6 +59,10 @@ type Service struct {
 
 func NewService(cfg config.Config, client *gh.Client) *Service {
 	return &Service{cfg: cfg, client: client}
+}
+
+func (s *Service) Reconfigured(cfg config.Config) Loader {
+	return NewService(cfg, s.client.Reconfigured(cfg.GitHub))
 }
 
 func (s *Service) RefreshAll(ctx context.Context) Snapshot {
@@ -68,6 +75,7 @@ func (s *Service) RefreshAll(ctx context.Context) Snapshot {
 	requests := s.cfg.SearchRequestCount()
 	if rateErr == nil && !searchCapacityAvailable(rates.Search, requests) {
 		err := searchCapacityError(rates.Search, requests)
+		snapshot.capacityErr = err
 		for i, view := range s.cfg.Views {
 			snapshot.Views[i] = ViewData{View: view, Err: err}
 		}

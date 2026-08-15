@@ -142,11 +142,18 @@ herdr plugin unlink cdowell09.pr-board
 
 `plugin install` refuses to install over a locally linked plugin. Unlink or uninstall the local plugin first.
 
-## When configuration changes take effect
+## Edit configuration while the board runs
 
-The board reads `config.toml` each time it starts. After you edit configuration, close the board with `q`. Open it again with the `open` action. The new configuration applies on the next launch.
+Press `E` to open the active `config.toml` file in an editor.
+The board uses `$VISUAL`, then `$EDITOR`, then `vi`.
+The board validates the file after the editor exits.
+It reloads valid changes and refreshes all views.
 
-You do not need to restart the Herdr server for plugin configuration changes.
+The board keeps the previous configuration when the editor or validation fails.
+It shows the error in the footer.
+If the editor does not start, set `$VISUAL` or `$EDITOR`.
+
+The board applies configuration changes without a Herdr server restart.
 
 ## What preserves and what removes files
 

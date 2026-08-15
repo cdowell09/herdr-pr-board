@@ -3,6 +3,7 @@ package board
 import (
 	"context"
 	"errors"
+	"path/filepath"
 	"regexp"
 	"strings"
 	"testing"
@@ -49,6 +50,8 @@ func (f fakeLoader) RefreshOne(_ context.Context, view config.View) ViewSnapshot
 	}
 	return refresh
 }
+
+func (f fakeLoader) Reconfigured(config.Config) Loader { return f }
 
 type sidebarFakeRunner struct {
 	calls [][]string
@@ -319,6 +322,204 @@ func TestModelSwitchesViewsAndFilters(t *testing.T) {
 	model = updated.(Model)
 	if !strings.Contains(model.View(), "No pull requests match the filter") {
 		t.Fatalf("filter not applied:\n%s", model.View())
+	}
+}
+
+func TestModelConfigShortcutReloadsCompleteConfig(t *testing.T) {
+	cfg := testConfig()
+	model, err := NewModelWithConfigPath(cfg, "/tmp/custom-pr-board.toml", fakeLoader{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	model.views = []ViewData{
+		{View: cfg.Views[0], PRs: []gh.PullRequest{{Title: "Mine"}}},
+		{View: cfg.Views[1], PRs: []gh.PullRequest{
+			{Title: "Review one", URL: "https://github.com/acme/api/pull/1"},
+			{Title: "Review selected", URL: "https://github.com/acme/api/pull/2"},
+		}},
+	}
+	model.active = 1
+	model.cursor = 1
+	model.filter = "review"
+	model.loading = false
+	model.rates.Search = gh.RateResource{Limit: 30, Remaining: 30}
+
+	next := cfg
+	next.UI.Title = "Updated board"
+	next.GitHub.RefreshInterval = "1m"
+	next.Views = []config.View{
+		cfg.Views[1],
+		{ID: "all", Title: "All", Query: "is:open", Scope: config.ScopeGlobal},
+	}
+	model.loader = fakeLoader{snapshot: Snapshot{Views: []ViewData{
+		{View: next.Views[0], PRs: []gh.PullRequest{
+			{Title: "Review selected", URL: "https://github.com/acme/api/pull/2"},
+			{Title: "Review one", URL: "https://github.com/acme/api/pull/1"},
+		}},
+		{View: next.Views[1]},
+	}}}
+	var editedPath string
+	model.editConfig = func(path string) tea.Cmd {
+		editedPath = path
+		return func() tea.Msg { return configEditMsg{cfg: next} }
+	}
+
+	updated, command := model.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'E'}})
+	if command == nil {
+		t.Fatal("E did not start the configuration editor")
+	}
+	model = updated.(Model)
+	updated, command = model.Update(command())
+	if command == nil {
+		t.Fatal("valid configuration edit did not start a refresh")
+	}
+	model = updated.(Model)
+	updated, _ = model.Update(command())
+	model = updated.(Model)
+
+	if editedPath != "/tmp/custom-pr-board.toml" {
+		t.Fatalf("edited path = %q", editedPath)
+	}
+	if model.cfg.UI.Title != "Updated board" || model.refresh != time.Minute {
+		t.Fatalf("configuration was not replaced: title=%q refresh=%s", model.cfg.UI.Title, model.refresh)
+	}
+	if model.active != 0 || model.views[0].View.ID != "review" {
+		t.Fatalf("active view was not preserved by ID: active=%d views=%#v", model.active, model.views)
+	}
+	selected, ok := model.selectedPR()
+	if model.filter != "review" || !ok || selected.URL != "https://github.com/acme/api/pull/2" || model.cursor != 0 {
+		t.Fatalf("board state was not preserved: filter=%q cursor=%d selected=%#v", model.filter, model.cursor, selected)
+	}
+	if model.loading {
+		t.Fatal("board stayed in refresh state after the candidate refresh")
+	}
+}
+
+func TestModelConfigShortcutKeepsFilterInputLiteral(t *testing.T) {
+	model, err := NewModel(testConfig(), fakeLoader{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	model.editing = true
+
+	updated, command := model.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'E'}})
+	model = updated.(Model)
+	if command != nil {
+		t.Fatal("E in filter mode started the configuration editor")
+	}
+	if model.filter != "E" {
+		t.Fatalf("filter = %q, want E", model.filter)
+	}
+}
+
+func TestModelConfigEditRejectsFailure(t *testing.T) {
+	cfg := testConfig()
+	model, err := NewModel(cfg, fakeLoader{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	model.loading = false
+
+	updated, command := model.Update(configEditMsg{err: errors.New("invalid config")})
+	model = updated.(Model)
+	if command != nil {
+		t.Fatal("failed configuration edit returned a command")
+	}
+	if !model.cfg.Equal(cfg) || model.loading {
+		t.Fatal("failed configuration edit changed the board")
+	}
+	if !strings.Contains(model.warning, "invalid config") {
+		t.Fatalf("warning = %q", model.warning)
+	}
+}
+
+func TestModelConfigEditSkipsUnchangedConfig(t *testing.T) {
+	cfg := testConfig()
+	model, err := NewModel(cfg, fakeLoader{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	model.loading = false
+
+	updated, command := model.Update(configEditMsg{cfg: cfg})
+	model = updated.(Model)
+	if command != nil {
+		t.Fatal("unchanged configuration started a refresh")
+	}
+	if model.loading {
+		t.Fatal("unchanged configuration changed loading state")
+	}
+}
+
+func TestModelConfigEditRespectsSearchCapacity(t *testing.T) {
+	cfg := testConfig()
+	capacityErr := errors.New("rate limit exhausted")
+	model, err := NewModel(cfg, fakeLoader{snapshot: Snapshot{capacityErr: capacityErr}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	model.loading = false
+	next := cfg
+	next.UI.Title = "Updated"
+
+	updated, command := model.Update(configEditMsg{cfg: next})
+	if command == nil {
+		t.Fatal("configuration edit did not start a candidate refresh")
+	}
+	model = updated.(Model)
+	updated, _ = model.Update(command())
+	model = updated.(Model)
+	if !model.cfg.Equal(cfg) || model.loading {
+		t.Fatal("capacity-rejected configuration changed the board")
+	}
+	if !strings.Contains(model.warning, "rate limit exhausted") {
+		t.Fatalf("warning = %q", model.warning)
+	}
+}
+
+func TestEditorCommandPrefersVisual(t *testing.T) {
+	visual := "/Applications/Visual Studio Code.app/Contents/MacOS/Electron"
+	t.Setenv("EDITOR", "nano")
+	t.Setenv("VISUAL", visual)
+
+	command := editorCommand("/tmp/config.toml")
+	if command.Path != visual {
+		t.Fatalf("editor = %q, want %q", command.Path, visual)
+	}
+	if len(command.Args) != 2 || command.Args[1] != "/tmp/config.toml" {
+		t.Fatalf("editor args = %#v, want editor path", command.Args)
+	}
+}
+
+func TestEditorCommandFallsBackToVi(t *testing.T) {
+	t.Setenv("VISUAL", "")
+	t.Setenv("EDITOR", "")
+
+	command := editorCommand("config.toml")
+	if filepath.Base(command.Path) != "vi" || len(command.Args) != 2 || command.Args[1] != "config.toml" {
+		t.Fatalf("editor command = %#v, want vi config.toml", command.Args)
+	}
+}
+
+func TestModelIgnoresRefreshesFromAnEarlierConfig(t *testing.T) {
+	cfg := testConfig()
+	model, err := NewModel(cfg, fakeLoader{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	model.epoch = 2
+	model.views[0].PRs = []gh.PullRequest{{Title: "Current"}}
+
+	updated, command := model.Update(snapshotMsg(Snapshot{
+		Views: []ViewData{{View: cfg.Views[0], PRs: []gh.PullRequest{{Title: "Old"}}}},
+		epoch: 1,
+	}))
+	model = updated.(Model)
+	if command != nil {
+		t.Fatal("stale refresh returned a command")
+	}
+	if model.views[0].PRs[0].Title != "Current" {
+		t.Fatalf("stale refresh replaced current rows: %#v", model.views[0].PRs)
 	}
 }
 

@@ -116,6 +116,9 @@ func TestRefreshAllDoesNotExceedSearchBudget(t *testing.T) {
 	if !strings.Contains(snapshot.Views[0].Err.Error(), "requires 4") {
 		t.Fatalf("budget error = %q", snapshot.Views[0].Err)
 	}
+	if snapshot.capacityErr == nil {
+		t.Fatal("capacity error was not marked on the snapshot")
+	}
 }
 
 func TestRefreshAllBudgetsSearchPagination(t *testing.T) {

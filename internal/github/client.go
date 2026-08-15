@@ -71,6 +71,11 @@ func NewClient(runner Runner, cfg config.GitHubConfig) *Client {
 	}
 }
 
+// Reconfigured returns a client with the same command runner and new settings.
+func (c *Client) Reconfigured(cfg config.GitHubConfig) *Client {
+	return NewClient(c.runner, cfg)
+}
+
 type searchRow struct {
 	Number    int       `json:"number"`
 	Title     string    `json:"title"`

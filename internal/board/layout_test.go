@@ -215,7 +215,7 @@ func TestREADMEDocumentsEveryImplementedKey(t *testing.T) {
 func TestFooterListsEveryImplementedControl(t *testing.T) {
 	model := layoutModel(t, 200)
 	output := stripANSI(model.View())
-	for _, key := range []string{"h/l", "g/G", "Home/End", "Ctrl+U", "/", "Enter", "wheel", "quit"} {
+	for _, key := range []string{"h/l", "g/G", "Home/End", "Ctrl+U", "/", "E", "Enter", "wheel", "quit"} {
 		if !strings.Contains(output, key) {
 			t.Fatalf("footer missing %q:\n%s", key, output)
 		}
@@ -227,7 +227,7 @@ func TestFooterNamesShortcutContexts(t *testing.T) {
 	footer := stripANSI(model.renderFooter())
 	for _, want := range []string{
 		"h/l ←/→ view", "j/k ↑/↓ select", "g/G Home/End first/last",
-		"/ Enter filter", "Ctrl+U Esc clear", "Backspace edit",
+		"/ Enter filter", "Ctrl+U Esc clear", "Backspace edit", "E edit config",
 		"r R refresh", "Enter o open", "wheel/click mouse", "q Ctrl+C quit",
 	} {
 		if !strings.Contains(footer, want) {

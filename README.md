@@ -315,10 +315,15 @@ The reporting needs the `herdr` command on `PATH`. The board must run inside Her
 | `Enter` | Finish filter input. |
 | `Backspace` | Remove the last filter character. |
 | `Ctrl+U`, `Esc` | Clear the filter. |
+| `E` | Edit the active configuration. |
 | `r` | Refresh the active view. |
 | `R` | Refresh all views. |
 | `Enter`, `o` | Open the selected PR in a browser. |
 | `q`, `Ctrl+C` | Close the board. |
+
+Press `E` to edit the active configuration while the board runs. The board uses `$VISUAL`, `$EDITOR`, or `vi`.
+It validates the file after the editor exits. It reloads valid changes and refreshes all views.
+It keeps the previous configuration when the editor or validation fails.
 
 If the operating system cannot open the browser, the board keeps the selected URL visible. It reports the failure at the bottom of the screen.
 

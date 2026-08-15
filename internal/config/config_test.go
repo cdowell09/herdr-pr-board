@@ -47,6 +47,30 @@ func TestLoadCreatesDefaultConfig(t *testing.T) {
 	}
 }
 
+func TestLoadExistingDoesNotCreateMissingFile(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "missing.toml")
+	if _, err := LoadExisting(path); err == nil {
+		t.Fatal("expected error for missing config")
+	}
+	if _, err := os.Stat(path); !os.IsNotExist(err) {
+		t.Fatal("LoadExisting created a config file")
+	}
+}
+
+func TestConfigEqualTreatsImplicitSidebarAsEnabled(t *testing.T) {
+	implicit := Config{Views: []View{{ID: "all"}}}
+	enabled := true
+	explicit := Config{Sidebar: SidebarConfig{Enabled: &enabled}, Views: []View{{ID: "all"}}}
+	if !implicit.Equal(explicit) {
+		t.Fatal("implicit and explicit enabled sidebar settings differ")
+	}
+	disabled := false
+	explicit.Sidebar.Enabled = &disabled
+	if implicit.Equal(explicit) {
+		t.Fatal("enabled and disabled sidebar settings compare equal")
+	}
+}
+
 func TestLoadPreservesExplicitSidebarSettings(t *testing.T) {
 	path := writeConfigFile(t, `[ui]
 title = "Engineering queue"
