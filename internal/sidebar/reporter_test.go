@@ -3,6 +3,7 @@ package sidebar
 import (
 	"context"
 	"errors"
+	"os"
 	"reflect"
 	"testing"
 	"time"
@@ -23,7 +24,7 @@ func (f *fakeRunner) Run(_ context.Context, args ...string) ([]byte, error) {
 
 func TestReportRequiresWorkspaceID(t *testing.T) {
 	runner := &fakeRunner{}
-	reporter := Reporter{Runner: runner}
+	reporter := Reporter{Runner: runner.Run}
 	if err := reporter.Report(context.Background(), "", map[string]string{TokenOpen: "1 open"}); err == nil {
 		t.Fatal("expected missing workspace ID error")
 	}
@@ -32,9 +33,21 @@ func TestReportRequiresWorkspaceID(t *testing.T) {
 	}
 }
 
+func TestReportUsesHerdrBinPath(t *testing.T) {
+	bin := t.TempDir() + "/herdr"
+	if err := os.WriteFile(bin, []byte("#!/bin/sh\nexit 0\n"), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("HERDR_BIN_PATH", bin)
+
+	if err := (Reporter{}).Report(context.Background(), "w1", map[string]string{TokenOpen: "1 open"}); err != nil {
+		t.Fatal(err)
+	}
+}
+
 func TestReportBuildsMetadataArguments(t *testing.T) {
 	runner := &fakeRunner{}
-	reporter := Reporter{Runner: runner, TTL: 15 * time.Minute}
+	reporter := Reporter{Runner: runner.Run, TTL: 15 * time.Minute}
 	err := reporter.Report(context.Background(), "w2", map[string]string{
 		TokenOpen:   "3 open",
 		TokenReview: "2 review",
@@ -58,7 +71,7 @@ func TestReportBuildsMetadataArguments(t *testing.T) {
 
 func TestReportOmitsTTLWhenZero(t *testing.T) {
 	runner := &fakeRunner{}
-	reporter := Reporter{Runner: runner}
+	reporter := Reporter{Runner: runner.Run}
 	if err := reporter.Report(context.Background(), "w1", map[string]string{TokenOpen: "1 open"}); err != nil {
 		t.Fatal(err)
 	}
@@ -71,7 +84,7 @@ func TestReportOmitsTTLWhenZero(t *testing.T) {
 }
 
 func TestReportPropagatesRunnerError(t *testing.T) {
-	reporter := Reporter{Runner: &fakeRunner{err: errors.New("bad workspace")}}
+	reporter := Reporter{Runner: (&fakeRunner{err: errors.New("bad workspace")}).Run}
 	if err := reporter.Report(context.Background(), "w1", map[string]string{TokenOpen: "1 open"}); err == nil {
 		t.Fatal("expected error")
 	}

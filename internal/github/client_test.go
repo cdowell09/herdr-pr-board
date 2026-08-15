@@ -14,15 +14,9 @@ import (
 	"github.com/cdowell09/herdr-pr-board/internal/config"
 )
 
-type runnerFunc func(context.Context, ...string) ([]byte, error)
-
-func (f runnerFunc) Run(ctx context.Context, args ...string) ([]byte, error) {
-	return f(ctx, args...)
-}
-
 func TestSearchSeparatesFlagsFromNegativeQueryTerms(t *testing.T) {
 	var got []string
-	runner := runnerFunc(func(_ context.Context, args ...string) ([]byte, error) {
+	runner := Runner(func(_ context.Context, args ...string) ([]byte, error) {
 		got = append([]string(nil), args...)
 		return []byte("[]"), nil
 	})
@@ -50,7 +44,7 @@ func TestSearchViewResolvesScopesDeduplicatesAndSorts(t *testing.T) {
 		defer queryMu.Unlock()
 		queries = append(queries, query)
 	}
-	runner := runnerFunc(func(_ context.Context, args ...string) ([]byte, error) {
+	runner := Runner(func(_ context.Context, args ...string) ([]byte, error) {
 		if len(args) >= 2 && args[0] == "api" && args[1] == "user" {
 			return []byte("cdowell09\n"), nil
 		}
@@ -99,7 +93,7 @@ func TestSearchViewResolvesScopesDeduplicatesAndSorts(t *testing.T) {
 
 func TestEnrichCIBatchesAndMapsRollups(t *testing.T) {
 	calls := 0
-	runner := runnerFunc(func(_ context.Context, args ...string) ([]byte, error) {
+	runner := Runner(func(_ context.Context, args ...string) ([]byte, error) {
 		calls++
 		if !strings.Contains(args[len(args)-1], "p0: repository") {
 			return nil, fmt.Errorf("missing GraphQL alias: %v", args)
@@ -138,7 +132,7 @@ func TestEnrichCIBatchesAndMapsRollups(t *testing.T) {
 
 func TestEnrichCIPreservesCompletedBatchesOnFailure(t *testing.T) {
 	calls := 0
-	runner := runnerFunc(func(_ context.Context, args ...string) ([]byte, error) {
+	runner := Runner(func(_ context.Context, args ...string) ([]byte, error) {
 		calls++
 		switch calls {
 		case 1:
@@ -186,7 +180,7 @@ func TestEnrichCIPreservesCompletedBatchesOnFailure(t *testing.T) {
 }
 
 func TestEnrichCISurfacesWarningsWhenResponseHasDataAndErrors(t *testing.T) {
-	runner := runnerFunc(func(_ context.Context, _ ...string) ([]byte, error) {
+	runner := Runner(func(_ context.Context, _ ...string) ([]byte, error) {
 		return []byte(`{"data":{"rateLimit":{"limit":5000,"remaining":4999,"resetAt":"2026-08-07T13:00:00Z","cost":1},"p0":{"pullRequest":{"commits":{"nodes":[{"commit":{"statusCheckRollup":{"state":"SUCCESS"}}}]}}}},"errors":[{"message":"p1 resolves to a deleted repository"}]}`), nil
 	})
 	client := NewClient(runner, config.GitHubConfig{CIBatchSize: 2})
@@ -212,7 +206,7 @@ func TestEnrichCISurfacesWarningsWhenResponseHasDataAndErrors(t *testing.T) {
 
 func TestEnrichCIKeepsWarningsWithCapacityError(t *testing.T) {
 	calls := 0
-	runner := runnerFunc(func(_ context.Context, _ ...string) ([]byte, error) {
+	runner := Runner(func(_ context.Context, _ ...string) ([]byte, error) {
 		calls++
 		return []byte(`{"data":{"rateLimit":{"limit":5000,"remaining":1,"resetAt":"2027-08-07T13:00:00Z","cost":1},"p0":{"pullRequest":{"commits":{"nodes":[{"commit":{"statusCheckRollup":{"state":"SUCCESS"}}}]}}}},"errors":[{"message":"rate limiting may interfere"}]}`), nil
 	})
@@ -244,7 +238,7 @@ func TestEnrichCIKeepsWarningsWithCapacityError(t *testing.T) {
 
 func TestEnrichCICacheConcurrentAccess(t *testing.T) {
 	var calls atomic.Int64
-	runner := runnerFunc(func(_ context.Context, _ ...string) ([]byte, error) {
+	runner := Runner(func(_ context.Context, _ ...string) ([]byte, error) {
 		calls.Add(1)
 		return []byte(`{"data":{"rateLimit":{"limit":5000,"remaining":4999,"resetAt":"2026-08-07T13:00:00Z","cost":1},"p0":{"pullRequest":{"commits":{"nodes":[{"commit":{"statusCheckRollup":{"state":"SUCCESS"}}}]}}}}}`), nil
 	})
@@ -276,7 +270,7 @@ func TestEnrichCICacheConcurrentAccess(t *testing.T) {
 
 func TestEnrichCIStopsBeforeUnbudgetedBatch(t *testing.T) {
 	calls := 0
-	runner := runnerFunc(func(_ context.Context, _ ...string) ([]byte, error) {
+	runner := Runner(func(_ context.Context, _ ...string) ([]byte, error) {
 		calls++
 		if calls > 1 {
 			return nil, errors.New("unexpected second GraphQL request")
@@ -304,7 +298,7 @@ func TestEnrichCIStopsBeforeUnbudgetedBatch(t *testing.T) {
 
 func TestEnrichCIRechecksExpiredCacheBeforeFirstBatch(t *testing.T) {
 	calls := 0
-	runner := runnerFunc(func(_ context.Context, _ ...string) ([]byte, error) {
+	runner := Runner(func(_ context.Context, _ ...string) ([]byte, error) {
 		calls++
 		return nil, errors.New("unexpected GraphQL request")
 	})
@@ -325,8 +319,30 @@ func TestEnrichCIRechecksExpiredCacheBeforeFirstBatch(t *testing.T) {
 	}
 }
 
+func TestRateResourceHasCapacity(t *testing.T) {
+	now := time.Now()
+	tests := []struct {
+		name     string
+		rate     RateResource
+		required int
+		want     bool
+	}{
+		{name: "unknown limit", rate: RateResource{}, required: 1, want: true},
+		{name: "exact remaining", rate: RateResource{Limit: 30, Remaining: 2, Reset: now.Add(time.Hour)}, required: 2, want: true},
+		{name: "before reset", rate: RateResource{Limit: 30, Remaining: 1, Reset: now.Add(time.Hour)}, required: 2, want: false},
+		{name: "after reset", rate: RateResource{Limit: 30, Remaining: 1, Reset: now.Add(-time.Hour)}, required: 2, want: true},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := tt.rate.HasCapacity(tt.required); got != tt.want {
+				t.Fatalf("HasCapacity(%d) = %t, want %t", tt.required, got, tt.want)
+			}
+		})
+	}
+}
+
 func TestRateLimits(t *testing.T) {
-	runner := runnerFunc(func(_ context.Context, _ ...string) ([]byte, error) {
+	runner := Runner(func(_ context.Context, _ ...string) ([]byte, error) {
 		return []byte(`{"resources":{"search":{"limit":30,"remaining":27,"reset":1786107600},"graphql":{"limit":5000,"remaining":4800,"reset":1786111200}}}`), nil
 	})
 	client := NewClient(runner, config.GitHubConfig{})
@@ -353,7 +369,7 @@ func TestSearchViewRunsScopeSearchesConcurrently(t *testing.T) {
 	var inFlight atomic.Int64
 	var maxInFlight atomic.Int64
 	release := make(chan struct{})
-	runner := runnerFunc(func(_ context.Context, args ...string) ([]byte, error) {
+	runner := Runner(func(_ context.Context, args ...string) ([]byte, error) {
 		if len(args) >= 3 && args[0] == "search" && args[1] == "prs" {
 			now := inFlight.Add(1)
 			updateMaxAtomic(&maxInFlight, now)
@@ -413,7 +429,7 @@ func TestSearchViewConcurrencyDoesNotExceedMaxConcurrency(t *testing.T) {
 	var maxInFlight atomic.Int64
 	var total atomic.Int64
 	release := make(chan struct{})
-	runner := runnerFunc(func(_ context.Context, args ...string) ([]byte, error) {
+	runner := Runner(func(_ context.Context, args ...string) ([]byte, error) {
 		if len(args) >= 3 && args[0] == "search" && args[1] == "prs" {
 			now := inFlight.Add(1)
 			updateMaxAtomic(&maxInFlight, now)
@@ -462,7 +478,7 @@ func TestSearchViewConcurrencyDoesNotExceedMaxConcurrency(t *testing.T) {
 func TestSearchViewStopsRemainingSearchesOnError(t *testing.T) {
 	otherScopeWaiting := make(chan struct{})
 	var secondCanceled atomic.Bool
-	runner := runnerFunc(func(ctx context.Context, args ...string) ([]byte, error) {
+	runner := Runner(func(ctx context.Context, args ...string) ([]byte, error) {
 		if len(args) >= 3 && args[0] == "search" && args[1] == "prs" {
 			separator := slices.Index(args, "--")
 			query := strings.Join(args[separator+1:], " ")

@@ -141,7 +141,6 @@ func NewModel(cfg config.Config, loader Loader) (Model, error) {
 	if cfg.Sidebar.SidebarEnabled() {
 		ttl, _ := cfg.Sidebar.TTLEvery() // validated by config.Load
 		reporter = &sidebar.Reporter{
-			Bin:         os.Getenv("HERDR_BIN_PATH"),
 			WorkspaceID: os.Getenv("HERDR_WORKSPACE_ID"),
 			TTL:         ttl,
 		}
@@ -217,7 +216,7 @@ func (m Model) Update(message tea.Msg) (tea.Model, tea.Cmd) {
 		return m, nil
 	case tickMsg:
 		commands := []tea.Cmd{m.tickCmd()}
-		if !m.loading && searchCapacityAvailable(m.rates.Search, m.cfg.SearchRequestCount()) {
+		if !m.loading && m.rates.Search.HasCapacity(m.cfg.SearchRequestCount()) {
 			m.loading = true
 			commands = append(commands, m.refreshAllCmd())
 		}
@@ -293,12 +292,12 @@ func (m Model) updateKey(key tea.KeyMsg) (tea.Model, tea.Cmd) {
 		}
 	case "r":
 		requests := m.currentView().View.SearchRequestCount(len(m.cfg.GitHub.Scopes), m.cfg.GitHub.LimitPerScope)
-		if !m.loading && searchCapacityAvailable(m.rates.Search, requests) {
+		if !m.loading && m.rates.Search.HasCapacity(requests) {
 			m.loading = true
 			return m, m.refreshOneCmd(m.active)
 		}
 	case "R":
-		if !m.loading && searchCapacityAvailable(m.rates.Search, m.cfg.SearchRequestCount()) {
+		if !m.loading && m.rates.Search.HasCapacity(m.cfg.SearchRequestCount()) {
 			m.loading = true
 			return m, m.refreshAllCmd()
 		}

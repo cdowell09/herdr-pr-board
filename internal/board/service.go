@@ -66,7 +66,7 @@ func (s *Service) RefreshAll(ctx context.Context) Snapshot {
 		snapshot.Warning = "rate limits unavailable: " + rateErr.Error()
 	}
 	requests := s.cfg.SearchRequestCount()
-	if rateErr == nil && !searchCapacityAvailable(rates.Search, requests) {
+	if rateErr == nil && !rates.Search.HasCapacity(requests) {
 		err := searchCapacityError(rates.Search, requests)
 		for i, view := range s.cfg.Views {
 			snapshot.Views[i] = ViewData{View: view, Err: err}
@@ -143,7 +143,7 @@ func (s *Service) RefreshOne(ctx context.Context, view config.View) ViewSnapshot
 		result.Warning = "rate limits unavailable: " + rateErr.Error()
 	}
 	requests := view.SearchRequestCount(len(s.cfg.GitHub.Scopes), s.cfg.GitHub.LimitPerScope)
-	if rateErr == nil && !searchCapacityAvailable(rates.Search, requests) {
+	if rateErr == nil && !rates.Search.HasCapacity(requests) {
 		result.Data.Err = searchCapacityError(rates.Search, requests)
 		return result
 	}
@@ -179,10 +179,6 @@ func (s *Service) refreshRates(ctx context.Context, rates *gh.RateLimits, warnin
 		return
 	}
 	*rates = latest
-}
-
-func searchCapacityAvailable(rate gh.RateResource, requests int) bool {
-	return rate.Limit == 0 || rate.Remaining >= requests || !time.Now().Before(rate.Reset)
 }
 
 func searchCapacityError(rate gh.RateResource, requests int) error {

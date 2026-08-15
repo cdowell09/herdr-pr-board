@@ -15,13 +15,9 @@ import (
 	"github.com/cdowell09/herdr-pr-board/internal/config"
 )
 
-type Runner interface {
-	Run(context.Context, ...string) ([]byte, error)
-}
+type Runner func(context.Context, ...string) ([]byte, error)
 
-type ExecRunner struct{}
-
-func (ExecRunner) Run(ctx context.Context, args ...string) ([]byte, error) {
+func run(ctx context.Context, args ...string) ([]byte, error) {
 	cmd := exec.CommandContext(ctx, "gh", args...)
 	output, err := cmd.CombinedOutput()
 	if err != nil {
@@ -56,7 +52,7 @@ type Client struct {
 
 func NewClient(runner Runner, cfg config.GitHubConfig) *Client {
 	if runner == nil {
-		runner = ExecRunner{}
+		runner = run
 	}
 	capacity := cfg.MaxConcurrency
 	if capacity < 1 {
@@ -168,7 +164,7 @@ func (c *Client) search(ctx context.Context, query string) ([]PullRequest, error
 		"--",
 	}
 	args = append(args, terms...)
-	output, err := c.runner.Run(ctx, args...)
+	output, err := c.runner(ctx, args...)
 	if err != nil {
 		return nil, err
 	}
@@ -204,7 +200,7 @@ func (c *Client) resolveScope(ctx context.Context, scope string) (string, error)
 		return scope, nil
 	}
 	c.loginOnce.Do(func() {
-		output, err := c.runner.Run(ctx, "api", "user", "--jq", ".login")
+		output, err := c.runner(ctx, "api", "user", "--jq", ".login")
 		if err != nil {
 			c.loginErr = fmt.Errorf("resolve @me: %w", err)
 			return
@@ -218,10 +214,6 @@ func (c *Client) resolveScope(ctx context.Context, scope string) (string, error)
 		return "", c.loginErr
 	}
 	return strings.ReplaceAll(scope, "@me", c.login), nil
-}
-
-func graphQLCapacityAvailable(rate RateResource, requests int) bool {
-	return rate.Limit == 0 || rate.Remaining >= requests || !time.Now().Before(rate.Reset)
 }
 
 func (c *Client) EnrichCI(ctx context.Context, prs []PullRequest, budget RateResource) (RateResource, []string, error) {
@@ -261,7 +253,7 @@ func (c *Client) EnrichCI(ctx context.Context, prs []PullRequest, budget RateRes
 	}
 	for start := 0; start < len(pending); start += batchSize {
 		remainingBatches := (len(pending) - start + batchSize - 1) / batchSize
-		if !graphQLCapacityAvailable(latest, remainingBatches) {
+		if !latest.HasCapacity(remainingBatches) {
 			return latest, warnings, fmt.Errorf(
 				"GraphQL rate limit has %d points remaining but CI refresh needs at least %d; CI status is stale",
 				latest.Remaining,
@@ -293,7 +285,7 @@ func (c *Client) enrichBatch(ctx context.Context, prs []PullRequest) (RateResour
 	}
 	query.WriteString("}")
 
-	output, err := c.runner.Run(ctx, "api", "graphql", "-f", "query="+query.String())
+	output, err := c.runner(ctx, "api", "graphql", "-f", "query="+query.String())
 	if err != nil {
 		return RateResource{}, nil, fmt.Errorf("load CI checks: %w", err)
 	}
@@ -372,7 +364,7 @@ func decodeGraphQLRate(raw json.RawMessage) RateResource {
 }
 
 func (c *Client) RateLimits(ctx context.Context) (RateLimits, error) {
-	output, err := c.runner.Run(ctx, "api", "rate_limit")
+	output, err := c.runner(ctx, "api", "rate_limit")
 	if err != nil {
 		return RateLimits{}, err
 	}

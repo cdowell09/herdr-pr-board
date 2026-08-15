@@ -74,7 +74,7 @@ func TestModelReportsSidebarTokensToCurrentWorkspaceAfterFullRefresh(t *testing.
 		t.Fatal(err)
 	}
 	runner := &sidebarFakeRunner{}
-	model.sidebar.Runner = runner
+	model.sidebar.Runner = runner.Run
 
 	snapshot := Snapshot{Views: []ViewData{
 		{View: cfg.Views[0], PRs: []gh.PullRequest{
@@ -121,7 +121,7 @@ func TestModelSkipsSidebarReportWhenViewFails(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	model.sidebar = &sidebar.Reporter{Runner: &sidebarFakeRunner{}}
+	model.sidebar = &sidebar.Reporter{Runner: (&sidebarFakeRunner{}).Run}
 
 	failed := Snapshot{Views: []ViewData{
 		{View: cfg.Views[0], Err: errors.New("rate limited")},
@@ -146,7 +146,7 @@ func TestModelWarnsOnceOnSidebarFailureAndResets(t *testing.T) {
 		t.Fatal(err)
 	}
 	runner := &sidebarFakeRunner{err: errors.New("no session")}
-	model.sidebar.Runner = runner
+	model.sidebar.Runner = runner.Run
 	snapshot := Snapshot{Views: []ViewData{
 		{View: cfg.Views[0], PRs: []gh.PullRequest{{Repository: "acme/api", Number: 1, Title: "One", URL: "https://github.com/acme/api/pull/1"}}},
 		{View: cfg.Views[1]},

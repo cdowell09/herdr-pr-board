@@ -68,7 +68,7 @@ func (r *serviceRunner) Run(_ context.Context, args ...string) ([]byte, error) {
 func TestRefreshAllUpdatesSearchRateAfterRequests(t *testing.T) {
 	cfg := serviceTestConfig(config.View{ID: "mine", Title: "Mine", Query: "is:open author:@me", Scope: config.ScopeGlobal})
 	runner := &serviceRunner{rateRemaining: []int{2, 1}}
-	service := NewService(cfg, gh.NewClient(runner, cfg.GitHub))
+	service := NewService(cfg, gh.NewClient(runner.Run, cfg.GitHub))
 
 	snapshot := service.RefreshAll(context.Background())
 	if runner.rateCalls != 2 {
@@ -86,7 +86,7 @@ func TestRefreshOneUpdatesSearchRateAfterRequest(t *testing.T) {
 	view := config.View{ID: "mine", Title: "Mine", Query: "is:open author:@me", Scope: config.ScopeGlobal}
 	cfg := serviceTestConfig(view)
 	runner := &serviceRunner{rateRemaining: []int{2, 1}}
-	service := NewService(cfg, gh.NewClient(runner, cfg.GitHub))
+	service := NewService(cfg, gh.NewClient(runner.Run, cfg.GitHub))
 
 	refresh := service.RefreshOne(context.Background(), view)
 	if runner.rateCalls != 2 {
@@ -104,7 +104,7 @@ func TestRefreshAllDoesNotExceedSearchBudget(t *testing.T) {
 	cfg := serviceTestConfig(config.View{ID: "all", Title: "All", Query: "is:open", Scope: config.ScopeConfigured})
 	cfg.GitHub.Scopes = []string{"repo:acme/one", "repo:acme/two", "repo:acme/three", "repo:acme/four"}
 	runner := &serviceRunner{rateRemaining: []int{3}}
-	service := NewService(cfg, gh.NewClient(runner, cfg.GitHub))
+	service := NewService(cfg, gh.NewClient(runner.Run, cfg.GitHub))
 
 	snapshot := service.RefreshAll(context.Background())
 	if runner.searchCalls.Load() != 0 {
@@ -122,7 +122,7 @@ func TestRefreshAllBudgetsSearchPagination(t *testing.T) {
 	cfg := serviceTestConfig(config.View{ID: "mine", Title: "Mine", Query: "is:open", Scope: config.ScopeGlobal})
 	cfg.GitHub.LimitPerScope = 250
 	runner := &serviceRunner{rateRemaining: []int{2}}
-	service := NewService(cfg, gh.NewClient(runner, cfg.GitHub))
+	service := NewService(cfg, gh.NewClient(runner.Run, cfg.GitHub))
 
 	snapshot := service.RefreshAll(context.Background())
 	if runner.searchCalls.Load() != 0 {
@@ -141,7 +141,7 @@ func TestRefreshAllDoesNotExceedGraphQLBudget(t *testing.T) {
 		graphRemainings: []int{1, 1},
 		searchOutput:    `[{"number":1,"title":"One","url":"https://github.com/acme/api/pull/1","repository":{"nameWithOwner":"acme/api"}},{"number":2,"title":"Two","url":"https://github.com/acme/api/pull/2","repository":{"nameWithOwner":"acme/api"}}]`,
 	}
-	service := NewService(cfg, gh.NewClient(runner, cfg.GitHub))
+	service := NewService(cfg, gh.NewClient(runner.Run, cfg.GitHub))
 
 	snapshot := service.RefreshAll(context.Background())
 	if runner.graphqlCalls != 0 {
@@ -159,7 +159,7 @@ func TestRefreshAllUpdatesRatesAfterGraphQLError(t *testing.T) {
 		graphRemainings: []int{5, 5, 4},
 		searchOutput:    `[{"number":1,"title":"One","url":"https://github.com/acme/api/pull/1","repository":{"nameWithOwner":"acme/api"}}]`,
 	}
-	service := NewService(cfg, gh.NewClient(runner, cfg.GitHub))
+	service := NewService(cfg, gh.NewClient(runner.Run, cfg.GitHub))
 
 	snapshot := service.RefreshAll(context.Background())
 	if runner.graphqlCalls != 1 {
@@ -190,7 +190,7 @@ func TestRefreshAllKeepsCompletedCIBatchesOnGraphQLFailure(t *testing.T) {
 			`{"data":{"rateLimit":{"limit":5000,"remaining":4,"resetAt":"2026-08-07T13:00:00Z","cost":1},"p0":{"pullRequest":{"commits":{"nodes":[{"commit":{"statusCheckRollup":{"state":"SUCCESS"}}}]}}}}}`,
 		},
 	}
-	service := NewService(cfg, gh.NewClient(runner, cfg.GitHub))
+	service := NewService(cfg, gh.NewClient(runner.Run, cfg.GitHub))
 
 	snapshot := service.RefreshAll(context.Background())
 	if runner.graphqlCalls != 2 {
@@ -230,7 +230,7 @@ func TestRefreshOneDoesNotExceedSearchBudget(t *testing.T) {
 	cfg := serviceTestConfig(view)
 	cfg.GitHub.Scopes = []string{"repo:acme/one", "repo:acme/two", "repo:acme/three", "repo:acme/four"}
 	runner := &serviceRunner{rateRemaining: []int{3}}
-	service := NewService(cfg, gh.NewClient(runner, cfg.GitHub))
+	service := NewService(cfg, gh.NewClient(runner.Run, cfg.GitHub))
 
 	refresh := service.RefreshOne(context.Background(), view)
 	if runner.searchCalls.Load() != 0 {
@@ -249,7 +249,7 @@ func TestRefreshAllSearchConcurrencyAppliesAcrossScopes(t *testing.T) {
 		rateRemaining: []int{30},
 		blockSearches: make(chan struct{}),
 	}
-	service := NewService(cfg, gh.NewClient(runner, cfg.GitHub))
+	service := NewService(cfg, gh.NewClient(runner.Run, cfg.GitHub))
 	done := make(chan Snapshot, 1)
 	go func() { done <- service.RefreshAll(context.Background()) }()
 
@@ -280,7 +280,7 @@ func TestRefreshAllSearchConcurrencyCappedAcrossViewsAndScopes(t *testing.T) {
 		rateRemaining: []int{30},
 		blockSearches: make(chan struct{}),
 	}
-	service := NewService(cfg, gh.NewClient(runner, cfg.GitHub))
+	service := NewService(cfg, gh.NewClient(runner.Run, cfg.GitHub))
 	done := make(chan Snapshot, 1)
 	go func() { done <- service.RefreshAll(context.Background()) }()
 
