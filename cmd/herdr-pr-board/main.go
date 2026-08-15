@@ -51,7 +51,7 @@ func run(args []string, stdout, stderr io.Writer) int {
 		return fail(stderr, err)
 	}
 
-	client := gh.NewClient(gh.ExecRunner{}, cfg.GitHub)
+	client := gh.NewClient(nil, cfg.GitHub)
 	service := board.NewService(cfg, client)
 	model, err := board.NewModel(cfg, service)
 	if err != nil {

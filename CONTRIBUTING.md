@@ -32,6 +32,7 @@ pre-commit run --all-files
 You need these tools:
 
 - Go 1.24 or later
+- Python 3.11 or later
 - `pre-commit`
 - GitHub CLI (`gh`) for manual verification against GitHub
 - Herdr 0.8.0 or later for manual plugin testing
@@ -49,7 +50,7 @@ Keep the behavior in its owning package:
 
 - `cmd/herdr-pr-board/` — process startup and dependency wiring.
 - `cmd/ci-platform-matrix/` — convert manifest platforms into CI cross-compilation targets.
-- `cmd/herdr-release-check/` — release tag and plugin manifest validation.
+- `scripts/validate_release.py` — release tag and plugin manifest validation.
 - `internal/config/` — TOML defaults, parsing, validation, scope modes, and Search request counts.
 - `internal/github/` — `gh` execution, query tokenization, Search results, GraphQL CI enrichment, caching, and rate-limit decoding.
 - `internal/board/` — refresh orchestration, API budgeting, Bubble Tea state, rendering, keyboard input, and mouse input.
@@ -58,7 +59,7 @@ Keep the behavior in its owning package:
 - `internal/plugin/` — end-to-end tests for the `bin/open` and `bin/run` entrypoints.
 - `config.example.toml` — public configuration reference.
 - `.github/workflows/ci.yml` — release gates enforced on pull requests and `main`.
-- `.github/workflows/release.yml` — source release validation and publication.
+- `.github/workflows/release.yml` — run release validation and publish source releases.
 
 Keep GitHub transport in `internal/github`. Keep refresh policy in `internal/board`. Keep configuration rules in `internal/config`. Keep `bin/open` and `bin/run` in plain `bash`.
 
@@ -71,6 +72,7 @@ Add a regression test at the package boundary that owns the behavior:
 - Refresh orchestration and API budgeting → `internal/board/service_test.go`.
 - Bubble Tea state, rendering, and input → `internal/board/model_test.go`.
 - Plugin entrypoint pane reuse and state ownership → `internal/plugin/entrypoint_test.go`.
+- Release validation → `scripts/validate_release_test.py`.
 
 Tests use fake `gh` runners. Tests never call GitHub. Tests never launch a real browser.
 
@@ -105,6 +107,7 @@ Run every gate from the repository root before you open a pull request:
 ```sh
 gofmt -w cmd internal
 go test ./...
+python3 -B -m unittest discover -s scripts -p '*_test.py'
 go vet ./...
 go test -race ./...
 go build -o bin/herdr-pr-board ./cmd/herdr-pr-board

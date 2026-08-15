@@ -30,6 +30,10 @@ type RateResource struct {
 	Reset     time.Time `json:"-"`
 }
 
+func (r RateResource) HasCapacity(required int) bool {
+	return r.Limit == 0 || r.Remaining >= required || !time.Now().Before(r.Reset)
+}
+
 type RateLimits struct {
 	Search  RateResource
 	GraphQL RateResource

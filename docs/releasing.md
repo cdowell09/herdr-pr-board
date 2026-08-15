@@ -26,6 +26,7 @@ Run the completion gates:
 ```sh
 gofmt -w cmd internal
 go test ./...
+python3 -B -m unittest discover -s scripts -p '*_test.py'
 go vet ./...
 go test -race ./...
 go build -o bin/herdr-pr-board ./cmd/herdr-pr-board
@@ -41,7 +42,6 @@ Set the release version to the manifest version.
 
 ```sh
 version="0.1.2"
-go run ./cmd/herdr-release-check --tag "v$version"
 git tag -a "v$version" -m "Release v$version"
 git push origin "v$version"
 ```

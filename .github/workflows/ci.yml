@@ -49,6 +49,8 @@ jobs:
           fi
       - name: Test
         run: go test ./...
+      - name: Test release validation
+        run: python3 -B -m unittest discover -s scripts -p '*_test.py'
       - name: Race test
         run: go test -race ./...
       - name: Vet
