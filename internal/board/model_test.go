@@ -390,15 +390,15 @@ func TestModelMouseSelectsViewsRowsAndURL(t *testing.T) {
 			urlY = y
 		}
 	}
-	if secondRowY != firstPRRowY+1 {
-		t.Fatalf("second rendered row Y = %d, mouse Y = %d", secondRowY, firstPRRowY+1)
+	if secondRowY != model.boardLayout().firstPRRow+1 {
+		t.Fatalf("second rendered row Y = %d, mouse Y = %d", secondRowY, model.boardLayout().firstPRRow+1)
 	}
-	if urlY != model.selectedURLY() {
-		t.Fatalf("rendered URL Y = %d, mouse URL Y = %d", urlY, model.selectedURLY())
+	if urlY != model.boardLayout().selectedURLRow {
+		t.Fatalf("rendered URL Y = %d, mouse URL Y = %d", urlY, model.boardLayout().selectedURLRow)
 	}
 
 	updated, command = model.Update(tea.MouseMsg(tea.MouseEvent{
-		X: 2, Y: firstPRRowY + 1, Action: tea.MouseActionPress, Button: tea.MouseButtonLeft,
+		X: 2, Y: model.boardLayout().firstPRRow + 1, Action: tea.MouseActionPress, Button: tea.MouseButtonLeft,
 	}))
 	if command != nil {
 		t.Fatal("row click returned an unexpected command")
@@ -418,7 +418,7 @@ func TestModelMouseSelectsViewsRowsAndURL(t *testing.T) {
 	}
 
 	updated, command = model.Update(tea.MouseMsg(tea.MouseEvent{
-		X: 2, Y: model.selectedURLY(), Action: tea.MouseActionPress, Button: tea.MouseButtonLeft,
+		X: 2, Y: model.boardLayout().selectedURLRow, Action: tea.MouseActionPress, Button: tea.MouseButtonLeft,
 	}))
 	if command == nil {
 		t.Fatal("URL click did not return a browser command")
@@ -683,11 +683,11 @@ func TestModelMarksRetainedRowsStaleWithoutHidingError(t *testing.T) {
 			urlY = y
 		}
 	}
-	if rowY != firstPRRowYFor(true) {
-		t.Fatalf("stale rendered row Y = %d, mouse Y = %d", rowY, firstPRRowYFor(true))
+	if rowY != model.boardLayout().firstPRRow {
+		t.Fatalf("stale rendered row Y = %d, mouse Y = %d", rowY, model.boardLayout().firstPRRow)
 	}
-	if urlY != model.selectedURLY() {
-		t.Fatalf("stale rendered URL Y = %d, mouse URL Y = %d", urlY, model.selectedURLY())
+	if urlY != model.boardLayout().selectedURLRow {
+		t.Fatalf("stale rendered URL Y = %d, mouse URL Y = %d", urlY, model.boardLayout().selectedURLRow)
 	}
 	if urlY >= model.height {
 		t.Fatalf("stale rendered URL Y = %d exceeds height %d", urlY, model.height)
@@ -776,7 +776,7 @@ func TestModelBrowserOpenTriggersFromURLMouseClick(t *testing.T) {
 	}
 
 	updated, command := model.Update(tea.MouseMsg(tea.MouseEvent{
-		X: 2, Y: model.selectedURLY(), Action: tea.MouseActionPress, Button: tea.MouseButtonLeft,
+		X: 2, Y: model.boardLayout().selectedURLRow, Action: tea.MouseActionPress, Button: tea.MouseButtonLeft,
 	}))
 	if command == nil {
 		t.Fatal("URL click did not return a browser command")

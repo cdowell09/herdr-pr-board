@@ -2,6 +2,7 @@ package board
 
 import (
 	"errors"
+	"fmt"
 	"os"
 	"strings"
 	"testing"
@@ -87,6 +88,64 @@ func TestModelLayoutsDropColumnsIntentionally(t *testing.T) {
 	}
 }
 
+func TestModelLayoutGeometryMatchesRenderedOutput(t *testing.T) {
+	for _, width := range layoutWidths {
+		for _, stale := range []bool{false, true} {
+			model := layoutModel(t, width)
+			if stale {
+				model.views[0].Err = errors.New("GitHub search failed: timeout")
+			}
+			lay := model.boardLayout()
+			lines := strings.Split(model.View(), "\n")
+
+			// Every tab hitbox covers exactly the rendered label.
+			tabLine := stripANSI(lines[tabRowY])
+			for i, bar := range model.tabBars() {
+				style := inactiveTab
+				if i == model.active {
+					style = activeTab
+				}
+				rendered := stripANSI(style.Render(bar.label))
+				start := strings.Index(tabLine, rendered)
+				if start < 0 {
+					t.Fatalf("width %d stale %v: tab %d label %q not rendered in %q", width, stale, i, rendered, tabLine)
+				}
+				if start != bar.x || lipgloss.Width(rendered) != bar.width {
+					t.Fatalf("width %d stale %v: tab %d renders at x %d width %d, hitbox x %d width %d", width, stale, i, start, lipgloss.Width(rendered), bar.x, bar.width)
+				}
+			}
+
+			// Every rendered PR row sits exactly on its layout row.
+			rows := model.filteredPRs()
+			for row, pr := range rows[:min(lay.visibleRows, len(rows))] {
+				wantY := lay.firstPRRow + row
+				gotY := -1
+				for y, line := range lines {
+					if strings.Contains(stripANSI(line), fmt.Sprintf("#%d", pr.Number)) {
+						gotY = y
+						break
+					}
+				}
+				if gotY != wantY {
+					t.Fatalf("width %d stale %v: PR #%d rendered at Y %d, layout row %d", width, stale, pr.Number, gotY, wantY)
+				}
+			}
+
+			// The selected PR URL sits exactly on the layout URL row.
+			gotURLY := -1
+			for y, line := range lines {
+				if strings.Contains(line, "https://github.com/") {
+					gotURLY = y
+					break
+				}
+			}
+			if gotURLY != lay.selectedURLRow {
+				t.Fatalf("width %d stale %v: URL rendered at Y %d, layout row %d", width, stale, gotURLY, lay.selectedURLRow)
+			}
+		}
+	}
+}
+
 func TestModelURLRemainsVisibleInEveryLayout(t *testing.T) {
 	for _, width := range layoutWidths {
 		model := layoutModel(t, width)
@@ -101,8 +160,8 @@ func TestModelURLRemainsVisibleInEveryLayout(t *testing.T) {
 				break
 			}
 		}
-		if urlY != model.selectedURLY() {
-			t.Fatalf("width %d: rendered URL Y = %d, mouse Y = %d", width, urlY, model.selectedURLY())
+		if urlY != model.boardLayout().selectedURLRow {
+			t.Fatalf("width %d: rendered URL Y = %d, mouse Y = %d", width, urlY, model.boardLayout().selectedURLRow)
 		}
 		if urlY >= model.height {
 			t.Fatalf("width %d: rendered URL Y = %d exceeds height %d", width, urlY, model.height)
@@ -143,11 +202,11 @@ func TestModelMouseCoordinatesMatchRenderedOutputInEachLayout(t *testing.T) {
 				urlY = y
 			}
 		}
-		if firstRowY != model.firstPRRow() {
-			t.Fatalf("width %d: rendered first row Y = %d, mouse Y = %d", width, firstRowY, model.firstPRRow())
+		if firstRowY != model.boardLayout().firstPRRow {
+			t.Fatalf("width %d: rendered first row Y = %d, mouse Y = %d", width, firstRowY, model.boardLayout().firstPRRow)
 		}
-		if urlY != model.selectedURLY() {
-			t.Fatalf("width %d: rendered URL Y = %d, mouse Y = %d", width, urlY, model.selectedURLY())
+		if urlY != model.boardLayout().selectedURLRow {
+			t.Fatalf("width %d: rendered URL Y = %d, mouse Y = %d", width, urlY, model.boardLayout().selectedURLRow)
 		}
 
 		updated, command := model.Update(tea.MouseMsg(tea.MouseEvent{
