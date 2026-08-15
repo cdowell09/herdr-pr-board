@@ -20,8 +20,8 @@ scopes = [
 [sidebar]
 # Report PR counts into Herdr sidebar tokens after each full refresh.
 # Add $prs_open, $prs_review, and $prs_ci to [ui.sidebar.spaces] rows in
-# ~/.config/herdr/config.toml to display them. The board never adds GitHub
-# requests for reporting; it reuses the refresh snapshot.
+# ~/.config/herdr/config.toml to display them in the workspace running the board.
+# The board never adds GitHub requests for reporting; it reuses the refresh snapshot.
 enabled = true
 # Tokens expire this long after the last report. When the board is closed,
 # the sidebar row disappears. 0 keeps tokens until the next report.

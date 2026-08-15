@@ -60,21 +60,21 @@ func (f *sidebarFakeRunner) Run(_ context.Context, args ...string) ([]byte, erro
 	if f.err != nil {
 		return nil, f.err
 	}
-	if len(args) >= 2 && args[0] == "workspace" && args[1] == "list" {
-		return []byte(`{"id":"cli:workspace:list","result":{"type":"workspace_list","workspaces":[{"workspace_id":"w1"},{"workspace_id":"w2"}]}}`), nil
-	}
 	return []byte(`{"id":"cli:workspace:report-metadata","result":{}}`), nil
 }
 
-func TestModelReportsSidebarTokensAfterFullRefresh(t *testing.T) {
+func TestModelReportsSidebarTokensToCurrentWorkspaceAfterFullRefresh(t *testing.T) {
 	cfg := testConfig()
+	cfg.Sidebar.Enabled = boolPtr(true)
 	cfg.Sidebar.ReviewView = "review"
+	cfg.Sidebar.TTL = "15m"
+	t.Setenv("HERDR_WORKSPACE_ID", "w1")
 	model, err := NewModel(cfg, fakeLoader{})
 	if err != nil {
 		t.Fatal(err)
 	}
 	runner := &sidebarFakeRunner{}
-	model.sidebar = &sidebar.Reporter{Runner: runner, TTL: 15 * time.Minute}
+	model.sidebar.Runner = runner
 
 	snapshot := Snapshot{Views: []ViewData{
 		{View: cfg.Views[0], PRs: []gh.PullRequest{
@@ -96,27 +96,22 @@ func TestModelReportsSidebarTokensAfterFullRefresh(t *testing.T) {
 	if strings.Contains(model.warning, "sidebar") {
 		t.Fatalf("warning = %q", model.warning)
 	}
-	if len(runner.calls) != 3 {
-		t.Fatalf("runner calls = %d, want 3", len(runner.calls))
+	if len(runner.calls) != 1 {
+		t.Fatalf("runner calls = %d, want 1", len(runner.calls))
 	}
-	if runner.calls[0][0] != "workspace" || runner.calls[0][1] != "list" {
-		t.Fatalf("first call = %#v", runner.calls[0])
+	args := runner.calls[0]
+	joined := strings.Join(args, " ")
+	if args[0] != "workspace" || args[1] != "report-metadata" || args[2] != "w1" {
+		t.Fatalf("report call = %#v", args)
 	}
-	for i := 1; i <= 2; i++ {
-		args := runner.calls[i]
-		joined := strings.Join(args, " ")
-		if args[0] != "workspace" || args[1] != "report-metadata" {
-			t.Fatalf("call %d = %#v", i, args)
-		}
-		if args[3] != "--source" || args[4] != sidebar.Source {
-			t.Fatalf("call %d source = %#v", i, args)
-		}
-		if !strings.Contains(joined, "prs_open=3 open") || !strings.Contains(joined, "prs_review=2 review") || !strings.Contains(joined, "prs_ci=1 fail") {
-			t.Fatalf("call %d missing tokens: %#v", i, args)
-		}
-		if !strings.Contains(joined, "--ttl-ms 900000") {
-			t.Fatalf("call %d missing ttl: %#v", i, args)
-		}
+	if args[3] != "--source" || args[4] != sidebar.Source {
+		t.Fatalf("report source = %#v", args)
+	}
+	if !strings.Contains(joined, "prs_open=3 open") || !strings.Contains(joined, "prs_review=2 review") || !strings.Contains(joined, "prs_ci=1 fail") {
+		t.Fatalf("missing tokens: %#v", args)
+	}
+	if !strings.Contains(joined, "--ttl-ms 900000") {
+		t.Fatalf("missing ttl: %#v", args)
 	}
 }
 
@@ -144,12 +139,14 @@ func TestModelSkipsSidebarReportWhenViewFails(t *testing.T) {
 
 func TestModelWarnsOnceOnSidebarFailureAndResets(t *testing.T) {
 	cfg := testConfig()
+	cfg.Sidebar.Enabled = boolPtr(true)
+	t.Setenv("HERDR_WORKSPACE_ID", "w1")
 	model, err := NewModel(cfg, fakeLoader{})
 	if err != nil {
 		t.Fatal(err)
 	}
 	runner := &sidebarFakeRunner{err: errors.New("no session")}
-	model.sidebar = &sidebar.Reporter{Runner: runner}
+	model.sidebar.Runner = runner
 	snapshot := Snapshot{Views: []ViewData{
 		{View: cfg.Views[0], PRs: []gh.PullRequest{{Repository: "acme/api", Number: 1, Title: "One", URL: "https://github.com/acme/api/pull/1"}}},
 		{View: cfg.Views[1]},

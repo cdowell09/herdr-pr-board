@@ -2,7 +2,6 @@ package sidebar
 
 import (
 	"context"
-	"encoding/json"
 	"errors"
 	"fmt"
 	"os"
@@ -23,6 +22,8 @@ type Reporter struct {
 	// Bin is the herdr binary. It defaults to "herdr" or the value of
 	// HERDR_BIN_PATH set by the caller.
 	Bin string
+	// WorkspaceID is the Herdr workspace that owns this board process.
+	WorkspaceID string
 	// TTL is how long the reported tokens stay visible. Zero disables
 	// expiry and sends no --ttl-ms flag.
 	TTL time.Duration
@@ -56,35 +57,11 @@ func (r Reporter) runner() gh.Runner {
 	return ExecRunner{}
 }
 
-type workspaceListResponse struct {
-	Result struct {
-		Workspaces []struct {
-			WorkspaceID string `json:"workspace_id"`
-		} `json:"workspaces"`
-	} `json:"result"`
-}
-
-// Workspaces lists the workspace IDs of the current Herdr session.
-func (r Reporter) Workspaces(ctx context.Context) ([]string, error) {
-	output, err := r.runner().Run(ctx, "workspace", "list")
-	if err != nil {
-		return nil, fmt.Errorf("list workspaces: %w", err)
-	}
-	var response workspaceListResponse
-	if err := json.Unmarshal(output, &response); err != nil {
-		return nil, fmt.Errorf("decode workspace list: %w", err)
-	}
-	ids := make([]string, 0, len(response.Result.Workspaces))
-	for _, workspace := range response.Result.Workspaces {
-		if workspace.WorkspaceID != "" {
-			ids = append(ids, workspace.WorkspaceID)
-		}
-	}
-	return ids, nil
-}
-
 // Report writes the tokens to one workspace's metadata.
 func (r Reporter) Report(ctx context.Context, workspaceID string, tokens map[string]string) error {
+	if strings.TrimSpace(workspaceID) == "" {
+		return errors.New("workspace ID is required")
+	}
 	args := []string{"workspace", "report-metadata", workspaceID, "--source", Source}
 	names := make([]string, 0, len(tokens))
 	for name := range tokens {

@@ -254,6 +254,7 @@ refresh_interval = "0"
 ## Show PR counts in the Herdr sidebar
 
 The board reports PR counts into Herdr sidebar tokens after each full refresh.
+It reports the tokens only to the Herdr workspace that runs the board.
 The reporting reuses the refresh snapshot. It makes no extra GitHub requests.
 
 The board reports after the initial refresh, after each automatic refresh, and after a manual full refresh (`R`). It does not report after an active-view refresh (`r`).
@@ -286,7 +287,8 @@ The board reports these tokens:
 
 The board omits `$prs_ci` when no check failed. It omits `$prs_review` when no view has the configured ID. The board does not report after a refresh with a failed view. It keeps the previous tokens until they expire.
 
-The tokens appear under every workspace in the sidebar. Each token expires after `sidebar.ttl`. When you close the board, the tokens expire, and the sidebar row disappears.
+The tokens appear under the workspace that runs the board. Each token expires after `sidebar.ttl`.
+When you close the board, the tokens expire, and the sidebar row disappears.
 
 You can style each token with an inline style table, for example:
 
