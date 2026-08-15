@@ -24,21 +24,13 @@ const (
 	mouseStep = 3
 )
 
-// boardLayout is the screen geometry of the rendered board. View renders at
-// these rows and mouse handling hit-tests the same rows, so the rendered
-// text and the mouse geometry come from one implementation.
+// boardLayout is the row geometry shared by rendering and mouse hit-testing.
 type boardLayout struct {
-	firstPRRow     int // screen row of the first PR row
-	selectedURLRow int // screen row of the selected PR URL
-	visibleRows    int // PR rows that fit on screen
+	firstPRRow     int
+	selectedURLRow int
+	visibleRows    int
 }
 
-// boardLayout computes the screen rows of the rendered board from the model
-// state. The header block above the PR table is the title, the tab row, a
-// blank line, the column header, and the header border. The stale notice
-// occupies the blank line, so every row below shifts down by one. Below the
-// table sit a blank line and the selected URL, then a blank line, then the
-// wrapped footer.
 func (m Model) boardLayout() boardLayout {
 	firstPRRow := 5
 	if m.currentView().Stale() {
