@@ -246,6 +246,8 @@ func (m Model) Update(message tea.Msg) (tea.Model, tea.Cmd) {
 
 func (m Model) updateFilter(key tea.KeyMsg) (tea.Model, tea.Cmd) {
 	switch key.String() {
+	case "ctrl+c":
+		return m, tea.Quit
 	case "esc":
 		m.editing = false
 		m.filter = ""

@@ -822,3 +822,24 @@ func testConfig() config.Config {
 func boolPtr(value bool) *bool {
 	return &value
 }
+
+func TestCtrlCQuitsWhileEditingFilter(t *testing.T) {
+	model, err := NewModel(testConfig(), fakeLoader{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	updated, _ := model.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("/")})
+	model = updated.(Model)
+	if !model.editing {
+		t.Fatal("expected filter editing mode")
+	}
+	_, cmd := model.Update(tea.KeyMsg{Type: tea.KeyCtrlC})
+	if cmd == nil {
+		t.Fatal("ctrl+c while editing the filter must quit")
+	}
+	if msg := cmd(); msg == nil {
+		t.Fatal("quit command returned no message")
+	} else if _, ok := msg.(tea.QuitMsg); !ok {
+		t.Fatalf("message = %T, want tea.QuitMsg", msg)
+	}
+}
