@@ -354,7 +354,7 @@ GitHub permits 30 authenticated Search API requests each minute. GitHub returns 
 
 The plugin runs view and scope searches at the same time. `github.max_concurrency` limits the number of Search API requests that run at the same time. The plugin removes duplicate PRs before it requests CI data.
 
-The plugin gets CI data with batched GraphQL queries. GitHub gives an authenticated user 5,000 GraphQL points each hour.
+The plugin gets CI data with batched GraphQL queries. GitHub gives an authenticated user 5,000 GraphQL points each hour. The plugin keeps each CI result for two minutes. A refresh inside that time shows the kept result and sends no GraphQL query for that PR.
 
 The board shows the remaining Search API and GraphQL capacity. The board keeps old data when a refresh fails.
 
