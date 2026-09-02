@@ -282,7 +282,7 @@ func validateScopes(scopes []string) error {
 		}
 		prefix := scopePrefix(scope)
 		if prefix == "" {
-			return fmt.Errorf("github.scopes[%d] %q must start with user:, org:, or repo:", i, scope)
+			return fmt.Errorf("github.scopes[%d] %q must use a user:, org:, or repo: prefix", i, scope)
 		}
 		if len(scope) == len(prefix) {
 			return fmt.Errorf("github.scopes[%d] %q has no target after %q", i, scope, prefix)
