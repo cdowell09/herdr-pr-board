@@ -68,13 +68,13 @@ func TestModelReportsSidebarTokensToCurrentWorkspaceAfterFullRefresh(t *testing.
 	cfg.Sidebar.Enabled = boolPtr(true)
 	cfg.Sidebar.ReviewView = "review"
 	cfg.Sidebar.TTL = "15m"
-	t.Setenv("HERDR_WORKSPACE_ID", "w1")
-	model, err := NewModel(cfg, fakeLoader{})
+	runner := &sidebarFakeRunner{}
+	reporter := sidebar.NewReporter(cfg.Sidebar, "w1", "")
+	reporter.Runner = runner.Run
+	model, err := NewModel(cfg, fakeLoader{}, reporter)
 	if err != nil {
 		t.Fatal(err)
 	}
-	runner := &sidebarFakeRunner{}
-	model.sidebar.Runner = runner.Run
 
 	snapshot := Snapshot{Views: []ViewData{
 		{View: cfg.Views[0], PRs: []gh.PullRequest{
@@ -117,7 +117,7 @@ func TestModelReportsSidebarTokensToCurrentWorkspaceAfterFullRefresh(t *testing.
 
 func TestModelSkipsSidebarReportWhenViewFails(t *testing.T) {
 	cfg := testConfig()
-	model, err := NewModel(cfg, fakeLoader{})
+	model, err := NewModel(cfg, fakeLoader{}, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -140,13 +140,11 @@ func TestModelSkipsSidebarReportWhenViewFails(t *testing.T) {
 func TestModelWarnsOnceOnSidebarFailureAndResets(t *testing.T) {
 	cfg := testConfig()
 	cfg.Sidebar.Enabled = boolPtr(true)
-	t.Setenv("HERDR_WORKSPACE_ID", "w1")
-	model, err := NewModel(cfg, fakeLoader{})
+	runner := &sidebarFakeRunner{err: errors.New("no session")}
+	model, err := NewModel(cfg, fakeLoader{}, &sidebar.Reporter{WorkspaceID: "w1", Runner: runner.Run})
 	if err != nil {
 		t.Fatal(err)
 	}
-	runner := &sidebarFakeRunner{err: errors.New("no session")}
-	model.sidebar.Runner = runner.Run
 	snapshot := Snapshot{Views: []ViewData{
 		{View: cfg.Views[0], PRs: []gh.PullRequest{{Repository: "acme/api", Number: 1, Title: "One", URL: "https://github.com/acme/api/pull/1"}}},
 		{View: cfg.Views[1]},
@@ -200,7 +198,7 @@ func TestModelRendersConfigTitlesPRAndCI(t *testing.T) {
 		Rates:     gh.RateLimits{Search: gh.RateResource{Limit: 30, Remaining: 28}},
 		UpdatedAt: time.Now(),
 	}
-	model, err := NewModel(cfg, fakeLoader{snapshot: snapshot})
+	model, err := NewModel(cfg, fakeLoader{snapshot: snapshot}, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -227,7 +225,7 @@ func TestModelCentersCIIconsInColumn(t *testing.T) {
 		{Repository: "acme/api", Number: 5, Title: "No checks PR", URL: "https://github.com/acme/api/pull/5", Author: "cdowell09", UpdatedAt: time.Now(), CI: gh.CINone},
 		{Repository: "acme/api", Number: 6, Title: "Unknown PR", URL: "https://github.com/acme/api/pull/6", Author: "cdowell09", UpdatedAt: time.Now(), CI: gh.CIUnknown},
 	}
-	model, err := NewModel(cfg, fakeLoader{})
+	model, err := NewModel(cfg, fakeLoader{}, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -300,7 +298,7 @@ func TestModelSwitchesViewsAndFilters(t *testing.T) {
 		{View: cfg.Views[0], PRs: []gh.PullRequest{{Repository: "acme/api", Number: 1, Title: "API fix"}}},
 		{View: cfg.Views[1], PRs: []gh.PullRequest{{Repository: "acme/web", Number: 2, Title: "Web fix"}}},
 	}}
-	model, err := NewModel(cfg, fakeLoader{snapshot: snapshot})
+	model, err := NewModel(cfg, fakeLoader{snapshot: snapshot}, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -324,7 +322,7 @@ func TestModelSwitchesViewsAndFilters(t *testing.T) {
 
 func TestModelEscapeClearsFilterWhileEditing(t *testing.T) {
 	cfg := testConfig()
-	model, err := NewModel(cfg, fakeLoader{})
+	model, err := NewModel(cfg, fakeLoader{}, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -344,7 +342,7 @@ func TestModelEscapeClearsFilterWhileEditing(t *testing.T) {
 
 func TestModelMouseSelectsViewsRowsAndURL(t *testing.T) {
 	cfg := testConfig()
-	model, err := NewModel(cfg, fakeLoader{})
+	model, err := NewModel(cfg, fakeLoader{}, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -428,7 +426,7 @@ func TestModelMouseSelectsViewsRowsAndURL(t *testing.T) {
 
 func TestModelDoesNotRefreshWhenSearchRateIsExhausted(t *testing.T) {
 	cfg := testConfig()
-	model, err := NewModel(cfg, fakeLoader{})
+	model, err := NewModel(cfg, fakeLoader{}, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -447,7 +445,7 @@ func TestModelDoesNotRefreshWhenSearchRateIsExhausted(t *testing.T) {
 
 func TestModelDoesNotRefreshAllBeyondSearchBudget(t *testing.T) {
 	cfg := testConfig()
-	model, err := NewModel(cfg, fakeLoader{})
+	model, err := NewModel(cfg, fakeLoader{}, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -466,7 +464,7 @@ func TestModelDoesNotRefreshAllBeyondSearchBudget(t *testing.T) {
 
 func TestModelUpdatesRatesAfterActiveRefresh(t *testing.T) {
 	cfg := testConfig()
-	model, err := NewModel(cfg, fakeLoader{})
+	model, err := NewModel(cfg, fakeLoader{}, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -494,7 +492,7 @@ func TestModelUpdatesRatesAfterActiveRefresh(t *testing.T) {
 
 func TestModelKeepsLoadedRowsWhenRefreshFails(t *testing.T) {
 	cfg := testConfig()
-	model, err := NewModel(cfg, fakeLoader{})
+	model, err := NewModel(cfg, fakeLoader{}, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -520,7 +518,7 @@ func TestModelKeepsLoadedRowsWhenRefreshFails(t *testing.T) {
 
 func TestModelFreshnessAdvancesOnlyOnSuccessfulFullRefresh(t *testing.T) {
 	cfg := testConfig()
-	model, err := NewModel(cfg, fakeLoader{})
+	model, err := NewModel(cfg, fakeLoader{}, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -558,7 +556,7 @@ func TestModelFreshnessAdvancesOnlyOnSuccessfulFullRefresh(t *testing.T) {
 
 func TestModelFreshnessPreservedPerViewInMixedFullRefresh(t *testing.T) {
 	cfg := testConfig()
-	model, err := NewModel(cfg, fakeLoader{})
+	model, err := NewModel(cfg, fakeLoader{}, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -584,7 +582,7 @@ func TestModelFreshnessPreservedPerViewInMixedFullRefresh(t *testing.T) {
 
 func TestModelFreshnessAdvancesOnlyOnSuccessfulActiveRefresh(t *testing.T) {
 	cfg := testConfig()
-	model, err := NewModel(cfg, fakeLoader{})
+	model, err := NewModel(cfg, fakeLoader{}, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -609,7 +607,7 @@ func TestModelFreshnessAdvancesOnlyOnSuccessfulActiveRefresh(t *testing.T) {
 
 func TestModelFreshnessNotAdvancedByCapacityRejection(t *testing.T) {
 	cfg := testConfig()
-	model, err := NewModel(cfg, fakeLoader{})
+	model, err := NewModel(cfg, fakeLoader{}, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -643,7 +641,7 @@ func TestModelFreshnessNotAdvancedByCapacityRejection(t *testing.T) {
 
 func TestModelMarksRetainedRowsStaleWithoutHidingError(t *testing.T) {
 	cfg := testConfig()
-	model, err := NewModel(cfg, fakeLoader{})
+	model, err := NewModel(cfg, fakeLoader{}, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -789,7 +787,7 @@ func TestModelBrowserOpenTriggersFromURLMouseClick(t *testing.T) {
 
 func browserModel(t *testing.T, cfg config.Config) Model {
 	t.Helper()
-	model, err := NewModel(cfg, fakeLoader{})
+	model, err := NewModel(cfg, fakeLoader{}, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -824,7 +822,7 @@ func boolPtr(value bool) *bool {
 }
 
 func TestCtrlCQuitsWhileEditingFilter(t *testing.T) {
-	model, err := NewModel(testConfig(), fakeLoader{})
+	model, err := NewModel(testConfig(), fakeLoader{}, nil)
 	if err != nil {
 		t.Fatal(err)
 	}

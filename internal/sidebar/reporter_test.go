@@ -7,6 +7,8 @@ import (
 	"reflect"
 	"testing"
 	"time"
+
+	"github.com/cdowell09/herdr-pr-board/internal/config"
 )
 
 type fakeRunner struct {
@@ -25,7 +27,7 @@ func (f *fakeRunner) Run(_ context.Context, args ...string) ([]byte, error) {
 func TestReportRequiresWorkspaceID(t *testing.T) {
 	runner := &fakeRunner{}
 	reporter := Reporter{Runner: runner.Run}
-	if err := reporter.Report(context.Background(), "", map[string]string{TokenOpen: "1 open"}); err == nil {
+	if err := reporter.Report(context.Background(), map[string]string{TokenOpen: "1 open"}); err == nil {
 		t.Fatal("expected missing workspace ID error")
 	}
 	if len(runner.calls) != 0 {
@@ -33,22 +35,21 @@ func TestReportRequiresWorkspaceID(t *testing.T) {
 	}
 }
 
-func TestReportUsesHerdrBinPath(t *testing.T) {
+func TestReportUsesConfiguredBinary(t *testing.T) {
 	bin := t.TempDir() + "/herdr"
 	if err := os.WriteFile(bin, []byte("#!/bin/sh\nexit 0\n"), 0o700); err != nil {
 		t.Fatal(err)
 	}
-	t.Setenv("HERDR_BIN_PATH", bin)
 
-	if err := (Reporter{}).Report(context.Background(), "w1", map[string]string{TokenOpen: "1 open"}); err != nil {
+	if err := (Reporter{Binary: bin, WorkspaceID: "w1"}).Report(context.Background(), map[string]string{TokenOpen: "1 open"}); err != nil {
 		t.Fatal(err)
 	}
 }
 
 func TestReportBuildsMetadataArguments(t *testing.T) {
 	runner := &fakeRunner{}
-	reporter := Reporter{Runner: runner.Run, TTL: 15 * time.Minute}
-	err := reporter.Report(context.Background(), "w2", map[string]string{
+	reporter := Reporter{Runner: runner.Run, WorkspaceID: "w2", TTL: 15 * time.Minute}
+	err := reporter.Report(context.Background(), map[string]string{
 		TokenOpen:   "3 open",
 		TokenReview: "2 review",
 		TokenCI:     "1 fail",
@@ -71,8 +72,8 @@ func TestReportBuildsMetadataArguments(t *testing.T) {
 
 func TestReportOmitsTTLWhenZero(t *testing.T) {
 	runner := &fakeRunner{}
-	reporter := Reporter{Runner: runner.Run}
-	if err := reporter.Report(context.Background(), "w1", map[string]string{TokenOpen: "1 open"}); err != nil {
+	reporter := Reporter{Runner: runner.Run, WorkspaceID: "w1"}
+	if err := reporter.Report(context.Background(), map[string]string{TokenOpen: "1 open"}); err != nil {
 		t.Fatal(err)
 	}
 	args := runner.calls[0]
@@ -84,8 +85,37 @@ func TestReportOmitsTTLWhenZero(t *testing.T) {
 }
 
 func TestReportPropagatesRunnerError(t *testing.T) {
-	reporter := Reporter{Runner: (&fakeRunner{err: errors.New("bad workspace")}).Run}
-	if err := reporter.Report(context.Background(), "w1", map[string]string{TokenOpen: "1 open"}); err == nil {
+	reporter := Reporter{Runner: (&fakeRunner{err: errors.New("bad workspace")}).Run, WorkspaceID: "w1"}
+	if err := reporter.Report(context.Background(), map[string]string{TokenOpen: "1 open"}); err == nil {
 		t.Fatal("expected error")
+	}
+}
+
+func TestNewReporterRequiresEnabledConfigAndWorkspace(t *testing.T) {
+	disabled := false
+	cases := []struct {
+		name      string
+		cfg       config.SidebarConfig
+		workspace string
+		want      bool
+	}{
+		{"enabled with workspace", config.SidebarConfig{TTL: "15m"}, "w1", true},
+		{"outside Herdr", config.SidebarConfig{TTL: "15m"}, "", false},
+		{"blank workspace", config.SidebarConfig{TTL: "15m"}, "  ", false},
+		{"disabled", config.SidebarConfig{Enabled: &disabled, TTL: "15m"}, "w1", false},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			reporter := NewReporter(tc.cfg, tc.workspace, "/opt/herdr")
+			if (reporter != nil) != tc.want {
+				t.Fatalf("reporter = %#v, want present=%v", reporter, tc.want)
+			}
+			if reporter == nil {
+				return
+			}
+			if reporter.WorkspaceID != "w1" || reporter.Binary != "/opt/herdr" || reporter.TTL != 15*time.Minute {
+				t.Fatalf("reporter = %#v", reporter)
+			}
+		})
 	}
 }

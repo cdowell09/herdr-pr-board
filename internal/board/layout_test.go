@@ -18,7 +18,7 @@ func layoutModel(t *testing.T, width int) Model {
 	t.Helper()
 	cfg := testConfig()
 	now := time.Now()
-	model, err := NewModel(cfg, fakeLoader{})
+	model, err := NewModel(cfg, fakeLoader{}, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -270,7 +270,7 @@ func TestFooterWrapsWithinWidthAndHeight(t *testing.T) {
 func TestModelNarrowLayoutsFitStaleAndErrorLines(t *testing.T) {
 	for _, width := range []int{40, 50, 60} {
 		cfg := testConfig()
-		model, err := NewModel(cfg, fakeLoader{})
+		model, err := NewModel(cfg, fakeLoader{}, nil)
 		if err != nil {
 			t.Fatal(err)
 		}

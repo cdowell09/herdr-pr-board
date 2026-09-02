@@ -3,7 +3,6 @@ package board
 import (
 	"context"
 	"fmt"
-	"os"
 	"os/exec"
 	"runtime"
 	"sort"
@@ -22,6 +21,10 @@ import (
 const (
 	tabRowY   = 1
 	mouseStep = 3
+
+	refreshAllTimeout    = 90 * time.Second
+	refreshOneTimeout    = 60 * time.Second
+	sidebarReportTimeout = 15 * time.Second
 )
 
 // boardLayout is the row geometry shared by rendering and mouse hit-testing.
@@ -135,7 +138,8 @@ type Model struct {
 	sidebarWarn bool
 }
 
-func NewModel(cfg config.Config, loader Loader) (Model, error) {
+// NewModel builds the board. A nil reporter disables sidebar reporting.
+func NewModel(cfg config.Config, loader Loader, reporter *sidebar.Reporter) (Model, error) {
 	refresh, err := cfg.RefreshEvery()
 	if err != nil {
 		return Model{}, err
@@ -143,14 +147,6 @@ func NewModel(cfg config.Config, loader Loader) (Model, error) {
 	views := make([]ViewData, len(cfg.Views))
 	for i, view := range cfg.Views {
 		views[i].View = view
-	}
-	var reporter *sidebar.Reporter
-	if cfg.Sidebar.SidebarEnabled() {
-		ttl, _ := cfg.Sidebar.TTLEvery() // validated by config.Load
-		reporter = &sidebar.Reporter{
-			WorkspaceID: os.Getenv("HERDR_WORKSPACE_ID"),
-			TTL:         ttl,
-		}
 	}
 	return Model{cfg: cfg, loader: loader, openBrowser: openBrowserCmd, refresh: refresh, views: views, loading: true, sidebar: reporter}, nil
 }
@@ -718,14 +714,15 @@ func adaptViews(views []ViewData) []sidebar.View {
 // It returns a sidebarMsg so the model can warn once when reporting fails.
 func (m Model) sidebarReportCmd(tokens map[string]string) tea.Cmd {
 	return func() tea.Msg {
-		err := m.sidebar.Report(context.Background(), m.sidebar.WorkspaceID, tokens)
-		return sidebarMsg{err: err}
+		ctx, cancel := context.WithTimeout(context.Background(), sidebarReportTimeout)
+		defer cancel()
+		return sidebarMsg{err: m.sidebar.Report(ctx, tokens)}
 	}
 }
 
 func (m Model) refreshAllCmd() tea.Cmd {
 	return func() tea.Msg {
-		ctx, cancel := context.WithTimeout(context.Background(), 90*time.Second)
+		ctx, cancel := context.WithTimeout(context.Background(), refreshAllTimeout)
 		defer cancel()
 		return snapshotMsg(m.loader.RefreshAll(ctx))
 	}
@@ -734,7 +731,7 @@ func (m Model) refreshAllCmd() tea.Cmd {
 func (m Model) refreshOneCmd(index int) tea.Cmd {
 	view := m.views[index].View
 	return func() tea.Msg {
-		ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
+		ctx, cancel := context.WithTimeout(context.Background(), refreshOneTimeout)
 		defer cancel()
 		return viewMsg{index: index, snapshot: m.loader.RefreshOne(ctx, view)}
 	}

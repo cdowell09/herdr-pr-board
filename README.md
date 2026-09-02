@@ -289,6 +289,7 @@ The board omits `$prs_ci` when no check failed. It omits `$prs_review` when no v
 
 The tokens appear under the workspace that runs the board. Each token expires after `sidebar.ttl`.
 When you close the board, the tokens expire, and the sidebar row disappears.
+The board reports tokens only when Herdr starts it. When you run the binary directly, the board does not report.
 
 You can style each token with an inline style table, for example:
 
