@@ -346,3 +346,41 @@ func serviceTestConfig(view config.View) config.Config {
 		Views: []config.View{view},
 	}
 }
+
+func TestAppendWarningDropsEmptyAndDuplicateEntries(t *testing.T) {
+	warning := appendWarning("", "")
+	warning = appendWarning(warning, "search budget exceeded")
+	warning = appendWarning(warning, "search budget exceeded")
+	warning = appendWarning(warning, "")
+	warning = appendWarning(warning, "CI refresh failed: boom")
+	if warning != "search budget exceeded; CI refresh failed: boom" {
+		t.Fatalf("warning = %q", warning)
+	}
+}
+
+func TestRefreshOneWarnsOnCIErrorAndKeepsRows(t *testing.T) {
+	view := config.View{ID: "mine", Title: "Mine", Query: "is:open", Scope: config.ScopeGlobal}
+	cfg := serviceTestConfig(view)
+	fake := &fakeGitHub{
+		rateRemaining: []int{30, 29, 29},
+		searchResult: []gh.PullRequest{
+			{Number: 1, Title: "One", URL: "https://github.com/acme/api/pull/1", Repository: "acme/api", CI: gh.CIUnknown},
+		},
+		enrichErr: errors.New("load CI checks: boom"),
+	}
+	service := NewService(cfg, fake)
+
+	refresh := service.RefreshOne(context.Background(), view)
+	if refresh.Data.Err != nil {
+		t.Fatalf("view error = %v, want rows kept", refresh.Data.Err)
+	}
+	if len(refresh.Data.PRs) != 1 {
+		t.Fatalf("PRs = %#v", refresh.Data.PRs)
+	}
+	if !strings.Contains(refresh.Warning, "CI refresh failed: load CI checks: boom") {
+		t.Fatalf("warning = %q", refresh.Warning)
+	}
+	if fake.rateCalls != 3 {
+		t.Fatalf("rate-limit calls = %d, want 3 (budget, after search, after CI failure)", fake.rateCalls)
+	}
+}

@@ -166,26 +166,18 @@ func (m Model) Update(message tea.Msg) (tea.Model, tea.Cmd) {
 		m.clampCursor()
 		return m, nil
 	case snapshotMsg:
-		nextViews := msg.Views
 		warning := msg.Warning
-		for i := range nextViews {
-			if nextViews[i].Err == nil {
-				nextViews[i].UpdatedAt = msg.UpdatedAt
-				continue
-			}
-			warning = appendWarning(warning, nextViews[i].View.Title+": "+nextViews[i].Err.Error())
-			if i < len(m.views) {
-				nextViews[i].retainFrom(m.views[i])
-			}
+		for i := range msg.Views {
+			warning = appendWarning(warning, m.settleView(&msg.Views[i], i, msg.UpdatedAt))
 		}
-		m.views = nextViews
+		m.views = msg.Views
 		m.rates = msg.Rates
 		m.warning = warning
 		m.loading = false
 		m.clampCursor()
 		var cmd tea.Cmd
 		if m.sidebar != nil {
-			if tokens := sidebar.Tokens(m.cfg.Sidebar.ReviewView, adaptViews(nextViews)); len(tokens) > 0 {
+			if tokens := sidebar.Tokens(m.cfg.Sidebar.ReviewView, adaptViews(m.views)); len(tokens) > 0 {
 				cmd = m.sidebarReportCmd(tokens)
 			}
 		}
@@ -200,20 +192,13 @@ func (m Model) Update(message tea.Msg) (tea.Model, tea.Cmd) {
 		return m, nil
 	case viewMsg:
 		refresh := msg.snapshot
-		data := refresh.Data
+		m.warning = refresh.Warning
 		if msg.index >= 0 && msg.index < len(m.views) {
-			if data.Err == nil {
-				data.UpdatedAt = refresh.UpdatedAt
-			} else {
-				data.retainFrom(m.views[msg.index])
-			}
+			data := refresh.Data
+			m.warning = appendWarning(m.warning, m.settleView(&data, msg.index, refresh.UpdatedAt))
 			m.views[msg.index] = data
 		}
 		m.rates = refresh.Rates
-		m.warning = refresh.Warning
-		if data.Err != nil {
-			m.warning = appendWarning(m.warning, data.Err.Error())
-		}
 		m.loading = false
 		m.clampCursor()
 		return m, nil
@@ -238,6 +223,20 @@ func (m Model) Update(message tea.Msg) (tea.Model, tea.Cmd) {
 		return m.updateKey(msg)
 	}
 	return m, nil
+}
+
+// settleView finishes one refreshed view. A successful view takes the
+// refresh time. A failed view keeps the rows and freshness it had before,
+// and its error is returned for the footer.
+func (m Model) settleView(data *ViewData, index int, updatedAt time.Time) string {
+	if data.Err == nil {
+		data.UpdatedAt = updatedAt
+		return ""
+	}
+	if index < len(m.views) {
+		data.retainFrom(m.views[index])
+	}
+	return data.Err.Error()
 }
 
 func (m Model) updateFilter(key tea.KeyMsg) (tea.Model, tea.Cmd) {

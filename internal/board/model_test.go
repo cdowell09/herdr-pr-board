@@ -841,3 +841,21 @@ func TestCtrlCQuitsWhileEditingFilter(t *testing.T) {
 		t.Fatalf("message = %T, want tea.QuitMsg", msg)
 	}
 }
+
+func TestModelListsSharedRefreshErrorOnce(t *testing.T) {
+	cfg := testConfig()
+	model, err := NewModel(cfg, fakeLoader{}, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	budget := errors.New("GitHub search rate limit has 0 requests remaining but refresh requires 2; resets at 13:00")
+	failed := Snapshot{Views: []ViewData{
+		{View: cfg.Views[0], Err: budget},
+		{View: cfg.Views[1], Err: budget},
+	}}
+	updated, _ := model.Update(snapshotMsg(failed))
+	model = updated.(Model)
+	if got := strings.Count(model.warning, "refresh requires 2"); got != 1 {
+		t.Fatalf("shared error listed %d times in %q, want once", got, model.warning)
+	}
+}

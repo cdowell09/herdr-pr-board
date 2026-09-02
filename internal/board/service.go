@@ -3,6 +3,7 @@ package board
 import (
 	"context"
 	"fmt"
+	"strings"
 	"sync"
 	"time"
 
@@ -67,16 +68,11 @@ func NewService(cfg config.Config, client GitHub) *Service {
 
 func (s *Service) RefreshAll(ctx context.Context) Snapshot {
 	snapshot := Snapshot{Views: make([]ViewData, len(s.cfg.Views)), UpdatedAt: time.Now()}
-	rates, rateErr := s.client.RateLimits(ctx)
-	snapshot.Rates = rates
-	if rateErr != nil {
-		snapshot.Warning = "rate limits unavailable: " + rateErr.Error()
-	}
-	requests := s.cfg.SearchRequestCount()
-	if rateErr == nil && !rates.Search.HasCapacity(requests) {
-		err := searchCapacityError(rates.Search, requests)
+	var budgetErr error
+	snapshot.Rates, snapshot.Warning, budgetErr = s.searchBudget(ctx, s.cfg.SearchRequestCount())
+	if budgetErr != nil {
 		for i, view := range s.cfg.Views {
-			snapshot.Views[i] = ViewData{View: view, Err: err}
+			snapshot.Views[i] = ViewData{View: view, Err: budgetErr}
 		}
 		return snapshot
 	}
@@ -103,9 +99,67 @@ func (s *Service) RefreshAll(ctx context.Context) Snapshot {
 	close(jobs)
 	wg.Wait()
 
-	s.refreshRates(ctx, &snapshot.Rates, &snapshot.Warning)
+	prs := uniquePRs(snapshot.Views)
+	s.enrichCI(ctx, prs, &snapshot.Rates, &snapshot.Warning)
+	applyCI(snapshot.Views, prs)
+	return snapshot
+}
+
+func (s *Service) RefreshOne(ctx context.Context, view config.View) ViewSnapshot {
+	result := ViewSnapshot{Data: ViewData{View: view}, UpdatedAt: time.Now()}
+	var budgetErr error
+	requests := view.SearchRequestCount(len(s.cfg.GitHub.Scopes), s.cfg.GitHub.LimitPerScope)
+	result.Rates, result.Warning, budgetErr = s.searchBudget(ctx, requests)
+	if budgetErr != nil {
+		result.Data.Err = budgetErr
+		return result
+	}
+
+	result.Data = s.searchView(ctx, view)
+	s.enrichCI(ctx, result.Data.PRs, &result.Rates, &result.Warning)
+	return result
+}
+
+// searchBudget loads the current rate limits and checks that requests
+// Search calls fit. An unavailable rate limit is a warning, not a refusal:
+// the refresh proceeds and the footer says the limits are unknown.
+func (s *Service) searchBudget(ctx context.Context, requests int) (gh.RateLimits, string, error) {
+	rates, err := s.client.RateLimits(ctx)
+	if err != nil {
+		return rates, "rate limits unavailable: " + err.Error(), nil
+	}
+	if !rates.Search.HasCapacity(requests) {
+		return rates, "", searchCapacityError(rates.Search, requests)
+	}
+	return rates, "", nil
+}
+
+// enrichCI refreshes the displayed rate limits after the searches, then
+// loads CI status into prs in place. Enrichment failures become warnings so
+// the loaded rows stay visible, and the rates are refreshed again so the
+// footer reflects the GraphQL points the failed attempt consumed.
+func (s *Service) enrichCI(ctx context.Context, prs []gh.PullRequest, rates *gh.RateLimits, warning *string) {
+	s.refreshRates(ctx, rates, warning)
+	if len(prs) == 0 {
+		return
+	}
+	graphRate, warnings, err := s.client.EnrichCI(ctx, prs, rates.GraphQL)
+	if graphRate.Limit > 0 {
+		rates.GraphQL = graphRate
+	}
+	for _, next := range warnings {
+		*warning = appendWarning(*warning, next)
+	}
+	if err != nil {
+		*warning = appendWarning(*warning, "CI refresh failed: "+err.Error())
+		s.refreshRates(ctx, rates, warning)
+	}
+}
+
+// uniquePRs collects each PR once across views so CI is loaded once per PR.
+func uniquePRs(views []ViewData) []gh.PullRequest {
 	unique := make(map[string]gh.PullRequest)
-	for _, view := range snapshot.Views {
+	for _, view := range views {
 		for _, pr := range view.PRs {
 			unique[pr.URL] = pr
 		}
@@ -114,64 +168,22 @@ func (s *Service) RefreshAll(ctx context.Context) Snapshot {
 	for _, pr := range unique {
 		prs = append(prs, pr)
 	}
-	if len(prs) > 0 {
-		graphRate, warnings, err := s.client.EnrichCI(ctx, prs, snapshot.Rates.GraphQL)
-		if graphRate.Limit > 0 {
-			snapshot.Rates.GraphQL = graphRate
-		}
-		for _, warning := range warnings {
-			snapshot.Warning = appendWarning(snapshot.Warning, warning)
-		}
-		if err != nil {
-			snapshot.Warning = appendWarning(snapshot.Warning, err.Error())
-			s.refreshRates(ctx, &snapshot.Rates, &snapshot.Warning)
-		}
-	}
+	return prs
+}
 
+// applyCI copies enriched CI states back into every view that lists the PR.
+func applyCI(views []ViewData, prs []gh.PullRequest) {
 	ciByURL := make(map[string]gh.CIState, len(prs))
 	for _, pr := range prs {
 		ciByURL[pr.URL] = pr.CI
 	}
-	for i := range snapshot.Views {
-		for j := range snapshot.Views[i].PRs {
-			if state, ok := ciByURL[snapshot.Views[i].PRs[j].URL]; ok {
-				snapshot.Views[i].PRs[j].CI = state
+	for i := range views {
+		for j := range views[i].PRs {
+			if state, ok := ciByURL[views[i].PRs[j].URL]; ok {
+				views[i].PRs[j].CI = state
 			}
 		}
 	}
-	return snapshot
-}
-
-func (s *Service) RefreshOne(ctx context.Context, view config.View) ViewSnapshot {
-	result := ViewSnapshot{Data: ViewData{View: view}, UpdatedAt: time.Now()}
-	rates, rateErr := s.client.RateLimits(ctx)
-	result.Rates = rates
-	if rateErr != nil {
-		result.Warning = "rate limits unavailable: " + rateErr.Error()
-	}
-	requests := view.SearchRequestCount(len(s.cfg.GitHub.Scopes), s.cfg.GitHub.LimitPerScope)
-	if rateErr == nil && !rates.Search.HasCapacity(requests) {
-		result.Data.Err = searchCapacityError(rates.Search, requests)
-		return result
-	}
-
-	result.Data = s.searchView(ctx, view)
-	s.refreshRates(ctx, &result.Rates, &result.Warning)
-	if result.Data.Err != nil || len(result.Data.PRs) == 0 {
-		return result
-	}
-	graphRate, warnings, err := s.client.EnrichCI(ctx, result.Data.PRs, result.Rates.GraphQL)
-	if graphRate.Limit > 0 {
-		result.Rates.GraphQL = graphRate
-	}
-	for _, warning := range warnings {
-		result.Warning = appendWarning(result.Warning, warning)
-	}
-	if err != nil {
-		result.Warning = appendWarning(result.Warning, "PRs loaded; CI unavailable: "+err.Error())
-		s.refreshRates(ctx, &result.Rates, &result.Warning)
-	}
-	return result
 }
 
 func (s *Service) searchView(ctx context.Context, view config.View) ViewData {
@@ -197,9 +209,17 @@ func searchCapacityError(rate gh.RateResource, requests int) error {
 	)
 }
 
+// appendWarning joins footer warnings. It drops an empty or already listed
+// warning, so one error shared by every view appears once.
 func appendWarning(current, next string) string {
+	if next == "" {
+		return current
+	}
 	if current == "" {
 		return next
+	}
+	if strings.Contains(current, next) {
+		return current
 	}
 	return current + "; " + next
 }
