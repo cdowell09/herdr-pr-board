@@ -18,14 +18,20 @@ import (
 // Runner executes gh. See cli.Runner for the stdout and error contract.
 type Runner = cli.Runner
 
+// TokenVars lists the environment variables gh reads before its stored
+// keyring login, in the order gh checks them. A value in either variable
+// overrides a valid keyring login.
+var TokenVars = []string{"GH_TOKEN", "GITHUB_TOKEN"}
+
 type ciCacheEntry struct {
 	state     CIState
 	expiresAt time.Time
 }
 
 type Client struct {
-	runner Runner
-	cfg    config.GitHubConfig
+	runner     Runner
+	baseRunner Runner
+	cfg        config.GitHubConfig
 
 	loginMu sync.Mutex
 	login   string
@@ -46,12 +52,52 @@ func NewClient(runner Runner, cfg config.GitHubConfig) *Client {
 		capacity = 1
 	}
 	return &Client{
-		runner:    runner,
-		cfg:       cfg,
-		ciCache:   make(map[string]ciCacheEntry),
-		ciTTL:     2 * time.Minute,
-		searchSem: make(chan struct{}, capacity),
+		runner:     runner,
+		baseRunner: runner,
+		cfg:        cfg,
+		ciCache:    make(map[string]ciCacheEntry),
+		ciTTL:      2 * time.Minute,
+		searchSem:  make(chan struct{}, capacity),
 	}
+}
+
+// SetTokenVars records which of the variables in TokenVars are set in the
+// process environment. The github package does not read the environment
+// itself; the caller checks TokenVars with os.Getenv and passes the names
+// that are set. When a recorded variable is set and a gh command fails with
+// an authentication error, the client appends a hint naming the variable to
+// the returned error.
+func (c *Client) SetTokenVars(set []string) {
+	c.runner = withAuthHint(c.baseRunner, append([]string(nil), set...))
+}
+
+// withAuthHint wraps runner so an authentication failure names the
+// overriding environment variable. It passes stdout through unchanged and
+// only appends to the error.
+func withAuthHint(runner Runner, tokenVars []string) Runner {
+	return func(ctx context.Context, args ...string) ([]byte, error) {
+		output, err := runner(ctx, args...)
+		if err != nil && len(tokenVars) > 0 && isAuthError(err) {
+			err = fmt.Errorf("%w; %s", err, tokenHintSentence(tokenVars))
+		}
+		return output, err
+	}
+}
+
+// isAuthError reports whether err looks like a gh authentication failure.
+func isAuthError(err error) bool {
+	lower := strings.ToLower(err.Error())
+	return strings.Contains(lower, "bad credentials") || strings.Contains(lower, "http 401")
+}
+
+// tokenHintSentence names the environment variables that override the gh
+// keyring login, with grammar adjusted for one name versus more than one.
+func tokenHintSentence(tokenVars []string) string {
+	if len(tokenVars) == 1 {
+		return fmt.Sprintf("%s is set and overrides the gh keyring login; unset it or replace it with a valid token", tokenVars[0])
+	}
+	names := strings.Join(tokenVars, " and ")
+	return fmt.Sprintf("%s are set and override the gh keyring login; unset them or replace them with valid tokens", names)
 }
 
 type searchRow struct {

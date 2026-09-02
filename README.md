@@ -47,7 +47,7 @@ Authenticate GitHub CLI before you use the plugin:
 gh auth login
 ```
 
-The plugin does not store a GitHub token. GitHub CLI supplies the authentication.
+The plugin does not store a GitHub token. GitHub CLI supplies the authentication. GitHub CLI reads `GH_TOKEN` and `GITHUB_TOKEN` before its stored login.
 
 ## Install from GitHub
 
