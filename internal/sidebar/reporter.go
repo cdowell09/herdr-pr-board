@@ -4,14 +4,13 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"os/exec"
 	"sort"
 	"strconv"
 	"strings"
 	"time"
 
+	"github.com/cdowell09/herdr-pr-board/internal/cli"
 	"github.com/cdowell09/herdr-pr-board/internal/config"
-	gh "github.com/cdowell09/herdr-pr-board/internal/github"
 )
 
 // DefaultBinary is the herdr CLI used when Reporter.Binary is empty.
@@ -21,7 +20,7 @@ const DefaultBinary = "herdr"
 // `herdr` CLI. It never touches GitHub, so reporting costs no API budget.
 type Reporter struct {
 	// Runner executes the herdr CLI. It defaults to running Binary.
-	Runner gh.Runner
+	Runner cli.Runner
 	// Binary is the herdr CLI path. Empty means DefaultBinary on PATH.
 	Binary string
 	// WorkspaceID is the Herdr workspace that owns this board process.
@@ -43,28 +42,15 @@ func NewReporter(cfg config.SidebarConfig, workspaceID, binary string) *Reporter
 	return &Reporter{Binary: binary, WorkspaceID: workspaceID, TTL: ttl}
 }
 
-func (r Reporter) run(ctx context.Context, args ...string) ([]byte, error) {
+func (r Reporter) runner() cli.Runner {
+	if r.Runner != nil {
+		return r.Runner
+	}
 	bin := r.Binary
 	if bin == "" {
 		bin = DefaultBinary
 	}
-	cmd := exec.CommandContext(ctx, bin, args...)
-	output, err := cmd.CombinedOutput()
-	if err != nil {
-		message := strings.TrimSpace(string(output))
-		if message == "" {
-			message = err.Error()
-		}
-		return nil, errors.New(message)
-	}
-	return output, nil
-}
-
-func (r Reporter) runner() gh.Runner {
-	if r.Runner != nil {
-		return r.Runner
-	}
-	return r.run
+	return cli.Command(bin)
 }
 
 // Report writes the tokens to the reporter's workspace metadata.

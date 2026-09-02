@@ -12,6 +12,7 @@ Read [`README.md`](README.md) for user behavior and configuration. Read [`herdr-
 - `cmd/ci-platform-matrix/`: convert manifest platforms into CI cross-compilation targets.
 - `scripts/validate_release.py`: release tag and plugin manifest validation.
 - `internal/config/`: TOML defaults, parsing, validation, scope modes, and Search request counts.
+- `internal/cli/`: subprocess execution shared by the `gh` and `herdr` runners.
 - `internal/github/`: `gh` execution, query tokenization, Search results, GraphQL CI enrichment, caching, and rate-limit decoding.
 - `internal/board/`: refresh orchestration, API budgeting, Bubble Tea state, rendering, keyboard input, and mouse input.
 - `internal/sidebar/`: Herdr sidebar token computation and `herdr` CLI metadata reporting.

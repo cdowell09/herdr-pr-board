@@ -1,44 +1,22 @@
 package github
 
 import (
-	"bytes"
 	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
-	"os/exec"
 	"sort"
 	"strconv"
 	"strings"
 	"sync"
 	"time"
 
+	"github.com/cdowell09/herdr-pr-board/internal/cli"
 	"github.com/cdowell09/herdr-pr-board/internal/config"
 )
 
-// Runner executes gh with the given arguments and returns its stdout.
-// On failure it returns the error together with any stdout the command
-// produced, because gh prints a GraphQL response body even when it exits
-// non-zero for a response that carries errors.
-type Runner func(context.Context, ...string) ([]byte, error)
-
-func run(ctx context.Context, args ...string) ([]byte, error) {
-	cmd := exec.CommandContext(ctx, "gh", args...)
-	var stdout, stderr bytes.Buffer
-	cmd.Stdout = &stdout
-	cmd.Stderr = &stderr
-	if err := cmd.Run(); err != nil {
-		message := strings.TrimSpace(stderr.String())
-		if message == "" {
-			message = strings.TrimSpace(stdout.String())
-		}
-		if message == "" {
-			message = err.Error()
-		}
-		return stdout.Bytes(), errors.New(message)
-	}
-	return stdout.Bytes(), nil
-}
+// Runner executes gh. See cli.Runner for the stdout and error contract.
+type Runner = cli.Runner
 
 type ciCacheEntry struct {
 	state     CIState
@@ -61,7 +39,7 @@ type Client struct {
 
 func NewClient(runner Runner, cfg config.GitHubConfig) *Client {
 	if runner == nil {
-		runner = run
+		runner = cli.Command("gh")
 	}
 	capacity := cfg.MaxConcurrency
 	if capacity < 1 {
