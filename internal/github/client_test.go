@@ -514,3 +514,31 @@ func TestSearchViewStopsRemainingSearchesOnError(t *testing.T) {
 		t.Fatal("in-flight scope search kept running after another scope failed")
 	}
 }
+
+func TestResolveScopeRetriesLoginAfterFailure(t *testing.T) {
+	var loginCalls atomic.Int64
+	runner := Runner(func(_ context.Context, args ...string) ([]byte, error) {
+		if len(args) >= 2 && args[0] == "api" && args[1] == "user" {
+			if loginCalls.Add(1) == 1 {
+				return nil, errors.New("context deadline exceeded")
+			}
+			return []byte("cdowell09\n"), nil
+		}
+		return []byte(`[]`), nil
+	})
+	client := NewClient(runner, config.GitHubConfig{LimitPerScope: 10, MaxConcurrency: 1, Scopes: []string{"user:@me"}})
+	view := config.View{ID: "all", Title: "All", Query: "is:open", Scope: config.ScopeConfigured}
+
+	if _, err := client.SearchView(context.Background(), view); err == nil || !strings.Contains(err.Error(), "resolve @me") {
+		t.Fatalf("first search error = %v, want resolve @me failure", err)
+	}
+	if _, err := client.SearchView(context.Background(), view); err != nil {
+		t.Fatalf("second search must retry the login lookup: %v", err)
+	}
+	if _, err := client.SearchView(context.Background(), view); err != nil {
+		t.Fatal(err)
+	}
+	if got := loginCalls.Load(); got != 2 {
+		t.Fatalf("login lookups = %d, want 2 (one failure, one cached success)", got)
+	}
+}

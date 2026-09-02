@@ -39,9 +39,8 @@ type Client struct {
 	runner Runner
 	cfg    config.GitHubConfig
 
-	loginOnce sync.Once
-	login     string
-	loginErr  error
+	loginMu sync.Mutex
+	login   string
 
 	ciMu    sync.Mutex
 	ciCache map[string]ciCacheEntry
@@ -199,21 +198,32 @@ func (c *Client) resolveScope(ctx context.Context, scope string) (string, error)
 	if !strings.Contains(scope, "@me") {
 		return scope, nil
 	}
-	c.loginOnce.Do(func() {
-		output, err := c.runner(ctx, "api", "user", "--jq", ".login")
-		if err != nil {
-			c.loginErr = fmt.Errorf("resolve @me: %w", err)
-			return
-		}
-		c.login = strings.TrimSpace(string(output))
-		if c.login == "" {
-			c.loginErr = errors.New("resolve @me: gh returned an empty login")
-		}
-	})
-	if c.loginErr != nil {
-		return "", c.loginErr
+	login, err := c.currentLogin(ctx)
+	if err != nil {
+		return "", err
 	}
-	return strings.ReplaceAll(scope, "@me", c.login), nil
+	return strings.ReplaceAll(scope, "@me", login), nil
+}
+
+// currentLogin returns the authenticated user's login. It caches the value
+// only after a successful lookup, so a transient failure such as a context
+// timeout is retried on the next refresh instead of poisoning the session.
+func (c *Client) currentLogin(ctx context.Context) (string, error) {
+	c.loginMu.Lock()
+	defer c.loginMu.Unlock()
+	if c.login != "" {
+		return c.login, nil
+	}
+	output, err := c.runner(ctx, "api", "user", "--jq", ".login")
+	if err != nil {
+		return "", fmt.Errorf("resolve @me: %w", err)
+	}
+	login := strings.TrimSpace(string(output))
+	if login == "" {
+		return "", errors.New("resolve @me: gh returned an empty login")
+	}
+	c.login = login
+	return login, nil
 }
 
 func (c *Client) EnrichCI(ctx context.Context, prs []PullRequest, budget RateResource) (RateResource, []string, error) {
