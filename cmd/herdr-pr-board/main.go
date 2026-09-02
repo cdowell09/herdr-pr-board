@@ -53,6 +53,7 @@ func run(args []string, stdout, stderr io.Writer) int {
 	}
 
 	client := gh.NewClient(nil, cfg.GitHub)
+	client.SetTokenVars(setTokenVars(gh.TokenVars, os.Getenv))
 	service := board.NewService(cfg, client)
 	reporter := sidebar.NewReporter(cfg.Sidebar, os.Getenv("HERDR_WORKSPACE_ID"), os.Getenv("HERDR_BIN_PATH"))
 	model, err := board.NewModel(cfg, service, reporter)
@@ -72,6 +73,18 @@ func fail(stderr io.Writer, err error) int {
 
 func defaultConfigPath() (string, error) {
 	return resolveDefaultConfigPath(os.Getenv("HERDR_PLUGIN_CONFIG_DIR"), os.UserConfigDir)
+}
+
+// setTokenVars returns the names in names whose process environment value,
+// read through getenv, is non-empty.
+func setTokenVars(names []string, getenv func(string) string) []string {
+	var set []string
+	for _, name := range names {
+		if getenv(name) != "" {
+			set = append(set, name)
+		}
+	}
+	return set
 }
 
 func resolveDefaultConfigPath(pluginConfigDir string, userConfigDir func() (string, error)) (string, error) {

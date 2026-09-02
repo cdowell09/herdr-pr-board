@@ -38,6 +38,25 @@ func TestDefaultConfigPathUsesHerdrPluginConfigDirectory(t *testing.T) {
 	}
 }
 
+func TestSetTokenVarsReturnsOnlyNamesWithValues(t *testing.T) {
+	values := map[string]string{"GH_TOKEN": "", "GITHUB_TOKEN": "ghp_example"}
+	getenv := func(name string) string {
+		return values[name]
+	}
+	got := setTokenVars([]string{"GH_TOKEN", "GITHUB_TOKEN"}, getenv)
+	want := []string{"GITHUB_TOKEN"}
+	if len(got) != len(want) || got[0] != want[0] {
+		t.Fatalf("setTokenVars() = %#v, want %#v", got, want)
+	}
+}
+
+func TestSetTokenVarsReturnsNoneWhenAllUnset(t *testing.T) {
+	got := setTokenVars([]string{"GH_TOKEN", "GITHUB_TOKEN"}, func(string) string { return "" })
+	if len(got) != 0 {
+		t.Fatalf("setTokenVars() = %#v, want empty", got)
+	}
+}
+
 func writeConfig(t *testing.T, content string) string {
 	t.Helper()
 	path := filepath.Join(t.TempDir(), "config.toml")

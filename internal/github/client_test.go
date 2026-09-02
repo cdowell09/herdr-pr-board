@@ -343,6 +343,73 @@ func TestRateResourceHasCapacity(t *testing.T) {
 	}
 }
 
+func TestRateLimitsAuthErrorGetsTokenVarHint(t *testing.T) {
+	runner := Runner(func(_ context.Context, _ ...string) ([]byte, error) {
+		return nil, errors.New("HTTP 401: Bad credentials")
+	})
+	client := NewClient(runner, config.GitHubConfig{})
+	client.SetTokenVars([]string{"GITHUB_TOKEN"})
+
+	_, err := client.RateLimits(context.Background())
+	if err == nil || !strings.Contains(err.Error(), "HTTP 401: Bad credentials") || !strings.Contains(err.Error(), "GITHUB_TOKEN") {
+		t.Fatalf("error = %v, want the original text and a GITHUB_TOKEN hint", err)
+	}
+}
+
+func TestRateLimitsAuthErrorWithoutTokenVarsHasNoHint(t *testing.T) {
+	runner := Runner(func(_ context.Context, _ ...string) ([]byte, error) {
+		return nil, errors.New("HTTP 401: Bad credentials")
+	})
+	client := NewClient(runner, config.GitHubConfig{})
+
+	_, err := client.RateLimits(context.Background())
+	if err == nil || err.Error() != "HTTP 401: Bad credentials" {
+		t.Fatalf("error = %v, want the original text with no hint", err)
+	}
+}
+
+func TestRateLimitsAuthErrorWithEmptyTokenVarsHasNoHint(t *testing.T) {
+	runner := Runner(func(_ context.Context, _ ...string) ([]byte, error) {
+		return nil, errors.New("HTTP 401: Bad credentials")
+	})
+	client := NewClient(runner, config.GitHubConfig{})
+	client.SetTokenVars(nil)
+
+	_, err := client.RateLimits(context.Background())
+	if err == nil || err.Error() != "HTTP 401: Bad credentials" {
+		t.Fatalf("error = %v, want the original text with no hint", err)
+	}
+}
+
+func TestRateLimitsNonAuthErrorHasNoHint(t *testing.T) {
+	runner := Runner(func(_ context.Context, _ ...string) ([]byte, error) {
+		return nil, errors.New("HTTP 502 bad gateway")
+	})
+	client := NewClient(runner, config.GitHubConfig{})
+	client.SetTokenVars([]string{"GH_TOKEN", "GITHUB_TOKEN"})
+
+	_, err := client.RateLimits(context.Background())
+	if err == nil || err.Error() != "HTTP 502 bad gateway" {
+		t.Fatalf("error = %v, want the original text with no hint", err)
+	}
+}
+
+func TestSearchViewAuthErrorGetsTokenVarHint(t *testing.T) {
+	runner := Runner(func(_ context.Context, _ ...string) ([]byte, error) {
+		return nil, errors.New("HTTP 401: Bad credentials")
+	})
+	client := NewClient(runner, config.GitHubConfig{LimitPerScope: 10})
+	client.SetTokenVars([]string{"GH_TOKEN", "GITHUB_TOKEN"})
+
+	_, err := client.SearchView(context.Background(), config.View{Title: "All", Query: "is:open"})
+	if err == nil || !strings.Contains(err.Error(), "HTTP 401: Bad credentials") {
+		t.Fatalf("error = %v, want the original text", err)
+	}
+	if !strings.Contains(err.Error(), "GH_TOKEN") || !strings.Contains(err.Error(), "GITHUB_TOKEN") {
+		t.Fatalf("error = %v, want both token variable names in the hint", err)
+	}
+}
+
 func TestRateLimits(t *testing.T) {
 	runner := Runner(func(_ context.Context, _ ...string) ([]byte, error) {
 		return []byte(`{"resources":{"search":{"limit":30,"remaining":27,"reset":1786107600},"graphql":{"limit":5000,"remaining":4800,"reset":1786111200}}}`), nil
