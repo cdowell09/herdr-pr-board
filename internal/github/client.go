@@ -242,6 +242,11 @@ func (c *Client) EnrichCI(ctx context.Context, prs []PullRequest, budget RateRes
 			prs[index].CI = batch[i].CI
 		}
 		c.ciMu.Lock()
+		for url, entry := range c.ciCache {
+			if !now.Before(entry.expiresAt) {
+				delete(c.ciCache, url)
+			}
+		}
 		for _, pr := range batch {
 			if pr.CI != CIUnknown {
 				c.ciCache[pr.URL] = ciCacheEntry{state: pr.CI, expiresAt: now.Add(c.ciTTL)}
@@ -251,11 +256,12 @@ func (c *Client) EnrichCI(ctx context.Context, prs []PullRequest, budget RateRes
 	}
 	for start := 0; start < len(pending); start += batchSize {
 		remainingBatches := (len(pending) - start + batchSize - 1) / batchSize
-		if !latest.HasCapacity(remainingBatches) {
+		required := remainingBatches * latest.CostPerQuery()
+		if !latest.HasCapacity(required) {
 			return latest, warnings, fmt.Errorf(
 				"GraphQL rate limit has %d points remaining but CI refresh needs at least %d; CI status is stale",
 				latest.Remaining,
-				remainingBatches,
+				required,
 			)
 		}
 		end := min(start+batchSize, len(pending))
@@ -364,11 +370,12 @@ func decodeGraphQLRate(raw json.RawMessage) RateResource {
 		Limit     int       `json:"limit"`
 		Remaining int       `json:"remaining"`
 		ResetAt   time.Time `json:"resetAt"`
+		Cost      int       `json:"cost"`
 	}
 	if len(raw) == 0 || json.Unmarshal(raw, &value) != nil {
 		return RateResource{}
 	}
-	return RateResource{Limit: value.Limit, Remaining: value.Remaining, Reset: value.ResetAt}
+	return RateResource{Limit: value.Limit, Remaining: value.Remaining, Reset: value.ResetAt, Cost: value.Cost}
 }
 
 func (c *Client) RateLimits(ctx context.Context) (RateLimits, error) {

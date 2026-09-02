@@ -579,3 +579,55 @@ func TestEnrichCIKeepsDataWhenGhExitsNonZeroWithoutErrorsField(t *testing.T) {
 		t.Fatalf("warnings = %#v", warnings)
 	}
 }
+
+func TestEnrichCISizesCapacityCheckWithReportedCost(t *testing.T) {
+	calls := 0
+	runner := Runner(func(_ context.Context, _ ...string) ([]byte, error) {
+		calls++
+		return []byte(`{"data":{"rateLimit":{"limit":5000,"remaining":7,"resetAt":"2027-08-07T13:00:00Z","cost":5},"p0":{"pullRequest":{"commits":{"nodes":[{"commit":{"statusCheckRollup":{"state":"SUCCESS"}}}]}}}}}`), nil
+	})
+	client := NewClient(runner, config.GitHubConfig{CIBatchSize: 1})
+	prs := []PullRequest{
+		{Repository: "acme/one", Number: 1, URL: "https://github.com/acme/one/pull/1", CI: CIUnknown},
+		{Repository: "acme/two", Number: 2, URL: "https://github.com/acme/two/pull/2", CI: CIUnknown},
+		{Repository: "acme/three", Number: 3, URL: "https://github.com/acme/three/pull/3", CI: CIUnknown},
+	}
+	budget := RateResource{Limit: 5000, Remaining: 100, Reset: time.Now().Add(time.Hour)}
+
+	rate, _, err := client.EnrichCI(context.Background(), prs, budget)
+	if err == nil || !strings.Contains(err.Error(), "needs at least 10") {
+		t.Fatalf("error = %v, want two remaining batches at cost 5", err)
+	}
+	if calls != 1 {
+		t.Fatalf("GraphQL calls = %d, want 1 before the cost-sized check fails", calls)
+	}
+	if rate.Cost != 5 || rate.Remaining != 7 {
+		t.Fatalf("rate = %#v", rate)
+	}
+	if prs[0].CI != CISuccess || prs[1].CI != CIUnknown || prs[2].CI != CIUnknown {
+		t.Fatalf("CI states = %q, %q, %q", prs[0].CI, prs[1].CI, prs[2].CI)
+	}
+}
+
+func TestEnrichCIPrunesExpiredCacheEntries(t *testing.T) {
+	runner := Runner(func(_ context.Context, _ ...string) ([]byte, error) {
+		return []byte(`{"data":{"rateLimit":{"limit":5000,"remaining":4999,"resetAt":"2027-08-07T13:00:00Z","cost":1},"p0":{"pullRequest":{"commits":{"nodes":[{"commit":{"statusCheckRollup":{"state":"SUCCESS"}}}]}}}}}`), nil
+	})
+	client := NewClient(runner, config.GitHubConfig{CIBatchSize: 25})
+	client.ciCache["https://github.com/acme/old/pull/1"] = ciCacheEntry{state: CIFailure, expiresAt: time.Now().Add(-time.Minute)}
+	client.ciCache["https://github.com/acme/live/pull/2"] = ciCacheEntry{state: CIPending, expiresAt: time.Now().Add(time.Hour)}
+	prs := []PullRequest{{Repository: "acme/one", Number: 1, URL: "https://github.com/acme/one/pull/1", CI: CIUnknown}}
+
+	if _, _, err := client.EnrichCI(context.Background(), prs, RateResource{}); err != nil {
+		t.Fatal(err)
+	}
+	if _, kept := client.ciCache["https://github.com/acme/old/pull/1"]; kept {
+		t.Fatal("expired cache entry was not pruned")
+	}
+	if _, kept := client.ciCache["https://github.com/acme/live/pull/2"]; !kept {
+		t.Fatal("live cache entry was pruned")
+	}
+	if _, kept := client.ciCache["https://github.com/acme/one/pull/1"]; !kept {
+		t.Fatal("fresh result was not cached")
+	}
+}

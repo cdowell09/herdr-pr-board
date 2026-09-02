@@ -55,7 +55,7 @@ Write all technical documentation in ASD-STE100 Simplified Technical English (ST
 - Build `gh search prs` arguments with options first, then `--`, then tokenized query terms. This keeps negative qualifiers such as `-is:draft` from becoming CLI flags.
 - Budget Search requests across views, configured scopes, and pagination. GitHub Search pages contain at most 100 results.
 - Keep rate-limit state current after full and active-view refreshes.
-- Bind GraphQL capacity checks to the actual uncached CI batches inside `EnrichCI`. Recheck capacity between batches and propagate updated rates after failures.
+- Bind GraphQL capacity checks to the actual uncached CI batches inside `EnrichCI`. Size each check with the `cost` GitHub reported for the last batch. Recheck capacity between batches and propagate updated rates after failures.
 - Keep CI cache access synchronized. Run the race test after concurrency or cache changes.
 
 ### Configuration
