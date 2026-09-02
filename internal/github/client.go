@@ -1,6 +1,7 @@
 package github
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"errors"
@@ -15,19 +16,28 @@ import (
 	"github.com/cdowell09/herdr-pr-board/internal/config"
 )
 
+// Runner executes gh with the given arguments and returns its stdout.
+// On failure it returns the error together with any stdout the command
+// produced, because gh prints a GraphQL response body even when it exits
+// non-zero for a response that carries errors.
 type Runner func(context.Context, ...string) ([]byte, error)
 
 func run(ctx context.Context, args ...string) ([]byte, error) {
 	cmd := exec.CommandContext(ctx, "gh", args...)
-	output, err := cmd.CombinedOutput()
-	if err != nil {
-		message := strings.TrimSpace(string(output))
+	var stdout, stderr bytes.Buffer
+	cmd.Stdout = &stdout
+	cmd.Stderr = &stderr
+	if err := cmd.Run(); err != nil {
+		message := strings.TrimSpace(stderr.String())
+		if message == "" {
+			message = strings.TrimSpace(stdout.String())
+		}
 		if message == "" {
 			message = err.Error()
 		}
-		return nil, errors.New(message)
+		return stdout.Bytes(), errors.New(message)
 	}
-	return output, nil
+	return stdout.Bytes(), nil
 }
 
 type ciCacheEntry struct {
@@ -295,27 +305,28 @@ func (c *Client) enrichBatch(ctx context.Context, prs []PullRequest) (RateResour
 	}
 	query.WriteString("}")
 
-	output, err := c.runner(ctx, "api", "graphql", "-f", "query="+query.String())
-	if err != nil {
-		return RateResource{}, nil, fmt.Errorf("load CI checks: %w", err)
+	output, runErr := c.runner(ctx, "api", "graphql", "-f", "query="+query.String())
+	var response graphQLResponse
+	decodeErr := json.Unmarshal(output, &response)
+	if runErr != nil && (decodeErr != nil || len(response.Data) == 0) {
+		// gh exits non-zero when the response carries errors but still prints
+		// the body. Without usable data the exit error is all there is.
+		return RateResource{}, nil, fmt.Errorf("load CI checks: %w", runErr)
 	}
-	var response struct {
-		Data   map[string]json.RawMessage `json:"data"`
-		Errors []struct {
-			Message string `json:"message"`
-		} `json:"errors"`
-	}
-	if err := json.Unmarshal(output, &response); err != nil {
-		return RateResource{}, nil, fmt.Errorf("decode CI response: %w", err)
+	if decodeErr != nil {
+		return RateResource{}, nil, fmt.Errorf("decode CI response: %w", decodeErr)
 	}
 	var warnings []string
-	if len(response.Errors) > 0 {
+	switch {
+	case len(response.Errors) > 0:
 		if len(response.Data) == 0 {
 			return RateResource{}, nil, fmt.Errorf("load CI checks: %s", response.Errors[0].Message)
 		}
 		for _, graphErr := range response.Errors {
 			warnings = append(warnings, "load CI checks: "+graphErr.Message)
 		}
+	case runErr != nil:
+		warnings = append(warnings, "load CI checks: "+runErr.Error())
 	}
 
 	rate := decodeGraphQLRate(response.Data["rateLimit"])
@@ -328,6 +339,15 @@ func (c *Client) enrichBatch(ctx context.Context, prs []PullRequest) (RateResour
 		prs[i].CI = decodeCI(raw)
 	}
 	return rate, warnings, nil
+}
+
+// graphQLResponse is the envelope gh api graphql prints. A response can carry
+// both data and errors when some aliased repositories resolve and others do not.
+type graphQLResponse struct {
+	Data   map[string]json.RawMessage `json:"data"`
+	Errors []struct {
+		Message string `json:"message"`
+	} `json:"errors"`
 }
 
 func decodeCI(raw json.RawMessage) CIState {

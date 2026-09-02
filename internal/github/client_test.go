@@ -180,8 +180,10 @@ func TestEnrichCIPreservesCompletedBatchesOnFailure(t *testing.T) {
 }
 
 func TestEnrichCISurfacesWarningsWhenResponseHasDataAndErrors(t *testing.T) {
+	// gh api graphql exits non-zero when the response carries errors, but it
+	// still prints the body. The runner returns both.
 	runner := Runner(func(_ context.Context, _ ...string) ([]byte, error) {
-		return []byte(`{"data":{"rateLimit":{"limit":5000,"remaining":4999,"resetAt":"2026-08-07T13:00:00Z","cost":1},"p0":{"pullRequest":{"commits":{"nodes":[{"commit":{"statusCheckRollup":{"state":"SUCCESS"}}}]}}}},"errors":[{"message":"p1 resolves to a deleted repository"}]}`), nil
+		return []byte(`{"data":{"rateLimit":{"limit":5000,"remaining":4999,"resetAt":"2026-08-07T13:00:00Z","cost":1},"p0":{"pullRequest":{"commits":{"nodes":[{"commit":{"statusCheckRollup":{"state":"SUCCESS"}}}]}}}},"errors":[{"message":"p1 resolves to a deleted repository"}]}`), errors.New("gh: p1 resolves to a deleted repository")
 	})
 	client := NewClient(runner, config.GitHubConfig{CIBatchSize: 2})
 	prs := []PullRequest{
@@ -540,5 +542,40 @@ func TestResolveScopeRetriesLoginAfterFailure(t *testing.T) {
 	}
 	if got := loginCalls.Load(); got != 2 {
 		t.Fatalf("login lookups = %d, want 2 (one failure, one cached success)", got)
+	}
+}
+
+func TestEnrichCIReportsExitErrorWithoutUsableBody(t *testing.T) {
+	runner := Runner(func(_ context.Context, _ ...string) ([]byte, error) {
+		return []byte("gh: HTTP 502 bad gateway\n"), errors.New("gh: HTTP 502 bad gateway")
+	})
+	client := NewClient(runner, config.GitHubConfig{CIBatchSize: 2})
+	prs := []PullRequest{{Repository: "acme/one", Number: 1, URL: "https://github.com/acme/one/pull/1", CI: CIUnknown}}
+
+	_, _, err := client.EnrichCI(context.Background(), prs, RateResource{})
+	if err == nil || !strings.Contains(err.Error(), "HTTP 502") {
+		t.Fatalf("error = %v, want the gh exit error", err)
+	}
+	if prs[0].CI != CIUnknown {
+		t.Fatalf("CI = %q, want unknown", prs[0].CI)
+	}
+}
+
+func TestEnrichCIKeepsDataWhenGhExitsNonZeroWithoutErrorsField(t *testing.T) {
+	runner := Runner(func(_ context.Context, _ ...string) ([]byte, error) {
+		return []byte(`{"data":{"rateLimit":{"limit":5000,"remaining":4998,"resetAt":"2026-08-07T13:00:00Z","cost":1},"p0":{"pullRequest":{"commits":{"nodes":[{"commit":{"statusCheckRollup":{"state":"FAILURE"}}}]}}}}}`), errors.New("gh: exit status 1")
+	})
+	client := NewClient(runner, config.GitHubConfig{CIBatchSize: 2})
+	prs := []PullRequest{{Repository: "acme/one", Number: 1, URL: "https://github.com/acme/one/pull/1"}}
+
+	rate, warnings, err := client.EnrichCI(context.Background(), prs, RateResource{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if prs[0].CI != CIFailure || rate.Remaining != 4998 {
+		t.Fatalf("CI = %q, rate = %#v", prs[0].CI, rate)
+	}
+	if len(warnings) != 1 || !strings.Contains(warnings[0], "exit status 1") {
+		t.Fatalf("warnings = %#v", warnings)
 	}
 }
