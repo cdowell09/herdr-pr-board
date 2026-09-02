@@ -39,7 +39,7 @@ func dumpModel(t *testing.T, width, height int) Model {
 	cfg := testConfig()
 	cfg.Views = append(cfg.Views, config.View{ID: "all", Title: "All open", Query: "is:open", Scope: "configured"})
 	now := time.Now()
-	model, err := NewModel(cfg, fakeLoader{})
+	model, err := NewModel(cfg, fakeLoader{}, nil)
 	if err != nil {
 		t.Fatal(err)
 	}

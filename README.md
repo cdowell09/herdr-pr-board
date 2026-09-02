@@ -289,6 +289,7 @@ The board omits `$prs_ci` when no check failed. It omits `$prs_review` when no v
 
 The tokens appear under the workspace that runs the board. Each token expires after `sidebar.ttl`.
 When you close the board, the tokens expire, and the sidebar row disappears.
+The board reports tokens only when Herdr starts it. When you run the binary directly, the board does not report.
 
 You can style each token with an inline style table, for example:
 
@@ -353,7 +354,7 @@ GitHub permits 30 authenticated Search API requests each minute. GitHub returns 
 
 The plugin runs view and scope searches at the same time. `github.max_concurrency` limits the number of Search API requests that run at the same time. The plugin removes duplicate PRs before it requests CI data.
 
-The plugin gets CI data with batched GraphQL queries. GitHub gives an authenticated user 5,000 GraphQL points each hour.
+The plugin gets CI data with batched GraphQL queries. GitHub gives an authenticated user 5,000 GraphQL points each hour. The plugin keeps each CI result for two minutes. A refresh inside that time shows the kept result and sends no GraphQL query for that PR.
 
 The board shows the remaining Search API and GraphQL capacity. The board keeps old data when a refresh fails.
 

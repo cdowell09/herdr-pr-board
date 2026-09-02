@@ -12,6 +12,7 @@ import (
 	"github.com/cdowell09/herdr-pr-board/internal/board"
 	"github.com/cdowell09/herdr-pr-board/internal/config"
 	gh "github.com/cdowell09/herdr-pr-board/internal/github"
+	"github.com/cdowell09/herdr-pr-board/internal/sidebar"
 	tea "github.com/charmbracelet/bubbletea"
 )
 
@@ -53,7 +54,8 @@ func run(args []string, stdout, stderr io.Writer) int {
 
 	client := gh.NewClient(nil, cfg.GitHub)
 	service := board.NewService(cfg, client)
-	model, err := board.NewModel(cfg, service)
+	reporter := sidebar.NewReporter(cfg.Sidebar, os.Getenv("HERDR_WORKSPACE_ID"), os.Getenv("HERDR_BIN_PATH"))
+	model, err := board.NewModel(cfg, service, reporter)
 	if err != nil {
 		return fail(stderr, err)
 	}

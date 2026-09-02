@@ -3,7 +3,6 @@ package board
 import (
 	"context"
 	"fmt"
-	"os"
 	"os/exec"
 	"runtime"
 	"sort"
@@ -22,6 +21,10 @@ import (
 const (
 	tabRowY   = 1
 	mouseStep = 3
+
+	refreshAllTimeout    = 90 * time.Second
+	refreshOneTimeout    = 60 * time.Second
+	sidebarReportTimeout = 15 * time.Second
 )
 
 // boardLayout is the row geometry shared by rendering and mouse hit-testing.
@@ -135,7 +138,8 @@ type Model struct {
 	sidebarWarn bool
 }
 
-func NewModel(cfg config.Config, loader Loader) (Model, error) {
+// NewModel builds the board. A nil reporter disables sidebar reporting.
+func NewModel(cfg config.Config, loader Loader, reporter *sidebar.Reporter) (Model, error) {
 	refresh, err := cfg.RefreshEvery()
 	if err != nil {
 		return Model{}, err
@@ -143,14 +147,6 @@ func NewModel(cfg config.Config, loader Loader) (Model, error) {
 	views := make([]ViewData, len(cfg.Views))
 	for i, view := range cfg.Views {
 		views[i].View = view
-	}
-	var reporter *sidebar.Reporter
-	if cfg.Sidebar.SidebarEnabled() {
-		ttl, _ := cfg.Sidebar.TTLEvery() // validated by config.Load
-		reporter = &sidebar.Reporter{
-			WorkspaceID: os.Getenv("HERDR_WORKSPACE_ID"),
-			TTL:         ttl,
-		}
 	}
 	return Model{cfg: cfg, loader: loader, openBrowser: openBrowserCmd, refresh: refresh, views: views, loading: true, sidebar: reporter}, nil
 }
@@ -170,26 +166,18 @@ func (m Model) Update(message tea.Msg) (tea.Model, tea.Cmd) {
 		m.clampCursor()
 		return m, nil
 	case snapshotMsg:
-		nextViews := msg.Views
 		warning := msg.Warning
-		for i := range nextViews {
-			if nextViews[i].Err == nil {
-				nextViews[i].UpdatedAt = msg.UpdatedAt
-				continue
-			}
-			warning = appendWarning(warning, nextViews[i].View.Title+": "+nextViews[i].Err.Error())
-			if i < len(m.views) {
-				nextViews[i].retainFrom(m.views[i])
-			}
+		for i := range msg.Views {
+			warning = appendWarning(warning, m.settleView(&msg.Views[i], i, msg.UpdatedAt))
 		}
-		m.views = nextViews
+		m.views = msg.Views
 		m.rates = msg.Rates
 		m.warning = warning
 		m.loading = false
 		m.clampCursor()
 		var cmd tea.Cmd
 		if m.sidebar != nil {
-			if tokens := sidebar.Tokens(m.cfg.Sidebar.ReviewView, adaptViews(nextViews)); len(tokens) > 0 {
+			if tokens := sidebar.Tokens(m.cfg.Sidebar.ReviewView, adaptViews(m.views)); len(tokens) > 0 {
 				cmd = m.sidebarReportCmd(tokens)
 			}
 		}
@@ -204,20 +192,13 @@ func (m Model) Update(message tea.Msg) (tea.Model, tea.Cmd) {
 		return m, nil
 	case viewMsg:
 		refresh := msg.snapshot
-		data := refresh.Data
+		m.warning = refresh.Warning
 		if msg.index >= 0 && msg.index < len(m.views) {
-			if data.Err == nil {
-				data.UpdatedAt = refresh.UpdatedAt
-			} else {
-				data.retainFrom(m.views[msg.index])
-			}
+			data := refresh.Data
+			m.warning = appendWarning(m.warning, m.settleView(&data, msg.index, refresh.UpdatedAt))
 			m.views[msg.index] = data
 		}
 		m.rates = refresh.Rates
-		m.warning = refresh.Warning
-		if data.Err != nil {
-			m.warning = appendWarning(m.warning, data.Err.Error())
-		}
 		m.loading = false
 		m.clampCursor()
 		return m, nil
@@ -244,8 +225,24 @@ func (m Model) Update(message tea.Msg) (tea.Model, tea.Cmd) {
 	return m, nil
 }
 
+// settleView finishes one refreshed view. A successful view takes the
+// refresh time. A failed view keeps the rows and freshness it had before,
+// and its error is returned for the footer.
+func (m Model) settleView(data *ViewData, index int, updatedAt time.Time) string {
+	if data.Err == nil {
+		data.UpdatedAt = updatedAt
+		return ""
+	}
+	if index < len(m.views) {
+		data.retainFrom(m.views[index])
+	}
+	return data.Err.Error()
+}
+
 func (m Model) updateFilter(key tea.KeyMsg) (tea.Model, tea.Cmd) {
 	switch key.String() {
+	case "ctrl+c":
+		return m, tea.Quit
 	case "esc":
 		m.editing = false
 		m.filter = ""
@@ -716,14 +713,15 @@ func adaptViews(views []ViewData) []sidebar.View {
 // It returns a sidebarMsg so the model can warn once when reporting fails.
 func (m Model) sidebarReportCmd(tokens map[string]string) tea.Cmd {
 	return func() tea.Msg {
-		err := m.sidebar.Report(context.Background(), m.sidebar.WorkspaceID, tokens)
-		return sidebarMsg{err: err}
+		ctx, cancel := context.WithTimeout(context.Background(), sidebarReportTimeout)
+		defer cancel()
+		return sidebarMsg{err: m.sidebar.Report(ctx, tokens)}
 	}
 }
 
 func (m Model) refreshAllCmd() tea.Cmd {
 	return func() tea.Msg {
-		ctx, cancel := context.WithTimeout(context.Background(), 90*time.Second)
+		ctx, cancel := context.WithTimeout(context.Background(), refreshAllTimeout)
 		defer cancel()
 		return snapshotMsg(m.loader.RefreshAll(ctx))
 	}
@@ -732,7 +730,7 @@ func (m Model) refreshAllCmd() tea.Cmd {
 func (m Model) refreshOneCmd(index int) tea.Cmd {
 	view := m.views[index].View
 	return func() tea.Msg {
-		ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
+		ctx, cancel := context.WithTimeout(context.Background(), refreshOneTimeout)
 		defer cancel()
 		return viewMsg{index: index, snapshot: m.loader.RefreshOne(ctx, view)}
 	}

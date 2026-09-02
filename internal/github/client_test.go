@@ -180,8 +180,10 @@ func TestEnrichCIPreservesCompletedBatchesOnFailure(t *testing.T) {
 }
 
 func TestEnrichCISurfacesWarningsWhenResponseHasDataAndErrors(t *testing.T) {
+	// gh api graphql exits non-zero when the response carries errors, but it
+	// still prints the body. The runner returns both.
 	runner := Runner(func(_ context.Context, _ ...string) ([]byte, error) {
-		return []byte(`{"data":{"rateLimit":{"limit":5000,"remaining":4999,"resetAt":"2026-08-07T13:00:00Z","cost":1},"p0":{"pullRequest":{"commits":{"nodes":[{"commit":{"statusCheckRollup":{"state":"SUCCESS"}}}]}}}},"errors":[{"message":"p1 resolves to a deleted repository"}]}`), nil
+		return []byte(`{"data":{"rateLimit":{"limit":5000,"remaining":4999,"resetAt":"2026-08-07T13:00:00Z","cost":1},"p0":{"pullRequest":{"commits":{"nodes":[{"commit":{"statusCheckRollup":{"state":"SUCCESS"}}}]}}}},"errors":[{"message":"p1 resolves to a deleted repository"}]}`), errors.New("gh: p1 resolves to a deleted repository")
 	})
 	client := NewClient(runner, config.GitHubConfig{CIBatchSize: 2})
 	prs := []PullRequest{
@@ -512,5 +514,120 @@ func TestSearchViewStopsRemainingSearchesOnError(t *testing.T) {
 	}
 	if !secondCanceled.Load() {
 		t.Fatal("in-flight scope search kept running after another scope failed")
+	}
+}
+
+func TestResolveScopeRetriesLoginAfterFailure(t *testing.T) {
+	var loginCalls atomic.Int64
+	runner := Runner(func(_ context.Context, args ...string) ([]byte, error) {
+		if len(args) >= 2 && args[0] == "api" && args[1] == "user" {
+			if loginCalls.Add(1) == 1 {
+				return nil, errors.New("context deadline exceeded")
+			}
+			return []byte("cdowell09\n"), nil
+		}
+		return []byte(`[]`), nil
+	})
+	client := NewClient(runner, config.GitHubConfig{LimitPerScope: 10, MaxConcurrency: 1, Scopes: []string{"user:@me"}})
+	view := config.View{ID: "all", Title: "All", Query: "is:open", Scope: config.ScopeConfigured}
+
+	if _, err := client.SearchView(context.Background(), view); err == nil || !strings.Contains(err.Error(), "resolve @me") {
+		t.Fatalf("first search error = %v, want resolve @me failure", err)
+	}
+	if _, err := client.SearchView(context.Background(), view); err != nil {
+		t.Fatalf("second search must retry the login lookup: %v", err)
+	}
+	if _, err := client.SearchView(context.Background(), view); err != nil {
+		t.Fatal(err)
+	}
+	if got := loginCalls.Load(); got != 2 {
+		t.Fatalf("login lookups = %d, want 2 (one failure, one cached success)", got)
+	}
+}
+
+func TestEnrichCIReportsExitErrorWithoutUsableBody(t *testing.T) {
+	runner := Runner(func(_ context.Context, _ ...string) ([]byte, error) {
+		return []byte("gh: HTTP 502 bad gateway\n"), errors.New("gh: HTTP 502 bad gateway")
+	})
+	client := NewClient(runner, config.GitHubConfig{CIBatchSize: 2})
+	prs := []PullRequest{{Repository: "acme/one", Number: 1, URL: "https://github.com/acme/one/pull/1", CI: CIUnknown}}
+
+	_, _, err := client.EnrichCI(context.Background(), prs, RateResource{})
+	if err == nil || !strings.Contains(err.Error(), "HTTP 502") {
+		t.Fatalf("error = %v, want the gh exit error", err)
+	}
+	if prs[0].CI != CIUnknown {
+		t.Fatalf("CI = %q, want unknown", prs[0].CI)
+	}
+}
+
+func TestEnrichCIKeepsDataWhenGhExitsNonZeroWithoutErrorsField(t *testing.T) {
+	runner := Runner(func(_ context.Context, _ ...string) ([]byte, error) {
+		return []byte(`{"data":{"rateLimit":{"limit":5000,"remaining":4998,"resetAt":"2026-08-07T13:00:00Z","cost":1},"p0":{"pullRequest":{"commits":{"nodes":[{"commit":{"statusCheckRollup":{"state":"FAILURE"}}}]}}}}}`), errors.New("gh: exit status 1")
+	})
+	client := NewClient(runner, config.GitHubConfig{CIBatchSize: 2})
+	prs := []PullRequest{{Repository: "acme/one", Number: 1, URL: "https://github.com/acme/one/pull/1"}}
+
+	rate, warnings, err := client.EnrichCI(context.Background(), prs, RateResource{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if prs[0].CI != CIFailure || rate.Remaining != 4998 {
+		t.Fatalf("CI = %q, rate = %#v", prs[0].CI, rate)
+	}
+	if len(warnings) != 1 || !strings.Contains(warnings[0], "exit status 1") {
+		t.Fatalf("warnings = %#v", warnings)
+	}
+}
+
+func TestEnrichCISizesCapacityCheckWithReportedCost(t *testing.T) {
+	calls := 0
+	runner := Runner(func(_ context.Context, _ ...string) ([]byte, error) {
+		calls++
+		return []byte(`{"data":{"rateLimit":{"limit":5000,"remaining":7,"resetAt":"2027-08-07T13:00:00Z","cost":5},"p0":{"pullRequest":{"commits":{"nodes":[{"commit":{"statusCheckRollup":{"state":"SUCCESS"}}}]}}}}}`), nil
+	})
+	client := NewClient(runner, config.GitHubConfig{CIBatchSize: 1})
+	prs := []PullRequest{
+		{Repository: "acme/one", Number: 1, URL: "https://github.com/acme/one/pull/1", CI: CIUnknown},
+		{Repository: "acme/two", Number: 2, URL: "https://github.com/acme/two/pull/2", CI: CIUnknown},
+		{Repository: "acme/three", Number: 3, URL: "https://github.com/acme/three/pull/3", CI: CIUnknown},
+	}
+	budget := RateResource{Limit: 5000, Remaining: 100, Reset: time.Now().Add(time.Hour)}
+
+	rate, _, err := client.EnrichCI(context.Background(), prs, budget)
+	if err == nil || !strings.Contains(err.Error(), "needs at least 10") {
+		t.Fatalf("error = %v, want two remaining batches at cost 5", err)
+	}
+	if calls != 1 {
+		t.Fatalf("GraphQL calls = %d, want 1 before the cost-sized check fails", calls)
+	}
+	if rate.Cost != 5 || rate.Remaining != 7 {
+		t.Fatalf("rate = %#v", rate)
+	}
+	if prs[0].CI != CISuccess || prs[1].CI != CIUnknown || prs[2].CI != CIUnknown {
+		t.Fatalf("CI states = %q, %q, %q", prs[0].CI, prs[1].CI, prs[2].CI)
+	}
+}
+
+func TestEnrichCIPrunesExpiredCacheEntries(t *testing.T) {
+	runner := Runner(func(_ context.Context, _ ...string) ([]byte, error) {
+		return []byte(`{"data":{"rateLimit":{"limit":5000,"remaining":4999,"resetAt":"2027-08-07T13:00:00Z","cost":1},"p0":{"pullRequest":{"commits":{"nodes":[{"commit":{"statusCheckRollup":{"state":"SUCCESS"}}}]}}}}}`), nil
+	})
+	client := NewClient(runner, config.GitHubConfig{CIBatchSize: 25})
+	client.ciCache["https://github.com/acme/old/pull/1"] = ciCacheEntry{state: CIFailure, expiresAt: time.Now().Add(-time.Minute)}
+	client.ciCache["https://github.com/acme/live/pull/2"] = ciCacheEntry{state: CIPending, expiresAt: time.Now().Add(time.Hour)}
+	prs := []PullRequest{{Repository: "acme/one", Number: 1, URL: "https://github.com/acme/one/pull/1", CI: CIUnknown}}
+
+	if _, _, err := client.EnrichCI(context.Background(), prs, RateResource{}); err != nil {
+		t.Fatal(err)
+	}
+	if _, kept := client.ciCache["https://github.com/acme/old/pull/1"]; kept {
+		t.Fatal("expired cache entry was not pruned")
+	}
+	if _, kept := client.ciCache["https://github.com/acme/live/pull/2"]; !kept {
+		t.Fatal("live cache entry was pruned")
+	}
+	if _, kept := client.ciCache["https://github.com/acme/one/pull/1"]; !kept {
+		t.Fatal("fresh result was not cached")
 	}
 }

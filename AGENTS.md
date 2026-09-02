@@ -12,6 +12,7 @@ Read [`README.md`](README.md) for user behavior and configuration. Read [`herdr-
 - `cmd/ci-platform-matrix/`: convert manifest platforms into CI cross-compilation targets.
 - `scripts/validate_release.py`: release tag and plugin manifest validation.
 - `internal/config/`: TOML defaults, parsing, validation, scope modes, and Search request counts.
+- `internal/cli/`: subprocess execution shared by the `gh` and `herdr` runners.
 - `internal/github/`: `gh` execution, query tokenization, Search results, GraphQL CI enrichment, caching, and rate-limit decoding.
 - `internal/board/`: refresh orchestration, API budgeting, Bubble Tea state, rendering, keyboard input, and mouse input.
 - `internal/sidebar/`: Herdr sidebar token computation and `herdr` CLI metadata reporting.
@@ -54,7 +55,7 @@ Write all technical documentation in ASD-STE100 Simplified Technical English (ST
 - Build `gh search prs` arguments with options first, then `--`, then tokenized query terms. This keeps negative qualifiers such as `-is:draft` from becoming CLI flags.
 - Budget Search requests across views, configured scopes, and pagination. GitHub Search pages contain at most 100 results.
 - Keep rate-limit state current after full and active-view refreshes.
-- Bind GraphQL capacity checks to the actual uncached CI batches inside `EnrichCI`. Recheck capacity between batches and propagate updated rates after failures.
+- Bind GraphQL capacity checks to the actual uncached CI batches inside `EnrichCI`. Size each check with the `cost` GitHub reported for the last batch. Recheck capacity between batches and propagate updated rates after failures.
 - Keep CI cache access synchronized. Run the race test after concurrency or cache changes.
 
 ### Configuration
@@ -82,6 +83,7 @@ gofmt -w cmd internal
 go test ./...
 python3 -B -m unittest discover -s scripts -p '*_test.py'
 go vet ./...
+go run honnef.co/go/tools/cmd/staticcheck@v0.6.1 ./...
 go test -race ./...
 go build -o bin/herdr-pr-board ./cmd/herdr-pr-board
 bash -n bin/open bin/run

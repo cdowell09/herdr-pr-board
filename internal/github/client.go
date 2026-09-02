@@ -5,30 +5,18 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"os/exec"
 	"sort"
 	"strconv"
 	"strings"
 	"sync"
 	"time"
 
+	"github.com/cdowell09/herdr-pr-board/internal/cli"
 	"github.com/cdowell09/herdr-pr-board/internal/config"
 )
 
-type Runner func(context.Context, ...string) ([]byte, error)
-
-func run(ctx context.Context, args ...string) ([]byte, error) {
-	cmd := exec.CommandContext(ctx, "gh", args...)
-	output, err := cmd.CombinedOutput()
-	if err != nil {
-		message := strings.TrimSpace(string(output))
-		if message == "" {
-			message = err.Error()
-		}
-		return nil, errors.New(message)
-	}
-	return output, nil
-}
+// Runner executes gh. See cli.Runner for the stdout and error contract.
+type Runner = cli.Runner
 
 type ciCacheEntry struct {
 	state     CIState
@@ -39,9 +27,8 @@ type Client struct {
 	runner Runner
 	cfg    config.GitHubConfig
 
-	loginOnce sync.Once
-	login     string
-	loginErr  error
+	loginMu sync.Mutex
+	login   string
 
 	ciMu    sync.Mutex
 	ciCache map[string]ciCacheEntry
@@ -52,7 +39,7 @@ type Client struct {
 
 func NewClient(runner Runner, cfg config.GitHubConfig) *Client {
 	if runner == nil {
-		runner = run
+		runner = cli.Command("gh")
 	}
 	capacity := cfg.MaxConcurrency
 	if capacity < 1 {
@@ -199,21 +186,32 @@ func (c *Client) resolveScope(ctx context.Context, scope string) (string, error)
 	if !strings.Contains(scope, "@me") {
 		return scope, nil
 	}
-	c.loginOnce.Do(func() {
-		output, err := c.runner(ctx, "api", "user", "--jq", ".login")
-		if err != nil {
-			c.loginErr = fmt.Errorf("resolve @me: %w", err)
-			return
-		}
-		c.login = strings.TrimSpace(string(output))
-		if c.login == "" {
-			c.loginErr = errors.New("resolve @me: gh returned an empty login")
-		}
-	})
-	if c.loginErr != nil {
-		return "", c.loginErr
+	login, err := c.currentLogin(ctx)
+	if err != nil {
+		return "", err
 	}
-	return strings.ReplaceAll(scope, "@me", c.login), nil
+	return strings.ReplaceAll(scope, "@me", login), nil
+}
+
+// currentLogin returns the authenticated user's login. It caches the value
+// only after a successful lookup, so a transient failure such as a context
+// timeout is retried on the next refresh instead of poisoning the session.
+func (c *Client) currentLogin(ctx context.Context) (string, error) {
+	c.loginMu.Lock()
+	defer c.loginMu.Unlock()
+	if c.login != "" {
+		return c.login, nil
+	}
+	output, err := c.runner(ctx, "api", "user", "--jq", ".login")
+	if err != nil {
+		return "", fmt.Errorf("resolve @me: %w", err)
+	}
+	login := strings.TrimSpace(string(output))
+	if login == "" {
+		return "", errors.New("resolve @me: gh returned an empty login")
+	}
+	c.login = login
+	return login, nil
 }
 
 func (c *Client) EnrichCI(ctx context.Context, prs []PullRequest, budget RateResource) (RateResource, []string, error) {
@@ -244,6 +242,11 @@ func (c *Client) EnrichCI(ctx context.Context, prs []PullRequest, budget RateRes
 			prs[index].CI = batch[i].CI
 		}
 		c.ciMu.Lock()
+		for url, entry := range c.ciCache {
+			if !now.Before(entry.expiresAt) {
+				delete(c.ciCache, url)
+			}
+		}
 		for _, pr := range batch {
 			if pr.CI != CIUnknown {
 				c.ciCache[pr.URL] = ciCacheEntry{state: pr.CI, expiresAt: now.Add(c.ciTTL)}
@@ -253,11 +256,12 @@ func (c *Client) EnrichCI(ctx context.Context, prs []PullRequest, budget RateRes
 	}
 	for start := 0; start < len(pending); start += batchSize {
 		remainingBatches := (len(pending) - start + batchSize - 1) / batchSize
-		if !latest.HasCapacity(remainingBatches) {
+		required := remainingBatches * latest.CostPerQuery()
+		if !latest.HasCapacity(required) {
 			return latest, warnings, fmt.Errorf(
 				"GraphQL rate limit has %d points remaining but CI refresh needs at least %d; CI status is stale",
 				latest.Remaining,
-				remainingBatches,
+				required,
 			)
 		}
 		end := min(start+batchSize, len(pending))
@@ -285,27 +289,28 @@ func (c *Client) enrichBatch(ctx context.Context, prs []PullRequest) (RateResour
 	}
 	query.WriteString("}")
 
-	output, err := c.runner(ctx, "api", "graphql", "-f", "query="+query.String())
-	if err != nil {
-		return RateResource{}, nil, fmt.Errorf("load CI checks: %w", err)
+	output, runErr := c.runner(ctx, "api", "graphql", "-f", "query="+query.String())
+	var response graphQLResponse
+	decodeErr := json.Unmarshal(output, &response)
+	if runErr != nil && (decodeErr != nil || len(response.Data) == 0) {
+		// gh exits non-zero when the response carries errors but still prints
+		// the body. Without usable data the exit error is all there is.
+		return RateResource{}, nil, fmt.Errorf("load CI checks: %w", runErr)
 	}
-	var response struct {
-		Data   map[string]json.RawMessage `json:"data"`
-		Errors []struct {
-			Message string `json:"message"`
-		} `json:"errors"`
-	}
-	if err := json.Unmarshal(output, &response); err != nil {
-		return RateResource{}, nil, fmt.Errorf("decode CI response: %w", err)
+	if decodeErr != nil {
+		return RateResource{}, nil, fmt.Errorf("decode CI response: %w", decodeErr)
 	}
 	var warnings []string
-	if len(response.Errors) > 0 {
+	switch {
+	case len(response.Errors) > 0:
 		if len(response.Data) == 0 {
 			return RateResource{}, nil, fmt.Errorf("load CI checks: %s", response.Errors[0].Message)
 		}
 		for _, graphErr := range response.Errors {
 			warnings = append(warnings, "load CI checks: "+graphErr.Message)
 		}
+	case runErr != nil:
+		warnings = append(warnings, "load CI checks: "+runErr.Error())
 	}
 
 	rate := decodeGraphQLRate(response.Data["rateLimit"])
@@ -318,6 +323,15 @@ func (c *Client) enrichBatch(ctx context.Context, prs []PullRequest) (RateResour
 		prs[i].CI = decodeCI(raw)
 	}
 	return rate, warnings, nil
+}
+
+// graphQLResponse is the envelope gh api graphql prints. A response can carry
+// both data and errors when some aliased repositories resolve and others do not.
+type graphQLResponse struct {
+	Data   map[string]json.RawMessage `json:"data"`
+	Errors []struct {
+		Message string `json:"message"`
+	} `json:"errors"`
 }
 
 func decodeCI(raw json.RawMessage) CIState {
@@ -356,11 +370,12 @@ func decodeGraphQLRate(raw json.RawMessage) RateResource {
 		Limit     int       `json:"limit"`
 		Remaining int       `json:"remaining"`
 		ResetAt   time.Time `json:"resetAt"`
+		Cost      int       `json:"cost"`
 	}
 	if len(raw) == 0 || json.Unmarshal(raw, &value) != nil {
 		return RateResource{}
 	}
-	return RateResource{Limit: value.Limit, Remaining: value.Remaining, Reset: value.ResetAt}
+	return RateResource{Limit: value.Limit, Remaining: value.Remaining, Reset: value.ResetAt, Cost: value.Cost}
 }
 
 func (c *Client) RateLimits(ctx context.Context) (RateLimits, error) {

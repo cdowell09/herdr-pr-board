@@ -319,7 +319,7 @@ func TestValidateScopeErrors(t *testing.T) {
 		},
 		"malformed": {
 			scopes: []string{"team:acme"},
-			want:   `github.scopes[0] "team:acme" must start with user:, org:, or repo:`,
+			want:   `github.scopes[0] "team:acme" must use a user:, org:, or repo: prefix`,
 		},
 		"prefix without target": {
 			scopes: []string{"org:"},
