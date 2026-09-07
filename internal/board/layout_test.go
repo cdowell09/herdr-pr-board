@@ -7,6 +7,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/cdowell09/herdr-pr-board/internal/discovery"
 	gh "github.com/cdowell09/herdr-pr-board/internal/github"
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
@@ -22,7 +23,7 @@ func layoutModel(t *testing.T, width int) Model {
 	if err != nil {
 		t.Fatal(err)
 	}
-	model.views = []ViewData{
+	model.views = []discovery.ViewData{
 		{View: cfg.Views[0], PRs: []gh.PullRequest{
 			{Repository: "cdowell09/herdr-pr-board", Number: 1234, Title: "Add responsive layouts and cell-width truncation", URL: "https://github.com/cdowell09/herdr-pr-board/pull/1234", Author: "cdowell09", UpdatedAt: now.Add(-2 * time.Hour), CI: gh.CISuccess},
 			{Repository: "acme/web-ui", Number: 42, Title: "🎉 Ship the onboarding revamp", URL: "https://github.com/acme/web-ui/pull/42", Author: "ada", UpdatedAt: now.Add(-time.Hour), CI: gh.CIPending},
@@ -274,8 +275,8 @@ func TestModelNarrowLayoutsFitStaleAndErrorLines(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		model.views = []ViewData{
-			{View: cfg.Views[0], PRs: []gh.PullRequest{{Repository: "acme/api", Number: 1, Title: "Keep me"}}, Err: errors.New("GitHub search failed: timeout")},
+		model.views = []discovery.ViewData{
+			{View: cfg.Views[0], PRs: []gh.PullRequest{{Repository: "acme/api", Number: 1, Title: "Keep me"}}, UpdatedAt: time.Now(), Err: errors.New("GitHub search failed: timeout")},
 			{View: cfg.Views[1], Err: errors.New("GitHub search failed: timeout")},
 		}
 		model.loading = false

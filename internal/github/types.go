@@ -14,14 +14,27 @@ const (
 )
 
 type PullRequest struct {
-	Repository string
-	Number     int
-	Title      string
-	URL        string
-	Author     string
-	Draft      bool
-	UpdatedAt  time.Time
-	CI         CIState
+	Repository         string
+	Number             int
+	Title              string
+	URL                string
+	Author             string
+	Draft              bool
+	UpdatedAt          time.Time
+	CI                 CIState
+	HeadOID            string
+	BaseRefName        string
+	BaseOID            string
+	MetadataObservedAt time.Time
+}
+
+// CopyEnrichment copies the GraphQL observation without replacing Search data.
+func (pr *PullRequest) CopyEnrichment(from PullRequest) {
+	pr.CI = from.CI
+	pr.HeadOID = from.HeadOID
+	pr.BaseRefName = from.BaseRefName
+	pr.BaseOID = from.BaseOID
+	pr.MetadataObservedAt = from.MetadataObservedAt
 }
 
 type RateResource struct {

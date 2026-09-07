@@ -13,6 +13,7 @@ import (
 	"unicode/utf8"
 
 	"github.com/cdowell09/herdr-pr-board/internal/config"
+	"github.com/cdowell09/herdr-pr-board/internal/discovery"
 	gh "github.com/cdowell09/herdr-pr-board/internal/github"
 	"github.com/cdowell09/herdr-pr-board/internal/sidebar"
 	tea "github.com/charmbracelet/bubbletea"
@@ -23,8 +24,6 @@ const (
 	tabRowY   = 1
 	mouseStep = 3
 
-	refreshAllTimeout    = 90 * time.Second
-	refreshOneTimeout    = 60 * time.Second
 	sidebarReportTimeout = 15 * time.Second
 )
 
@@ -37,7 +36,7 @@ type boardLayout struct {
 
 func (m Model) boardLayout() boardLayout {
 	firstPRRow := 5
-	if m.currentView().Stale() {
+	if stale(m.currentView()) {
 		firstPRRow++
 	}
 	visibleRows := max(1, m.height-firstPRRow-3-len(m.footerHelpLines()))
@@ -67,7 +66,10 @@ var (
 // changes.
 var tabPadding = lipgloss.Width(inactiveTab.Render(""))
 
-type snapshotMsg Snapshot
+type snapshotMsg struct {
+	discovery.Snapshot
+	epoch uint64
+}
 
 type configEditMsg struct {
 	cfg config.Config
@@ -76,16 +78,16 @@ type configEditMsg struct {
 
 type configRefreshMsg struct {
 	cfg         config.Config
-	loader      Loader
+	loader      discovery.Loader
 	refresh     time.Duration
-	snapshot    Snapshot
+	snapshot    discovery.Snapshot
 	epoch       uint64
 	selectedURL string
 }
 
 type viewMsg struct {
 	index    int
-	snapshot ViewSnapshot
+	snapshot discovery.ViewSnapshot
 	epoch    uint64
 }
 
@@ -140,11 +142,11 @@ const (
 type Model struct {
 	cfg         config.Config
 	configPath  string
-	loader      Loader
+	loader      discovery.Loader
 	openBrowser func(url string) tea.Cmd
 	editConfig  func(path string) tea.Cmd
 	refresh     time.Duration
-	views       []ViewData
+	views       []discovery.ViewData
 	active      int
 	cursor      int
 	offset      int
@@ -162,7 +164,7 @@ type Model struct {
 }
 
 // NewModel builds the board. A nil reporter disables sidebar reporting.
-func NewModel(cfg config.Config, loader Loader, reporter *sidebar.Reporter) (Model, error) {
+func NewModel(cfg config.Config, loader discovery.Loader, reporter *sidebar.Reporter) (Model, error) {
 	return NewModelWithConfigPath(cfg, "", loader, func(settings config.SidebarConfig) *sidebar.Reporter {
 		if reporter == nil || !settings.SidebarEnabled() {
 			return nil
@@ -173,12 +175,12 @@ func NewModel(cfg config.Config, loader Loader, reporter *sidebar.Reporter) (Mod
 	})
 }
 
-func NewModelWithConfigPath(cfg config.Config, configPath string, loader Loader, reporter func(config.SidebarConfig) *sidebar.Reporter) (Model, error) {
+func NewModelWithConfigPath(cfg config.Config, configPath string, loader discovery.Loader, reporter func(config.SidebarConfig) *sidebar.Reporter) (Model, error) {
 	refresh, err := cfg.RefreshEvery()
 	if err != nil {
 		return Model{}, err
 	}
-	views := make([]ViewData, len(cfg.Views))
+	views := make([]discovery.ViewData, len(cfg.Views))
 	for i, view := range cfg.Views {
 		views[i].View = view
 	}
@@ -219,13 +221,12 @@ func (m Model) Update(message tea.Msg) (tea.Model, tea.Cmd) {
 		if msg.epoch != 0 && msg.epoch != m.epoch {
 			return m, nil
 		}
-		warning := msg.Warning
 		for i := range msg.Views {
-			warning = appendWarning(warning, m.settleView(&msg.Views[i], i, msg.UpdatedAt))
+			m.settleView(&msg.Views[i], i)
 		}
 		m.views = msg.Views
 		m.rates = msg.Rates
-		m.warning = warning
+		m.warning = discoveryWarnings(msg.Errors)
 		m.loading = false
 		m.clampCursor()
 		var cmd tea.Cmd
@@ -248,10 +249,10 @@ func (m Model) Update(message tea.Msg) (tea.Model, tea.Cmd) {
 			return m, nil
 		}
 		refresh := msg.snapshot
-		m.warning = refresh.Warning
+		m.warning = discoveryWarnings(refresh.Errors)
 		if msg.index >= 0 && msg.index < len(m.views) {
 			data := refresh.Data
-			m.warning = appendWarning(m.warning, m.settleView(&data, msg.index, refresh.UpdatedAt))
+			m.settleView(&data, msg.index)
 			m.views[msg.index] = data
 		}
 		m.rates = refresh.Rates
@@ -288,18 +289,15 @@ func (m Model) Update(message tea.Msg) (tea.Model, tea.Cmd) {
 	return m, nil
 }
 
-// settleView finishes one refreshed view. A successful view takes the
-// refresh time. A failed view keeps the rows and freshness it had before,
-// and its error is returned for the footer.
-func (m Model) settleView(data *ViewData, index int, updatedAt time.Time) string {
+// settleView preserves the previous successful observation after a failed search.
+// Discovery supplies timestamps; the board does not advance them.
+func (m Model) settleView(data *discovery.ViewData, index int) {
 	if data.Err == nil {
-		data.UpdatedAt = updatedAt
-		return ""
+		return
 	}
 	if index < len(m.views) {
-		data.retainFrom(m.views[index])
+		retainFrom(data, m.views[index])
 	}
-	return data.Err.Error()
 }
 
 func (m Model) updateFilter(key tea.KeyMsg) (tea.Model, tea.Cmd) {
@@ -362,9 +360,9 @@ func (m Model) updateConfigRefresh(message configRefreshMsg) (tea.Model, tea.Cmd
 	if message.epoch != 0 && message.epoch != m.epoch {
 		return m, nil
 	}
-	if message.snapshot.capacityErr != nil {
+	if message.snapshot.CapacityErr != nil {
 		m.loading = false
-		m.warning = appendWarning(m.warning, message.snapshot.capacityErr.Error())
+		m.warning = appendWarning(m.warning, discoveryWarnings(message.snapshot.Errors))
 		if m.refresh > 0 {
 			return m, m.tickCmd()
 		}
@@ -372,8 +370,7 @@ func (m Model) updateConfigRefresh(message configRefreshMsg) (tea.Model, tea.Cmd
 	}
 
 	m = m.applyConfig(message.cfg, message.loader, message.refresh)
-	message.snapshot.epoch = m.epoch
-	updated, command := m.Update(snapshotMsg(message.snapshot))
+	updated, command := m.Update(snapshotMsg{Snapshot: message.snapshot, epoch: m.epoch})
 	model := updated.(Model)
 	model.restoreSelection(message.selectedURL)
 	if model.refresh > 0 {
@@ -386,19 +383,20 @@ func (m Model) updateConfigRefresh(message configRefreshMsg) (tea.Model, tea.Cmd
 	return model, command
 }
 
-func (m Model) applyConfig(cfg config.Config, loader Loader, refresh time.Duration) Model {
+func (m Model) applyConfig(cfg config.Config, loader discovery.Loader, refresh time.Duration) Model {
 	activeID := m.currentView().View.ID
-	previous := make(map[string]ViewData, len(m.views))
+	previous := make(map[string]discovery.ViewData, len(m.views))
 	for _, view := range m.views {
 		previous[view.View.ID] = view
 	}
-	nextViews := make([]ViewData, len(cfg.Views))
+	nextViews := make([]discovery.ViewData, len(cfg.Views))
 	active := 0
 	for i, view := range cfg.Views {
 		nextViews[i].View = view
 		if old, ok := previous[view.ID]; ok {
 			nextViews[i].PRs = old.PRs
 			nextViews[i].UpdatedAt = old.UpdatedAt
+			nextViews[i].ObservedAt = old.ObservedAt
 		}
 		if view.ID == activeID {
 			active = i
@@ -627,7 +625,7 @@ func (m Model) renderTabs() string {
 
 func (m Model) renderStaleNotice() string {
 	view := m.currentView()
-	if !view.Stale() {
+	if !stale(view) {
 		return ""
 	}
 	notice := fmt.Sprintf("stale — showing %d rows retained from the last successful refresh", len(view.PRs))
@@ -682,7 +680,7 @@ func (m Model) renderFooter() string {
 	if !freshness.IsZero() {
 		meta = fmt.Sprintf("updated %s", relativeTime(freshness))
 	}
-	if m.currentView().Stale() {
+	if stale(m.currentView()) {
 		meta += " · stale"
 	}
 	if m.rates.Search.Limit > 0 {
@@ -731,9 +729,9 @@ func (m Model) footerHelpLines() []string {
 	return lines
 }
 
-func (m Model) currentView() ViewData {
+func (m Model) currentView() discovery.ViewData {
 	if len(m.views) == 0 {
-		return ViewData{}
+		return discovery.ViewData{}
 	}
 	return m.views[m.active]
 }
@@ -857,7 +855,7 @@ func (m Model) renderPRRow(pr gh.PullRequest, layout tableLayout) string {
 // must share this function so both see the same label at every width. When a
 // full label would not fit its share of the row, the label compacts and
 // truncates.
-func (m Model) tabLabel(index int, view ViewData) string {
+func (m Model) tabLabel(index int, view discovery.ViewData) string {
 	budget := m.tabBudget()
 	label := fmt.Sprintf("%d %s %d", index+1, view.View.Title, len(view.PRs))
 	if lipgloss.Width(label) <= budget {
@@ -873,7 +871,7 @@ func (m Model) tabBudget() int {
 }
 
 // adaptViews converts retained view data into the sidebar token inputs.
-func adaptViews(views []ViewData) []sidebar.View {
+func adaptViews(views []discovery.ViewData) []sidebar.View {
 	adapted := make([]sidebar.View, len(views))
 	for i, view := range views {
 		adapted[i] = sidebar.View{ID: view.View.ID, PRs: view.PRs, Err: view.Err}
@@ -891,13 +889,12 @@ func (m Model) sidebarReportCmd(tokens map[string]string) tea.Cmd {
 	}
 }
 
-func (m Model) refreshConfigCmd(cfg config.Config, loader Loader, refresh time.Duration, selectedURL string) tea.Cmd {
+func (m Model) refreshConfigCmd(cfg config.Config, loader discovery.Loader, refresh time.Duration, selectedURL string) tea.Cmd {
 	epoch := m.epoch
 	return func() tea.Msg {
-		ctx, cancel := context.WithTimeout(context.Background(), refreshAllTimeout)
+		ctx, cancel := context.WithTimeout(context.Background(), discovery.RefreshAllTimeout)
 		defer cancel()
 		snapshot := loader.RefreshAll(ctx)
-		snapshot.epoch = epoch
 		return configRefreshMsg{cfg: cfg, loader: loader, refresh: refresh, snapshot: snapshot, epoch: epoch, selectedURL: selectedURL}
 	}
 }
@@ -905,11 +902,10 @@ func (m Model) refreshConfigCmd(cfg config.Config, loader Loader, refresh time.D
 func (m Model) refreshAllCmd() tea.Cmd {
 	loader, epoch := m.loader, m.epoch
 	return func() tea.Msg {
-		ctx, cancel := context.WithTimeout(context.Background(), refreshAllTimeout)
+		ctx, cancel := context.WithTimeout(context.Background(), discovery.RefreshAllTimeout)
 		defer cancel()
 		snapshot := loader.RefreshAll(ctx)
-		snapshot.epoch = epoch
-		return snapshotMsg(snapshot)
+		return snapshotMsg{Snapshot: snapshot, epoch: epoch}
 	}
 }
 
@@ -917,7 +913,7 @@ func (m Model) refreshOneCmd(index int) tea.Cmd {
 	loader, epoch := m.loader, m.epoch
 	view := m.views[index].View
 	return func() tea.Msg {
-		ctx, cancel := context.WithTimeout(context.Background(), refreshOneTimeout)
+		ctx, cancel := context.WithTimeout(context.Background(), discovery.RefreshOneTimeout)
 		defer cancel()
 		snapshot := loader.RefreshOne(ctx, view)
 		return viewMsg{index: index, snapshot: snapshot, epoch: epoch}
@@ -1039,4 +1035,18 @@ func relativeTime(value time.Time) string {
 		return fmt.Sprintf("%dd", int(delta.Hours()/24))
 	}
 	return value.Format("Jan 2")
+}
+
+// Stale reports whether the view kept rows from an earlier refresh after a failed one.
+func stale(v discovery.ViewData) bool {
+	return v.Err != nil && len(v.PRs) > 0 && !v.UpdatedAt.IsZero()
+}
+
+// retainFrom keeps the previous view's rows and freshness after a failed refresh.
+func retainFrom(v *discovery.ViewData, prev discovery.ViewData) {
+	if !prev.UpdatedAt.IsZero() {
+		v.PRs = prev.PRs
+		v.ObservedAt = prev.ObservedAt
+		v.UpdatedAt = prev.UpdatedAt
+	}
 }

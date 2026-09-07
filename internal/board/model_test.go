@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/cdowell09/herdr-pr-board/internal/config"
+	"github.com/cdowell09/herdr-pr-board/internal/discovery"
 	gh "github.com/cdowell09/herdr-pr-board/internal/github"
 	"github.com/cdowell09/herdr-pr-board/internal/sidebar"
 	tea "github.com/charmbracelet/bubbletea"
@@ -31,16 +32,16 @@ func displayColumn(line, needle string) (int, bool) {
 }
 
 type fakeLoader struct {
-	snapshot Snapshot
+	snapshot discovery.Snapshot
 }
 
-func (f fakeLoader) RefreshAll(context.Context) Snapshot { return f.snapshot }
-func (f fakeLoader) RefreshOne(_ context.Context, view config.View) ViewSnapshot {
-	refresh := ViewSnapshot{
-		Data:      ViewData{View: view},
+func (f fakeLoader) RefreshAll(context.Context) discovery.Snapshot { return f.snapshot }
+func (f fakeLoader) RefreshOne(_ context.Context, view config.View) discovery.ViewSnapshot {
+	refresh := discovery.ViewSnapshot{
+		Data:      discovery.ViewData{View: view},
 		Rates:     f.snapshot.Rates,
-		Warning:   f.snapshot.Warning,
-		UpdatedAt: f.snapshot.UpdatedAt,
+		Errors:    f.snapshot.Errors,
+		StartedAt: f.snapshot.StartedAt,
 	}
 	for _, data := range f.snapshot.Views {
 		if data.View.ID == view.ID {
@@ -51,7 +52,7 @@ func (f fakeLoader) RefreshOne(_ context.Context, view config.View) ViewSnapshot
 	return refresh
 }
 
-func (f fakeLoader) Reconfigured(config.Config) Loader { return f }
+func (f fakeLoader) Reconfigured(config.Config) discovery.Loader { return f }
 
 type sidebarFakeRunner struct {
 	calls [][]string
@@ -79,7 +80,7 @@ func TestModelReportsSidebarTokensToCurrentWorkspaceAfterFullRefresh(t *testing.
 		t.Fatal(err)
 	}
 
-	snapshot := Snapshot{Views: []ViewData{
+	snapshot := discovery.Snapshot{Views: []discovery.ViewData{
 		{View: cfg.Views[0], PRs: []gh.PullRequest{
 			{Repository: "acme/api", Number: 1, Title: "One", URL: "https://github.com/acme/api/pull/1", CI: gh.CISuccess},
 			{Repository: "acme/api", Number: 2, Title: "Two", URL: "https://github.com/acme/api/pull/2", CI: gh.CIFailure},
@@ -89,7 +90,7 @@ func TestModelReportsSidebarTokensToCurrentWorkspaceAfterFullRefresh(t *testing.
 			{Repository: "acme/api", Number: 3, Title: "Three", URL: "https://github.com/acme/api/pull/3", CI: gh.CIPending},
 		}},
 	}}
-	updated, command := model.Update(snapshotMsg(snapshot))
+	updated, command := model.Update(snapshotMsg{Snapshot: snapshot})
 	model = updated.(Model)
 	if command == nil {
 		t.Fatal("expected a sidebar report command")
@@ -126,11 +127,11 @@ func TestModelSkipsSidebarReportWhenViewFails(t *testing.T) {
 	}
 	model.sidebar = &sidebar.Reporter{Runner: (&sidebarFakeRunner{}).Run}
 
-	failed := Snapshot{Views: []ViewData{
+	failed := discovery.Snapshot{Views: []discovery.ViewData{
 		{View: cfg.Views[0], Err: errors.New("rate limited")},
 		{View: cfg.Views[1], PRs: []gh.PullRequest{{Repository: "acme/api", Number: 1, Title: "One", URL: "https://github.com/acme/api/pull/1"}}},
 	}}
-	updated, command := model.Update(snapshotMsg(failed))
+	updated, command := model.Update(snapshotMsg{Snapshot: failed})
 	if command != nil {
 		t.Fatal("no sidebar report expected after a failed view")
 	}
@@ -148,13 +149,13 @@ func TestModelWarnsOnceOnSidebarFailureAndResets(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	snapshot := Snapshot{Views: []ViewData{
+	snapshot := discovery.Snapshot{Views: []discovery.ViewData{
 		{View: cfg.Views[0], PRs: []gh.PullRequest{{Repository: "acme/api", Number: 1, Title: "One", URL: "https://github.com/acme/api/pull/1"}}},
 		{View: cfg.Views[1]},
 	}}
 
 	// First failure warns once.
-	updated, command := model.Update(snapshotMsg(snapshot))
+	updated, command := model.Update(snapshotMsg{Snapshot: snapshot})
 	model = updated.(Model)
 	if command == nil {
 		t.Fatal("expected a sidebar report command")
@@ -166,7 +167,7 @@ func TestModelWarnsOnceOnSidebarFailureAndResets(t *testing.T) {
 	}
 
 	// A second failure does not repeat the warning.
-	updated, command = model.Update(snapshotMsg(snapshot))
+	updated, command = model.Update(snapshotMsg{Snapshot: snapshot})
 	model = updated.(Model)
 	updated, _ = model.Update(command())
 	model = updated.(Model)
@@ -176,12 +177,12 @@ func TestModelWarnsOnceOnSidebarFailureAndResets(t *testing.T) {
 
 	// A success resets the latch, so the next failure warns again.
 	runner.err = nil
-	updated, command = model.Update(snapshotMsg(snapshot))
+	updated, command = model.Update(snapshotMsg{Snapshot: snapshot})
 	model = updated.(Model)
 	updated, _ = model.Update(command())
 	model = updated.(Model)
 	runner.err = errors.New("no session")
-	updated, command = model.Update(snapshotMsg(snapshot))
+	updated, command = model.Update(snapshotMsg{Snapshot: snapshot})
 	model = updated.(Model)
 	updated, _ = model.Update(command())
 	model = updated.(Model)
@@ -193,19 +194,19 @@ func TestModelWarnsOnceOnSidebarFailureAndResets(t *testing.T) {
 func TestModelRendersConfigTitlesPRAndCI(t *testing.T) {
 	cfg := testConfig()
 	updated := time.Now().Add(-2 * time.Hour)
-	snapshot := Snapshot{
-		Views: []ViewData{
+	snapshot := discovery.Snapshot{
+		Views: []discovery.ViewData{
 			{View: cfg.Views[0], PRs: []gh.PullRequest{{Repository: "cdowell09/cookies", Number: 2, Title: "Cookie schedule", URL: "https://github.com/cdowell09/cookies/pull/2", Author: "cdowell09", UpdatedAt: updated, CI: gh.CISuccess}}},
 			{View: cfg.Views[1]},
 		},
 		Rates:     gh.RateLimits{Search: gh.RateResource{Limit: 30, Remaining: 28}},
-		UpdatedAt: time.Now(),
+		StartedAt: time.Now(),
 	}
 	model, err := NewModel(cfg, fakeLoader{snapshot: snapshot}, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
-	updatedModel, _ := model.Update(snapshotMsg(snapshot))
+	updatedModel, _ := model.Update(snapshotMsg{Snapshot: snapshot})
 	model = updatedModel.(Model)
 	updatedModel, _ = model.Update(tea.WindowSizeMsg{Width: 130, Height: 30})
 	model = updatedModel.(Model)
@@ -232,7 +233,7 @@ func TestModelCentersCIIconsInColumn(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	model.views = []ViewData{{View: cfg.Views[0], PRs: prs}, {View: cfg.Views[1]}}
+	model.views = []discovery.ViewData{{View: cfg.Views[0], PRs: prs}, {View: cfg.Views[1]}}
 	model.loading = false
 	model.width, model.height = 130, 30
 
@@ -297,7 +298,7 @@ func ciGlyph(state gh.CIState) string {
 
 func TestModelSwitchesViewsAndFilters(t *testing.T) {
 	cfg := testConfig()
-	snapshot := Snapshot{Views: []ViewData{
+	snapshot := discovery.Snapshot{Views: []discovery.ViewData{
 		{View: cfg.Views[0], PRs: []gh.PullRequest{{Repository: "acme/api", Number: 1, Title: "API fix"}}},
 		{View: cfg.Views[1], PRs: []gh.PullRequest{{Repository: "acme/web", Number: 2, Title: "Web fix"}}},
 	}}
@@ -329,7 +330,7 @@ func TestModelConfigShortcutReloadsCompleteConfig(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	model.views = []ViewData{
+	model.views = []discovery.ViewData{
 		{View: cfg.Views[0], PRs: []gh.PullRequest{{Title: "Mine"}}},
 		{View: cfg.Views[1], PRs: []gh.PullRequest{
 			{Title: "Review one", URL: "https://github.com/acme/api/pull/1"},
@@ -349,7 +350,7 @@ func TestModelConfigShortcutReloadsCompleteConfig(t *testing.T) {
 		cfg.Views[1],
 		{ID: "all", Title: "All", Query: "is:open", Scope: config.ScopeGlobal},
 	}
-	model.loader = fakeLoader{snapshot: Snapshot{Views: []ViewData{
+	model.loader = fakeLoader{snapshot: discovery.Snapshot{Views: []discovery.ViewData{
 		{View: next.Views[0], PRs: []gh.PullRequest{
 			{Title: "Review selected", URL: "https://github.com/acme/api/pull/2"},
 			{Title: "Review one", URL: "https://github.com/acme/api/pull/1"},
@@ -452,7 +453,7 @@ func TestModelConfigEditSkipsUnchangedConfig(t *testing.T) {
 func TestModelConfigEditRespectsSearchCapacity(t *testing.T) {
 	cfg := testConfig()
 	capacityErr := errors.New("rate limit exhausted")
-	model, err := NewModel(cfg, fakeLoader{snapshot: Snapshot{capacityErr: capacityErr}}, nil)
+	model, err := NewModel(cfg, fakeLoader{snapshot: discovery.Snapshot{CapacityErr: capacityErr, Errors: []discovery.RetrievalError{{Stage: "search_budget", Err: capacityErr}}}}, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -508,10 +509,9 @@ func TestModelIgnoresRefreshesFromAnEarlierConfig(t *testing.T) {
 	model.epoch = 2
 	model.views[0].PRs = []gh.PullRequest{{Title: "Current"}}
 
-	updated, command := model.Update(snapshotMsg(Snapshot{
-		Views: []ViewData{{View: cfg.Views[0], PRs: []gh.PullRequest{{Title: "Old"}}}},
-		epoch: 1,
-	}))
+	updated, command := model.Update(snapshotMsg{Snapshot: discovery.Snapshot{
+		Views: []discovery.ViewData{{View: cfg.Views[0], PRs: []gh.PullRequest{{Title: "Old"}}}},
+	}, epoch: 1})
 	model = updated.(Model)
 	if command != nil {
 		t.Fatal("stale refresh returned a command")
@@ -547,7 +547,7 @@ func TestModelMouseSelectsViewsRowsAndURL(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	model.views = []ViewData{
+	model.views = []discovery.ViewData{
 		{View: cfg.Views[0], PRs: []gh.PullRequest{{Title: "Mine", URL: "https://github.com/acme/api/pull/1"}}},
 		{View: cfg.Views[1], PRs: []gh.PullRequest{
 			{Title: "First", URL: "https://github.com/acme/web/pull/1"},
@@ -672,10 +672,10 @@ func TestModelUpdatesRatesAfterActiveRefresh(t *testing.T) {
 	model.loading = true
 	model.rates.Search = gh.RateResource{Limit: 30, Remaining: 2}
 	updatedAt := time.Now().Add(-time.Second)
-	refresh := ViewSnapshot{
-		Data:      ViewData{View: cfg.Views[0]},
+	refresh := discovery.ViewSnapshot{
+		Data:      discovery.ViewData{View: cfg.Views[0], UpdatedAt: updatedAt},
 		Rates:     gh.RateLimits{Search: gh.RateResource{Limit: 30, Remaining: 1}},
-		UpdatedAt: updatedAt,
+		StartedAt: updatedAt,
 	}
 
 	updated, command := model.Update(viewMsg{index: 0, snapshot: refresh})
@@ -698,13 +698,15 @@ func TestModelKeepsLoadedRowsWhenRefreshFails(t *testing.T) {
 		t.Fatal(err)
 	}
 	model.views[0].PRs = []gh.PullRequest{{Repository: "acme/api", Number: 1, Title: "Keep me"}}
+	model.views[0].UpdatedAt = time.Now()
 	model.loading = true
 
-	failed := Snapshot{Views: []ViewData{
+	failed := discovery.Snapshot{Views: []discovery.ViewData{
 		{View: cfg.Views[0], Err: errors.New("rate limited")},
 		{View: cfg.Views[1]},
 	}}
-	updated, command := model.Update(snapshotMsg(failed))
+	failed.Errors = []discovery.RetrievalError{{Stage: "search", Err: failed.Views[0].Err}}
+	updated, command := model.Update(snapshotMsg{Snapshot: failed})
 	if command != nil {
 		t.Fatal("snapshot update returned an unexpected command")
 	}
@@ -725,14 +727,14 @@ func TestModelFreshnessAdvancesOnlyOnSuccessfulFullRefresh(t *testing.T) {
 	}
 	model.loading = true
 	successAt := time.Now().Add(-10 * time.Minute)
-	success := Snapshot{
-		Views: []ViewData{
-			{View: cfg.Views[0], PRs: []gh.PullRequest{{Repository: "acme/api", Number: 1, Title: "One"}}},
-			{View: cfg.Views[1], PRs: []gh.PullRequest{{Repository: "acme/web", Number: 2, Title: "Two"}}},
+	success := discovery.Snapshot{
+		Views: []discovery.ViewData{
+			{View: cfg.Views[0], PRs: []gh.PullRequest{{Repository: "acme/api", Number: 1, Title: "One"}}, UpdatedAt: successAt},
+			{View: cfg.Views[1], PRs: []gh.PullRequest{{Repository: "acme/web", Number: 2, Title: "Two"}}, UpdatedAt: successAt},
 		},
-		UpdatedAt: successAt,
+		StartedAt: successAt,
 	}
-	updated, _ := model.Update(snapshotMsg(success))
+	updated, _ := model.Update(snapshotMsg{Snapshot: success})
 	model = updated.(Model)
 	for i, view := range model.views {
 		if !view.UpdatedAt.Equal(successAt) {
@@ -742,11 +744,11 @@ func TestModelFreshnessAdvancesOnlyOnSuccessfulFullRefresh(t *testing.T) {
 
 	failedAt := time.Now()
 	model.loading = true
-	failed := Snapshot{Views: []ViewData{
+	failed := discovery.Snapshot{Views: []discovery.ViewData{
 		{View: cfg.Views[0], Err: errors.New("GitHub search failed: timeout")},
 		{View: cfg.Views[1], Err: errors.New("GitHub search failed: timeout")},
-	}, UpdatedAt: failedAt}
-	updated, _ = model.Update(snapshotMsg(failed))
+	}, StartedAt: failedAt}
+	updated, _ = model.Update(snapshotMsg{Snapshot: failed})
 	model = updated.(Model)
 	for i, view := range model.views {
 		if !view.UpdatedAt.Equal(successAt) {
@@ -762,16 +764,16 @@ func TestModelFreshnessPreservedPerViewInMixedFullRefresh(t *testing.T) {
 		t.Fatal(err)
 	}
 	firstSuccessAt := time.Now().Add(-20 * time.Minute)
-	model.views[0] = ViewData{View: cfg.Views[0], PRs: []gh.PullRequest{{Repository: "acme/api", Number: 1, Title: "One"}}, UpdatedAt: firstSuccessAt}
-	model.views[1] = ViewData{View: cfg.Views[1], PRs: []gh.PullRequest{{Repository: "acme/web", Number: 2, Title: "Two"}}, UpdatedAt: firstSuccessAt}
+	model.views[0] = discovery.ViewData{View: cfg.Views[0], PRs: []gh.PullRequest{{Repository: "acme/api", Number: 1, Title: "One"}}, UpdatedAt: firstSuccessAt}
+	model.views[1] = discovery.ViewData{View: cfg.Views[1], PRs: []gh.PullRequest{{Repository: "acme/web", Number: 2, Title: "Two"}}, UpdatedAt: firstSuccessAt}
 	model.loading = true
 
 	secondSuccessAt := time.Now().Add(-time.Minute)
-	mixed := Snapshot{Views: []ViewData{
+	mixed := discovery.Snapshot{Views: []discovery.ViewData{
 		{View: cfg.Views[0], Err: errors.New("rate limited")},
-		{View: cfg.Views[1], PRs: []gh.PullRequest{{Repository: "acme/web", Number: 3, Title: "Three"}}},
-	}, UpdatedAt: secondSuccessAt}
-	updated, _ := model.Update(snapshotMsg(mixed))
+		{View: cfg.Views[1], PRs: []gh.PullRequest{{Repository: "acme/web", Number: 3, Title: "Three"}}, UpdatedAt: secondSuccessAt},
+	}, StartedAt: secondSuccessAt}
+	updated, _ := model.Update(snapshotMsg{Snapshot: mixed})
 	model = updated.(Model)
 	if !model.views[0].UpdatedAt.Equal(firstSuccessAt) {
 		t.Fatalf("failed view updated time = %s, want %s", model.views[0].UpdatedAt, firstSuccessAt)
@@ -788,13 +790,13 @@ func TestModelFreshnessAdvancesOnlyOnSuccessfulActiveRefresh(t *testing.T) {
 		t.Fatal(err)
 	}
 	successAt := time.Now().Add(-15 * time.Minute)
-	model.views[0] = ViewData{View: cfg.Views[0], PRs: []gh.PullRequest{{Repository: "acme/api", Number: 1, Title: "One"}}, UpdatedAt: successAt}
+	model.views[0] = discovery.ViewData{View: cfg.Views[0], PRs: []gh.PullRequest{{Repository: "acme/api", Number: 1, Title: "One"}}, UpdatedAt: successAt}
 
 	failedAt := time.Now()
 	model.loading = true
-	failed := ViewSnapshot{
-		Data:      ViewData{View: cfg.Views[0], Err: errors.New("GitHub search failed: timeout")},
-		UpdatedAt: failedAt,
+	failed := discovery.ViewSnapshot{
+		Data:      discovery.ViewData{View: cfg.Views[0], Err: errors.New("GitHub search failed: timeout")},
+		StartedAt: failedAt,
 	}
 	updated, _ := model.Update(viewMsg{index: 0, snapshot: failed})
 	model = updated.(Model)
@@ -813,16 +815,17 @@ func TestModelFreshnessNotAdvancedByCapacityRejection(t *testing.T) {
 		t.Fatal(err)
 	}
 	successAt := time.Now().Add(-25 * time.Minute)
-	model.views[0] = ViewData{View: cfg.Views[0], PRs: []gh.PullRequest{{Repository: "acme/api", Number: 1, Title: "One"}}, UpdatedAt: successAt}
+	model.views[0] = discovery.ViewData{View: cfg.Views[0], PRs: []gh.PullRequest{{Repository: "acme/api", Number: 1, Title: "One"}}, UpdatedAt: successAt}
 	model.width, model.height = 120, 30
 	model.loading = true
 
-	capacityErr := searchCapacityError(gh.RateResource{Limit: 30, Remaining: 1, Reset: time.Now().Add(time.Minute)}, cfg.SearchRequestCount())
-	rejected := Snapshot{Views: []ViewData{
+	capacityErr := errors.New("GitHub search rate limit exhausted")
+	rejected := discovery.Snapshot{Views: []discovery.ViewData{
 		{View: cfg.Views[0], Err: capacityErr},
 		{View: cfg.Views[1], Err: capacityErr},
-	}, UpdatedAt: time.Now()}
-	updated, _ := model.Update(snapshotMsg(rejected))
+	}, StartedAt: time.Now()}
+	rejected.Errors = []discovery.RetrievalError{{Stage: "search_budget", Err: rejected.Views[0].Err}}
+	updated, _ := model.Update(snapshotMsg{Snapshot: rejected})
 	model = updated.(Model)
 
 	if !model.views[0].UpdatedAt.Equal(successAt) {
@@ -847,16 +850,17 @@ func TestModelMarksRetainedRowsStaleWithoutHidingError(t *testing.T) {
 		t.Fatal(err)
 	}
 	successAt := time.Now().Add(-30 * time.Minute)
-	model.views[0] = ViewData{View: cfg.Views[0], PRs: []gh.PullRequest{{Repository: "acme/api", Number: 1, Title: "One", URL: "https://github.com/acme/api/pull/1"}}, UpdatedAt: successAt}
+	model.views[0] = discovery.ViewData{View: cfg.Views[0], PRs: []gh.PullRequest{{Repository: "acme/api", Number: 1, Title: "One", URL: "https://github.com/acme/api/pull/1"}}, UpdatedAt: successAt}
 	model.width, model.height = 120, 30
 	model.active = 0
 
 	model.loading = true
-	failed := Snapshot{Views: []ViewData{
+	failed := discovery.Snapshot{Views: []discovery.ViewData{
 		{View: cfg.Views[0], Err: errors.New("GitHub search failed: timeout")},
-	}, UpdatedAt: time.Now()}
-	failed.Views = append(failed.Views, ViewData{View: cfg.Views[1]})
-	updated, _ := model.Update(snapshotMsg(failed))
+	}, StartedAt: time.Now()}
+	failed.Views = append(failed.Views, discovery.ViewData{View: cfg.Views[1]})
+	failed.Errors = []discovery.RetrievalError{{Stage: "search", Err: failed.Views[0].Err}}
+	updated, _ := model.Update(snapshotMsg{Snapshot: failed})
 	model = updated.(Model)
 
 	output := model.View()
@@ -992,7 +996,7 @@ func browserModel(t *testing.T, cfg config.Config) Model {
 	if err != nil {
 		t.Fatal(err)
 	}
-	model.views = []ViewData{
+	model.views = []discovery.ViewData{
 		{View: cfg.Views[0], PRs: []gh.PullRequest{{Repository: "acme/api", Number: 1, Title: "API fix", URL: "https://github.com/acme/api/pull/1"}}},
 		{View: cfg.Views[1]},
 	}
@@ -1043,24 +1047,6 @@ func TestCtrlCQuitsWhileEditingFilter(t *testing.T) {
 	}
 }
 
-func TestModelListsSharedRefreshErrorOnce(t *testing.T) {
-	cfg := testConfig()
-	model, err := NewModel(cfg, fakeLoader{}, nil)
-	if err != nil {
-		t.Fatal(err)
-	}
-	budget := errors.New("GitHub search rate limit has 0 requests remaining but refresh requires 2; resets at 13:00")
-	failed := Snapshot{Views: []ViewData{
-		{View: cfg.Views[0], Err: budget},
-		{View: cfg.Views[1], Err: budget},
-	}}
-	updated, _ := model.Update(snapshotMsg(failed))
-	model = updated.(Model)
-	if got := strings.Count(model.warning, "refresh requires 2"); got != 1 {
-		t.Fatalf("shared error listed %d times in %q, want once", got, model.warning)
-	}
-}
-
 func TestConfigReloadRebuildsInjectedSidebar(t *testing.T) {
 	cfg := testConfig()
 	enabled := false
@@ -1084,5 +1070,47 @@ func TestConfigReloadRebuildsInjectedSidebar(t *testing.T) {
 	model = model.applyConfig(cfg, fakeLoader{}, 0)
 	if model.sidebar != nil {
 		t.Fatal("sidebar remains enabled after reload")
+	}
+}
+
+func TestModelPartialSearchKeepsPreviousSuccessfulObservation(t *testing.T) {
+	cfg := testConfig()
+	for _, previous := range []bool{false, true} {
+		model, err := NewModel(cfg, fakeLoader{}, nil)
+		if err != nil {
+			t.Fatal(err)
+		}
+		old := time.Now().Add(-time.Minute)
+		if previous {
+			model.views[0] = discovery.ViewData{View: cfg.Views[0], PRs: []gh.PullRequest{{Title: "Old A"}, {Title: "Old B"}}, UpdatedAt: old, ObservedAt: old}
+		}
+		observed := time.Now()
+		partial := discovery.ViewData{View: cfg.Views[0], PRs: []gh.PullRequest{{Title: "Fresh A"}}, ObservedAt: observed, Err: errors.New("one scope failed")}
+		updated, _ := model.Update(viewMsg{index: 0, snapshot: discovery.ViewSnapshot{Data: partial}})
+		view := updated.(Model).views[0]
+		if previous {
+			if len(view.PRs) != 2 || view.PRs[0].Title != "Old A" || !view.UpdatedAt.Equal(old) || !view.ObservedAt.Equal(old) || !stale(view) {
+				t.Fatalf("retained view=%+v", view)
+			}
+		} else if len(view.PRs) != 1 || view.PRs[0].Title != "Fresh A" || !view.UpdatedAt.IsZero() || !view.ObservedAt.Equal(observed) || stale(view) {
+			t.Fatalf("initial partial view=%+v", view)
+		}
+	}
+}
+
+func TestFailedConfigReloadPreservesSearchObservation(t *testing.T) {
+	cfg := testConfig()
+	model, err := NewModel(cfg, fakeLoader{}, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	observed := time.Now().Add(-time.Minute)
+	model.views[0] = discovery.ViewData{View: cfg.Views[0], PRs: []gh.PullRequest{{Title: "Retained"}}, UpdatedAt: observed, ObservedAt: observed}
+	cfg.Views[0].Title = "Renamed"
+	snapshot := discovery.Snapshot{Views: []discovery.ViewData{{View: cfg.Views[0], Err: errors.New("search failed")}, {View: cfg.Views[1]}}}
+	updated, _ := model.Update(configRefreshMsg{cfg: cfg, loader: fakeLoader{}, snapshot: snapshot})
+	view := updated.(Model).views[0]
+	if view.View.Title != "Renamed" || len(view.PRs) != 1 || view.PRs[0].Title != "Retained" || !view.UpdatedAt.Equal(observed) || !view.ObservedAt.Equal(observed) {
+		t.Fatalf("reloaded view=%+v", view)
 	}
 }
