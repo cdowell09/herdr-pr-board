@@ -14,15 +14,9 @@ import (
 	"github.com/cdowell09/herdr-pr-board/internal/config"
 )
 
-type runnerFunc func(context.Context, ...string) ([]byte, error)
-
-func (f runnerFunc) Run(ctx context.Context, args ...string) ([]byte, error) {
-	return f(ctx, args...)
-}
-
 func TestSearchSeparatesFlagsFromNegativeQueryTerms(t *testing.T) {
 	var got []string
-	runner := runnerFunc(func(_ context.Context, args ...string) ([]byte, error) {
+	runner := Runner(func(_ context.Context, args ...string) ([]byte, error) {
 		got = append([]string(nil), args...)
 		return []byte("[]"), nil
 	})
@@ -50,7 +44,7 @@ func TestSearchViewResolvesScopesDeduplicatesAndSorts(t *testing.T) {
 		defer queryMu.Unlock()
 		queries = append(queries, query)
 	}
-	runner := runnerFunc(func(_ context.Context, args ...string) ([]byte, error) {
+	runner := Runner(func(_ context.Context, args ...string) ([]byte, error) {
 		if len(args) >= 2 && args[0] == "api" && args[1] == "user" {
 			return []byte("cdowell09\n"), nil
 		}
@@ -99,7 +93,7 @@ func TestSearchViewResolvesScopesDeduplicatesAndSorts(t *testing.T) {
 
 func TestEnrichCIBatchesAndMapsRollups(t *testing.T) {
 	calls := 0
-	runner := runnerFunc(func(_ context.Context, args ...string) ([]byte, error) {
+	runner := Runner(func(_ context.Context, args ...string) ([]byte, error) {
 		calls++
 		if !strings.Contains(args[len(args)-1], "p0: repository") {
 			return nil, fmt.Errorf("missing GraphQL alias: %v", args)
@@ -138,7 +132,7 @@ func TestEnrichCIBatchesAndMapsRollups(t *testing.T) {
 
 func TestEnrichCIPreservesCompletedBatchesOnFailure(t *testing.T) {
 	calls := 0
-	runner := runnerFunc(func(_ context.Context, args ...string) ([]byte, error) {
+	runner := Runner(func(_ context.Context, args ...string) ([]byte, error) {
 		calls++
 		switch calls {
 		case 1:
@@ -186,8 +180,10 @@ func TestEnrichCIPreservesCompletedBatchesOnFailure(t *testing.T) {
 }
 
 func TestEnrichCISurfacesWarningsWhenResponseHasDataAndErrors(t *testing.T) {
-	runner := runnerFunc(func(_ context.Context, _ ...string) ([]byte, error) {
-		return []byte(`{"data":{"rateLimit":{"limit":5000,"remaining":4999,"resetAt":"2026-08-07T13:00:00Z","cost":1},"p0":{"pullRequest":{"commits":{"nodes":[{"commit":{"statusCheckRollup":{"state":"SUCCESS"}}}]}}}},"errors":[{"message":"p1 resolves to a deleted repository"}]}`), nil
+	// gh api graphql exits non-zero when the response carries errors, but it
+	// still prints the body. The runner returns both.
+	runner := Runner(func(_ context.Context, _ ...string) ([]byte, error) {
+		return []byte(`{"data":{"rateLimit":{"limit":5000,"remaining":4999,"resetAt":"2026-08-07T13:00:00Z","cost":1},"p0":{"pullRequest":{"commits":{"nodes":[{"commit":{"statusCheckRollup":{"state":"SUCCESS"}}}]}}}},"errors":[{"message":"p1 resolves to a deleted repository"}]}`), errors.New("gh: p1 resolves to a deleted repository")
 	})
 	client := NewClient(runner, config.GitHubConfig{CIBatchSize: 2})
 	prs := []PullRequest{
@@ -212,7 +208,7 @@ func TestEnrichCISurfacesWarningsWhenResponseHasDataAndErrors(t *testing.T) {
 
 func TestEnrichCIKeepsWarningsWithCapacityError(t *testing.T) {
 	calls := 0
-	runner := runnerFunc(func(_ context.Context, _ ...string) ([]byte, error) {
+	runner := Runner(func(_ context.Context, _ ...string) ([]byte, error) {
 		calls++
 		return []byte(`{"data":{"rateLimit":{"limit":5000,"remaining":1,"resetAt":"2027-08-07T13:00:00Z","cost":1},"p0":{"pullRequest":{"commits":{"nodes":[{"commit":{"statusCheckRollup":{"state":"SUCCESS"}}}]}}}},"errors":[{"message":"rate limiting may interfere"}]}`), nil
 	})
@@ -244,7 +240,7 @@ func TestEnrichCIKeepsWarningsWithCapacityError(t *testing.T) {
 
 func TestEnrichCICacheConcurrentAccess(t *testing.T) {
 	var calls atomic.Int64
-	runner := runnerFunc(func(_ context.Context, _ ...string) ([]byte, error) {
+	runner := Runner(func(_ context.Context, _ ...string) ([]byte, error) {
 		calls.Add(1)
 		return []byte(`{"data":{"rateLimit":{"limit":5000,"remaining":4999,"resetAt":"2026-08-07T13:00:00Z","cost":1},"p0":{"pullRequest":{"commits":{"nodes":[{"commit":{"statusCheckRollup":{"state":"SUCCESS"}}}]}}}}}`), nil
 	})
@@ -276,7 +272,7 @@ func TestEnrichCICacheConcurrentAccess(t *testing.T) {
 
 func TestEnrichCIStopsBeforeUnbudgetedBatch(t *testing.T) {
 	calls := 0
-	runner := runnerFunc(func(_ context.Context, _ ...string) ([]byte, error) {
+	runner := Runner(func(_ context.Context, _ ...string) ([]byte, error) {
 		calls++
 		if calls > 1 {
 			return nil, errors.New("unexpected second GraphQL request")
@@ -304,7 +300,7 @@ func TestEnrichCIStopsBeforeUnbudgetedBatch(t *testing.T) {
 
 func TestEnrichCIRechecksExpiredCacheBeforeFirstBatch(t *testing.T) {
 	calls := 0
-	runner := runnerFunc(func(_ context.Context, _ ...string) ([]byte, error) {
+	runner := Runner(func(_ context.Context, _ ...string) ([]byte, error) {
 		calls++
 		return nil, errors.New("unexpected GraphQL request")
 	})
@@ -325,8 +321,97 @@ func TestEnrichCIRechecksExpiredCacheBeforeFirstBatch(t *testing.T) {
 	}
 }
 
+func TestRateResourceHasCapacity(t *testing.T) {
+	now := time.Now()
+	tests := []struct {
+		name     string
+		rate     RateResource
+		required int
+		want     bool
+	}{
+		{name: "unknown limit", rate: RateResource{}, required: 1, want: true},
+		{name: "exact remaining", rate: RateResource{Limit: 30, Remaining: 2, Reset: now.Add(time.Hour)}, required: 2, want: true},
+		{name: "before reset", rate: RateResource{Limit: 30, Remaining: 1, Reset: now.Add(time.Hour)}, required: 2, want: false},
+		{name: "after reset", rate: RateResource{Limit: 30, Remaining: 1, Reset: now.Add(-time.Hour)}, required: 2, want: true},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := tt.rate.HasCapacity(tt.required); got != tt.want {
+				t.Fatalf("HasCapacity(%d) = %t, want %t", tt.required, got, tt.want)
+			}
+		})
+	}
+}
+
+func TestRateLimitsAuthErrorGetsTokenVarHint(t *testing.T) {
+	runner := Runner(func(_ context.Context, _ ...string) ([]byte, error) {
+		return nil, errors.New("HTTP 401: Bad credentials")
+	})
+	client := NewClient(runner, config.GitHubConfig{})
+	client.SetTokenVars([]string{"GITHUB_TOKEN"})
+
+	_, err := client.RateLimits(context.Background())
+	if err == nil || !strings.Contains(err.Error(), "HTTP 401: Bad credentials") || !strings.Contains(err.Error(), "GITHUB_TOKEN") {
+		t.Fatalf("error = %v, want the original text and a GITHUB_TOKEN hint", err)
+	}
+}
+
+func TestRateLimitsAuthErrorWithoutTokenVarsHasNoHint(t *testing.T) {
+	runner := Runner(func(_ context.Context, _ ...string) ([]byte, error) {
+		return nil, errors.New("HTTP 401: Bad credentials")
+	})
+	client := NewClient(runner, config.GitHubConfig{})
+
+	_, err := client.RateLimits(context.Background())
+	if err == nil || err.Error() != "HTTP 401: Bad credentials" {
+		t.Fatalf("error = %v, want the original text with no hint", err)
+	}
+}
+
+func TestRateLimitsAuthErrorWithEmptyTokenVarsHasNoHint(t *testing.T) {
+	runner := Runner(func(_ context.Context, _ ...string) ([]byte, error) {
+		return nil, errors.New("HTTP 401: Bad credentials")
+	})
+	client := NewClient(runner, config.GitHubConfig{})
+	client.SetTokenVars(nil)
+
+	_, err := client.RateLimits(context.Background())
+	if err == nil || err.Error() != "HTTP 401: Bad credentials" {
+		t.Fatalf("error = %v, want the original text with no hint", err)
+	}
+}
+
+func TestRateLimitsNonAuthErrorHasNoHint(t *testing.T) {
+	runner := Runner(func(_ context.Context, _ ...string) ([]byte, error) {
+		return nil, errors.New("HTTP 502 bad gateway")
+	})
+	client := NewClient(runner, config.GitHubConfig{})
+	client.SetTokenVars([]string{"GH_TOKEN", "GITHUB_TOKEN"})
+
+	_, err := client.RateLimits(context.Background())
+	if err == nil || err.Error() != "HTTP 502 bad gateway" {
+		t.Fatalf("error = %v, want the original text with no hint", err)
+	}
+}
+
+func TestSearchViewAuthErrorGetsTokenVarHint(t *testing.T) {
+	runner := Runner(func(_ context.Context, _ ...string) ([]byte, error) {
+		return nil, errors.New("HTTP 401: Bad credentials")
+	})
+	client := NewClient(runner, config.GitHubConfig{LimitPerScope: 10})
+	client.SetTokenVars([]string{"GH_TOKEN", "GITHUB_TOKEN"})
+
+	_, err := client.SearchView(context.Background(), config.View{Title: "All", Query: "is:open"})
+	if err == nil || !strings.Contains(err.Error(), "HTTP 401: Bad credentials") {
+		t.Fatalf("error = %v, want the original text", err)
+	}
+	if !strings.Contains(err.Error(), "GH_TOKEN") || !strings.Contains(err.Error(), "GITHUB_TOKEN") {
+		t.Fatalf("error = %v, want both token variable names in the hint", err)
+	}
+}
+
 func TestRateLimits(t *testing.T) {
-	runner := runnerFunc(func(_ context.Context, _ ...string) ([]byte, error) {
+	runner := Runner(func(_ context.Context, _ ...string) ([]byte, error) {
 		return []byte(`{"resources":{"search":{"limit":30,"remaining":27,"reset":1786107600},"graphql":{"limit":5000,"remaining":4800,"reset":1786111200}}}`), nil
 	})
 	client := NewClient(runner, config.GitHubConfig{})
@@ -353,7 +438,7 @@ func TestSearchViewRunsScopeSearchesConcurrently(t *testing.T) {
 	var inFlight atomic.Int64
 	var maxInFlight atomic.Int64
 	release := make(chan struct{})
-	runner := runnerFunc(func(_ context.Context, args ...string) ([]byte, error) {
+	runner := Runner(func(_ context.Context, args ...string) ([]byte, error) {
 		if len(args) >= 3 && args[0] == "search" && args[1] == "prs" {
 			now := inFlight.Add(1)
 			updateMaxAtomic(&maxInFlight, now)
@@ -413,7 +498,7 @@ func TestSearchViewConcurrencyDoesNotExceedMaxConcurrency(t *testing.T) {
 	var maxInFlight atomic.Int64
 	var total atomic.Int64
 	release := make(chan struct{})
-	runner := runnerFunc(func(_ context.Context, args ...string) ([]byte, error) {
+	runner := Runner(func(_ context.Context, args ...string) ([]byte, error) {
 		if len(args) >= 3 && args[0] == "search" && args[1] == "prs" {
 			now := inFlight.Add(1)
 			updateMaxAtomic(&maxInFlight, now)
@@ -462,7 +547,7 @@ func TestSearchViewConcurrencyDoesNotExceedMaxConcurrency(t *testing.T) {
 func TestSearchViewStopsRemainingSearchesOnError(t *testing.T) {
 	otherScopeWaiting := make(chan struct{})
 	var secondCanceled atomic.Bool
-	runner := runnerFunc(func(ctx context.Context, args ...string) ([]byte, error) {
+	runner := Runner(func(ctx context.Context, args ...string) ([]byte, error) {
 		if len(args) >= 3 && args[0] == "search" && args[1] == "prs" {
 			separator := slices.Index(args, "--")
 			query := strings.Join(args[separator+1:], " ")
@@ -496,5 +581,132 @@ func TestSearchViewStopsRemainingSearchesOnError(t *testing.T) {
 	}
 	if !secondCanceled.Load() {
 		t.Fatal("in-flight scope search kept running after another scope failed")
+	}
+}
+
+func TestResolveScopeRetriesLoginAfterFailure(t *testing.T) {
+	var loginCalls atomic.Int64
+	runner := Runner(func(_ context.Context, args ...string) ([]byte, error) {
+		if len(args) >= 2 && args[0] == "api" && args[1] == "user" {
+			if loginCalls.Add(1) == 1 {
+				return nil, errors.New("context deadline exceeded")
+			}
+			return []byte("cdowell09\n"), nil
+		}
+		return []byte(`[]`), nil
+	})
+	client := NewClient(runner, config.GitHubConfig{LimitPerScope: 10, MaxConcurrency: 1, Scopes: []string{"user:@me"}})
+	view := config.View{ID: "all", Title: "All", Query: "is:open", Scope: config.ScopeConfigured}
+
+	if _, err := client.SearchView(context.Background(), view); err == nil || !strings.Contains(err.Error(), "resolve @me") {
+		t.Fatalf("first search error = %v, want resolve @me failure", err)
+	}
+	if _, err := client.SearchView(context.Background(), view); err != nil {
+		t.Fatalf("second search must retry the login lookup: %v", err)
+	}
+	if _, err := client.SearchView(context.Background(), view); err != nil {
+		t.Fatal(err)
+	}
+	if got := loginCalls.Load(); got != 2 {
+		t.Fatalf("login lookups = %d, want 2 (one failure, one cached success)", got)
+	}
+}
+
+func TestEnrichCIReportsExitErrorWithoutUsableBody(t *testing.T) {
+	runner := Runner(func(_ context.Context, _ ...string) ([]byte, error) {
+		return []byte("gh: HTTP 502 bad gateway\n"), errors.New("gh: HTTP 502 bad gateway")
+	})
+	client := NewClient(runner, config.GitHubConfig{CIBatchSize: 2})
+	prs := []PullRequest{{Repository: "acme/one", Number: 1, URL: "https://github.com/acme/one/pull/1", CI: CIUnknown}}
+
+	_, _, err := client.EnrichCI(context.Background(), prs, RateResource{})
+	if err == nil || !strings.Contains(err.Error(), "HTTP 502") {
+		t.Fatalf("error = %v, want the gh exit error", err)
+	}
+	if prs[0].CI != CIUnknown {
+		t.Fatalf("CI = %q, want unknown", prs[0].CI)
+	}
+}
+
+func TestEnrichCIKeepsDataWhenGhExitsNonZeroWithoutErrorsField(t *testing.T) {
+	runner := Runner(func(_ context.Context, _ ...string) ([]byte, error) {
+		return []byte(`{"data":{"rateLimit":{"limit":5000,"remaining":4998,"resetAt":"2026-08-07T13:00:00Z","cost":1},"p0":{"pullRequest":{"commits":{"nodes":[{"commit":{"statusCheckRollup":{"state":"FAILURE"}}}]}}}}}`), errors.New("gh: exit status 1")
+	})
+	client := NewClient(runner, config.GitHubConfig{CIBatchSize: 2})
+	prs := []PullRequest{{Repository: "acme/one", Number: 1, URL: "https://github.com/acme/one/pull/1"}}
+
+	rate, warnings, err := client.EnrichCI(context.Background(), prs, RateResource{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if prs[0].CI != CIFailure || rate.Remaining != 4998 {
+		t.Fatalf("CI = %q, rate = %#v", prs[0].CI, rate)
+	}
+	if len(warnings) != 1 || !strings.Contains(warnings[0], "exit status 1") {
+		t.Fatalf("warnings = %#v", warnings)
+	}
+}
+
+func TestEnrichCISizesCapacityCheckWithReportedCost(t *testing.T) {
+	calls := 0
+	runner := Runner(func(_ context.Context, _ ...string) ([]byte, error) {
+		calls++
+		return []byte(`{"data":{"rateLimit":{"limit":5000,"remaining":7,"resetAt":"2027-08-07T13:00:00Z","cost":5},"p0":{"pullRequest":{"commits":{"nodes":[{"commit":{"statusCheckRollup":{"state":"SUCCESS"}}}]}}}}}`), nil
+	})
+	client := NewClient(runner, config.GitHubConfig{CIBatchSize: 1})
+	prs := []PullRequest{
+		{Repository: "acme/one", Number: 1, URL: "https://github.com/acme/one/pull/1", CI: CIUnknown},
+		{Repository: "acme/two", Number: 2, URL: "https://github.com/acme/two/pull/2", CI: CIUnknown},
+		{Repository: "acme/three", Number: 3, URL: "https://github.com/acme/three/pull/3", CI: CIUnknown},
+	}
+	budget := RateResource{Limit: 5000, Remaining: 100, Reset: time.Now().Add(time.Hour)}
+
+	rate, _, err := client.EnrichCI(context.Background(), prs, budget)
+	if err == nil || !strings.Contains(err.Error(), "needs at least 10") {
+		t.Fatalf("error = %v, want two remaining batches at cost 5", err)
+	}
+	if calls != 1 {
+		t.Fatalf("GraphQL calls = %d, want 1 before the cost-sized check fails", calls)
+	}
+	if rate.Cost != 5 || rate.Remaining != 7 {
+		t.Fatalf("rate = %#v", rate)
+	}
+	if prs[0].CI != CISuccess || prs[1].CI != CIUnknown || prs[2].CI != CIUnknown {
+		t.Fatalf("CI states = %q, %q, %q", prs[0].CI, prs[1].CI, prs[2].CI)
+	}
+}
+
+func TestEnrichCIPrunesExpiredCacheEntries(t *testing.T) {
+	runner := Runner(func(_ context.Context, _ ...string) ([]byte, error) {
+		return []byte(`{"data":{"rateLimit":{"limit":5000,"remaining":4999,"resetAt":"2027-08-07T13:00:00Z","cost":1},"p0":{"pullRequest":{"commits":{"nodes":[{"commit":{"statusCheckRollup":{"state":"SUCCESS"}}}]}}}}}`), nil
+	})
+	client := NewClient(runner, config.GitHubConfig{CIBatchSize: 25})
+	client.ciCache["https://github.com/acme/old/pull/1"] = ciCacheEntry{state: CIFailure, expiresAt: time.Now().Add(-time.Minute)}
+	client.ciCache["https://github.com/acme/live/pull/2"] = ciCacheEntry{state: CIPending, expiresAt: time.Now().Add(time.Hour)}
+	prs := []PullRequest{{Repository: "acme/one", Number: 1, URL: "https://github.com/acme/one/pull/1", CI: CIUnknown}}
+
+	if _, _, err := client.EnrichCI(context.Background(), prs, RateResource{}); err != nil {
+		t.Fatal(err)
+	}
+	if _, kept := client.ciCache["https://github.com/acme/old/pull/1"]; kept {
+		t.Fatal("expired cache entry was not pruned")
+	}
+	if _, kept := client.ciCache["https://github.com/acme/live/pull/2"]; !kept {
+		t.Fatal("live cache entry was pruned")
+	}
+	if _, kept := client.ciCache["https://github.com/acme/one/pull/1"]; !kept {
+		t.Fatal("fresh result was not cached")
+	}
+}
+
+func TestReconfiguredPreservesAuthHint(t *testing.T) {
+	client := NewClient(func(context.Context, ...string) ([]byte, error) {
+		return nil, errors.New("HTTP 401: Bad credentials")
+	}, config.GitHubConfig{})
+	client.SetTokenVars([]string{"GH_TOKEN"})
+	next := client.Reconfigured(config.GitHubConfig{})
+	_, err := next.RateLimits(context.Background())
+	if err == nil || !strings.Contains(err.Error(), "GH_TOKEN is set") {
+		t.Fatalf("reconfigured authentication error = %v", err)
 	}
 }

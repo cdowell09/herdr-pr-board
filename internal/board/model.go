@@ -20,22 +20,33 @@ import (
 )
 
 const (
-	tabRowY     = 1
-	firstPRRowY = 5
-	mouseStep   = 3
+	tabRowY   = 1
+	mouseStep = 3
+
+	refreshAllTimeout    = 90 * time.Second
+	refreshOneTimeout    = 60 * time.Second
+	sidebarReportTimeout = 15 * time.Second
 )
 
-// firstPRRowYFor returns the screen row of the first PR row, which shifts down
-// by one when the stale notice occupies the separator line.
-func firstPRRowYFor(stale bool) int {
-	if stale {
-		return firstPRRowY + 1
-	}
-	return firstPRRowY
+// boardLayout is the row geometry shared by rendering and mouse hit-testing.
+type boardLayout struct {
+	firstPRRow     int
+	selectedURLRow int
+	visibleRows    int
 }
 
-func (m Model) firstPRRow() int {
-	return firstPRRowYFor(m.currentView().Stale())
+func (m Model) boardLayout() boardLayout {
+	firstPRRow := 5
+	if m.currentView().Stale() {
+		firstPRRow++
+	}
+	visibleRows := max(1, m.height-firstPRRow-3-len(m.footerHelpLines()))
+	rows := m.filteredPRs()
+	selectedURLRow := firstPRRow
+	if len(rows) > 0 {
+		selectedURLRow = firstPRRow + 1 + min(visibleRows, max(0, len(rows)-m.offset))
+	}
+	return boardLayout{firstPRRow: firstPRRow, selectedURLRow: selectedURLRow, visibleRows: visibleRows}
 }
 
 var (
@@ -145,19 +156,24 @@ type Model struct {
 	warning     string
 	rates       gh.RateLimits
 	sidebar     *sidebar.Reporter
+	reporter    func(config.SidebarConfig) *sidebar.Reporter
 	sidebarWarn bool
 	epoch       uint64
 }
 
-func NewModel(cfg config.Config, loader Loader) (Model, error) {
-	return newModel(cfg, "", loader)
+// NewModel builds the board. A nil reporter disables sidebar reporting.
+func NewModel(cfg config.Config, loader Loader, reporter *sidebar.Reporter) (Model, error) {
+	return NewModelWithConfigPath(cfg, "", loader, func(settings config.SidebarConfig) *sidebar.Reporter {
+		if reporter == nil || !settings.SidebarEnabled() {
+			return nil
+		}
+		next := *reporter
+		next.TTL, _ = settings.TTLEvery()
+		return &next
+	})
 }
 
-func NewModelWithConfigPath(cfg config.Config, configPath string, loader Loader) (Model, error) {
-	return newModel(cfg, configPath, loader)
-}
-
-func newModel(cfg config.Config, configPath string, loader Loader) (Model, error) {
+func NewModelWithConfigPath(cfg config.Config, configPath string, loader Loader, reporter func(config.SidebarConfig) *sidebar.Reporter) (Model, error) {
 	refresh, err := cfg.RefreshEvery()
 	if err != nil {
 		return Model{}, err
@@ -165,6 +181,10 @@ func newModel(cfg config.Config, configPath string, loader Loader) (Model, error
 	views := make([]ViewData, len(cfg.Views))
 	for i, view := range cfg.Views {
 		views[i].View = view
+	}
+	var initialReporter *sidebar.Reporter
+	if reporter != nil {
+		initialReporter = reporter(cfg.Sidebar)
 	}
 	return Model{
 		cfg:         cfg,
@@ -175,21 +195,10 @@ func newModel(cfg config.Config, configPath string, loader Loader) (Model, error
 		refresh:     refresh,
 		views:       views,
 		loading:     true,
-		sidebar:     newSidebarReporter(cfg),
+		sidebar:     initialReporter,
+		reporter:    reporter,
 		epoch:       1,
 	}, nil
-}
-
-func newSidebarReporter(cfg config.Config) *sidebar.Reporter {
-	if !cfg.Sidebar.SidebarEnabled() {
-		return nil
-	}
-	ttl, _ := cfg.Sidebar.TTLEvery() // validated by config.Load
-	return &sidebar.Reporter{
-		Bin:         os.Getenv("HERDR_BIN_PATH"),
-		WorkspaceID: os.Getenv("HERDR_WORKSPACE_ID"),
-		TTL:         ttl,
-	}
 }
 
 func (m Model) Init() tea.Cmd {
@@ -210,26 +219,18 @@ func (m Model) Update(message tea.Msg) (tea.Model, tea.Cmd) {
 		if msg.epoch != 0 && msg.epoch != m.epoch {
 			return m, nil
 		}
-		nextViews := msg.Views
 		warning := msg.Warning
-		for i := range nextViews {
-			if nextViews[i].Err == nil {
-				nextViews[i].UpdatedAt = msg.UpdatedAt
-				continue
-			}
-			warning = appendWarning(warning, nextViews[i].View.Title+": "+nextViews[i].Err.Error())
-			if i < len(m.views) {
-				nextViews[i].retainFrom(m.views[i])
-			}
+		for i := range msg.Views {
+			warning = appendWarning(warning, m.settleView(&msg.Views[i], i, msg.UpdatedAt))
 		}
-		m.views = nextViews
+		m.views = msg.Views
 		m.rates = msg.Rates
 		m.warning = warning
 		m.loading = false
 		m.clampCursor()
 		var cmd tea.Cmd
 		if m.sidebar != nil {
-			if tokens := sidebar.Tokens(m.cfg.Sidebar.ReviewView, adaptViews(nextViews)); len(tokens) > 0 {
+			if tokens := sidebar.Tokens(m.cfg.Sidebar.ReviewView, adaptViews(m.views)); len(tokens) > 0 {
 				cmd = m.sidebarReportCmd(tokens)
 			}
 		}
@@ -247,20 +248,13 @@ func (m Model) Update(message tea.Msg) (tea.Model, tea.Cmd) {
 			return m, nil
 		}
 		refresh := msg.snapshot
-		data := refresh.Data
+		m.warning = refresh.Warning
 		if msg.index >= 0 && msg.index < len(m.views) {
-			if data.Err == nil {
-				data.UpdatedAt = refresh.UpdatedAt
-			} else {
-				data.retainFrom(m.views[msg.index])
-			}
+			data := refresh.Data
+			m.warning = appendWarning(m.warning, m.settleView(&data, msg.index, refresh.UpdatedAt))
 			m.views[msg.index] = data
 		}
 		m.rates = refresh.Rates
-		m.warning = refresh.Warning
-		if data.Err != nil {
-			m.warning = appendWarning(m.warning, data.Err.Error())
-		}
 		m.loading = false
 		m.clampCursor()
 		return m, nil
@@ -269,7 +263,7 @@ func (m Model) Update(message tea.Msg) (tea.Model, tea.Cmd) {
 			return m, nil
 		}
 		commands := []tea.Cmd{m.tickCmd()}
-		if !m.loading && searchCapacityAvailable(m.rates.Search, m.cfg.SearchRequestCount()) {
+		if !m.loading && m.rates.Search.HasCapacity(m.cfg.SearchRequestCount()) {
 			m.loading = true
 			commands = append(commands, m.refreshAllCmd())
 		}
@@ -294,8 +288,24 @@ func (m Model) Update(message tea.Msg) (tea.Model, tea.Cmd) {
 	return m, nil
 }
 
+// settleView finishes one refreshed view. A successful view takes the
+// refresh time. A failed view keeps the rows and freshness it had before,
+// and its error is returned for the footer.
+func (m Model) settleView(data *ViewData, index int, updatedAt time.Time) string {
+	if data.Err == nil {
+		data.UpdatedAt = updatedAt
+		return ""
+	}
+	if index < len(m.views) {
+		data.retainFrom(m.views[index])
+	}
+	return data.Err.Error()
+}
+
 func (m Model) updateFilter(key tea.KeyMsg) (tea.Model, tea.Cmd) {
 	switch key.String() {
+	case "ctrl+c":
+		return m, tea.Quit
 	case "esc":
 		m.editing = false
 		m.filter = ""
@@ -400,7 +410,9 @@ func (m Model) applyConfig(cfg config.Config, loader Loader, refresh time.Durati
 	m.refresh = refresh
 	m.views = nextViews
 	m.active = active
-	m.sidebar = newSidebarReporter(cfg)
+	if m.reporter != nil {
+		m.sidebar = m.reporter(cfg.Sidebar)
+	}
 	m.sidebarWarn = false
 	m.clampCursor()
 	return m
@@ -456,12 +468,12 @@ func (m Model) updateKey(key tea.KeyMsg) (tea.Model, tea.Cmd) {
 		return m, m.editConfig(m.configPath)
 	case "r":
 		requests := m.currentView().View.SearchRequestCount(len(m.cfg.GitHub.Scopes), m.cfg.GitHub.LimitPerScope)
-		if !m.loading && searchCapacityAvailable(m.rates.Search, requests) {
+		if !m.loading && m.rates.Search.HasCapacity(requests) {
 			m.loading = true
 			return m, m.refreshOneCmd(m.active)
 		}
 	case "R":
-		if !m.loading && searchCapacityAvailable(m.rates.Search, m.cfg.SearchRequestCount()) {
+		if !m.loading && m.rates.Search.HasCapacity(m.cfg.SearchRequestCount()) {
 			m.loading = true
 			return m, m.refreshAllCmd()
 		}
@@ -503,17 +515,17 @@ func (m Model) updateMouse(message tea.MouseMsg) (tea.Model, tea.Cmd) {
 		return m, nil
 	}
 
+	lay := m.boardLayout()
 	rows := m.filteredPRs()
-	firstRow := m.firstPRRow()
-	row := m.offset + event.Y - firstRow
-	visible := min(m.visibleRows(), max(0, len(rows)-m.offset))
-	if event.Y >= firstRow && event.Y < firstRow+visible && row >= 0 && row < len(rows) {
+	row := m.offset + event.Y - lay.firstPRRow
+	visible := min(lay.visibleRows, max(0, len(rows)-m.offset))
+	if event.Y >= lay.firstPRRow && event.Y < lay.firstPRRow+visible && row >= 0 && row < len(rows) {
 		m.cursor = row
 		m.clampCursor()
 		return m, nil
 	}
 
-	if event.Y == m.selectedURLY() {
+	if event.Y == lay.selectedURLRow {
 		if pr, ok := m.selectedPR(); ok {
 			return m, m.openBrowser(pr.URL)
 		}
@@ -521,26 +533,41 @@ func (m Model) updateMouse(message tea.MouseMsg) (tea.Model, tea.Cmd) {
 	return m, nil
 }
 
-func (m Model) tabAtX(x int) (int, bool) {
-	position := 0
-	for i, view := range m.views {
-		label := m.tabLabel(i, view)
-		width := lipgloss.Width(inactiveTab.Render(label))
-		if x >= position && x < position+width {
-			return i, true
-		}
-		position += width + 1
-	}
-	return 0, false
+// tabBar is one tab's rendered label and its column range on the tab row.
+// renderTabs and tabAtX both come from tabBars, so a tab hitbox always
+// covers exactly the rendered label.
+type tabBar struct {
+	label string
+	x     int
+	width int
 }
 
-func (m Model) selectedURLY() int {
-	firstRow := m.firstPRRow()
-	if len(m.filteredPRs()) == 0 {
-		return firstRow
+// tabBars lays out the tabs across the tab row. The rendered labels and the
+// mouse hitboxes share these positions. The x advance includes the single
+// space renderTabs puts between tabs.
+func (m Model) tabBars() []tabBar {
+	bars := make([]tabBar, len(m.views))
+	x := 0
+	for i, view := range m.views {
+		label := m.tabLabel(i, view)
+		style := inactiveTab
+		if i == m.active {
+			style = activeTab
+		}
+		width := lipgloss.Width(style.Render(label))
+		bars[i] = tabBar{label: label, x: x, width: width}
+		x += width + 1
 	}
-	visible := min(m.visibleRows(), max(0, len(m.filteredPRs())-m.offset))
-	return firstRow + 1 + visible
+	return bars
+}
+
+func (m Model) tabAtX(x int) (int, bool) {
+	for i, bar := range m.tabBars() {
+		if x >= bar.x && x < bar.x+bar.width {
+			return i, true
+		}
+	}
+	return 0, false
 }
 
 func (m *Model) selectView(index int) {
@@ -555,7 +582,7 @@ func (m *Model) clampCursor() {
 		return
 	}
 	m.cursor = max(0, min(m.cursor, len(rows)-1))
-	visible := m.visibleRows()
+	visible := m.boardLayout().visibleRows
 	if m.cursor < m.offset {
 		m.offset = m.cursor
 	}
@@ -580,7 +607,7 @@ func (m Model) View() string {
 		output.WriteString(notice + "\n")
 	}
 	output.WriteString("\n")
-	output.WriteString(m.renderTable())
+	output.WriteString(m.renderTable(m.boardLayout()))
 	output.WriteString("\n" + m.renderSelected())
 	output.WriteString("\n" + m.renderFooter())
 	return output.String()
@@ -588,12 +615,11 @@ func (m Model) View() string {
 
 func (m Model) renderTabs() string {
 	var tabs []string
-	for i, view := range m.views {
-		label := m.tabLabel(i, view)
+	for i, bar := range m.tabBars() {
 		if i == m.active {
-			tabs = append(tabs, activeTab.Render(label))
+			tabs = append(tabs, activeTab.Render(bar.label))
 		} else {
-			tabs = append(tabs, inactiveTab.Render(label))
+			tabs = append(tabs, inactiveTab.Render(bar.label))
 		}
 	}
 	return strings.Join(tabs, " ")
@@ -608,7 +634,7 @@ func (m Model) renderStaleNotice() string {
 	return warningStyle.Render(truncate(notice, m.width))
 }
 
-func (m Model) renderTable() string {
+func (m Model) renderTable(lay boardLayout) string {
 	view := m.currentView()
 	if view.Err != nil && len(view.PRs) == 0 {
 		return errorStyle.Render(truncate("GitHub query failed: "+view.Err.Error(), m.width)) + "\n"
@@ -624,14 +650,14 @@ func (m Model) renderTable() string {
 		return dimStyle.Render("No pull requests in this view.") + "\n"
 	}
 
-	layout := m.tableLayout()
-	header := m.renderHeader(layout)
+	cols := m.tableLayout()
+	header := m.renderHeader(cols)
 	var output strings.Builder
 	output.WriteString(header + "\n")
-	end := min(m.offset+m.visibleRows(), len(rows))
+	end := min(m.offset+lay.visibleRows, len(rows))
 	for i := m.offset; i < end; i++ {
 		pr := rows[i]
-		line := m.renderPRRow(pr, layout)
+		line := m.renderPRRow(pr, cols)
 		if i == m.cursor {
 			line = selectedStyle.Width(m.width).Render(line)
 		}
@@ -735,15 +761,6 @@ func (m Model) selectedPR() (gh.PullRequest, bool) {
 		return gh.PullRequest{}, false
 	}
 	return rows[m.cursor], true
-}
-
-func (m Model) visibleRows() int {
-	// Keep the table inside the terminal after the help wraps to more lines.
-	rows := m.height - 7 - (len(m.footerHelpLines()) + 1)
-	if m.currentView().Stale() {
-		rows--
-	}
-	return max(1, rows)
 }
 
 // tableLayout picks column sizes for the current terminal width. A width of
@@ -868,15 +885,16 @@ func adaptViews(views []ViewData) []sidebar.View {
 // It returns a sidebarMsg so the model can warn once when reporting fails.
 func (m Model) sidebarReportCmd(tokens map[string]string) tea.Cmd {
 	return func() tea.Msg {
-		err := m.sidebar.Report(context.Background(), m.sidebar.WorkspaceID, tokens)
-		return sidebarMsg{err: err}
+		ctx, cancel := context.WithTimeout(context.Background(), sidebarReportTimeout)
+		defer cancel()
+		return sidebarMsg{err: m.sidebar.Report(ctx, tokens)}
 	}
 }
 
 func (m Model) refreshConfigCmd(cfg config.Config, loader Loader, refresh time.Duration, selectedURL string) tea.Cmd {
 	epoch := m.epoch
 	return func() tea.Msg {
-		ctx, cancel := context.WithTimeout(context.Background(), 90*time.Second)
+		ctx, cancel := context.WithTimeout(context.Background(), refreshAllTimeout)
 		defer cancel()
 		snapshot := loader.RefreshAll(ctx)
 		snapshot.epoch = epoch
@@ -887,7 +905,7 @@ func (m Model) refreshConfigCmd(cfg config.Config, loader Loader, refresh time.D
 func (m Model) refreshAllCmd() tea.Cmd {
 	loader, epoch := m.loader, m.epoch
 	return func() tea.Msg {
-		ctx, cancel := context.WithTimeout(context.Background(), 90*time.Second)
+		ctx, cancel := context.WithTimeout(context.Background(), refreshAllTimeout)
 		defer cancel()
 		snapshot := loader.RefreshAll(ctx)
 		snapshot.epoch = epoch
@@ -899,7 +917,7 @@ func (m Model) refreshOneCmd(index int) tea.Cmd {
 	loader, epoch := m.loader, m.epoch
 	view := m.views[index].View
 	return func() tea.Msg {
-		ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
+		ctx, cancel := context.WithTimeout(context.Background(), refreshOneTimeout)
 		defer cancel()
 		snapshot := loader.RefreshOne(ctx, view)
 		return viewMsg{index: index, snapshot: snapshot, epoch: epoch}

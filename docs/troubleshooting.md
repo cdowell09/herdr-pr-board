@@ -24,6 +24,19 @@ gh auth login
 gh auth status
 ```
 
+### An environment token overrides the GitHub CLI login
+
+GitHub CLI reads `GH_TOKEN`, then `GITHUB_TOKEN`, before its stored login. An invalid value in either variable makes every search fail with `Bad credentials`. This happens even when `gh auth status` shows a valid keyring account. The board names the overriding variable in the footer.
+
+Verify this outside the board:
+
+```sh
+gh api user --jq .login
+env GH_TOKEN= GITHUB_TOKEN= gh api user --jq .login
+```
+
+If the second command succeeds and the first fails, an environment token is the cause. Fix it one of two ways. Unset the variable in the environment that starts Herdr. Or replace its value with a valid token.
+
 ### An invalid search query fails
 
 Each view runs a GitHub PR search query. GitHub rejects malformed queries. The board shows the failing view and the `gh` message.

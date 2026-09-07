@@ -12,6 +12,7 @@ import (
 	"github.com/cdowell09/herdr-pr-board/internal/board"
 	"github.com/cdowell09/herdr-pr-board/internal/config"
 	gh "github.com/cdowell09/herdr-pr-board/internal/github"
+	"github.com/cdowell09/herdr-pr-board/internal/sidebar"
 	tea "github.com/charmbracelet/bubbletea"
 )
 
@@ -51,9 +52,12 @@ func run(args []string, stdout, stderr io.Writer) int {
 		return fail(stderr, err)
 	}
 
-	client := gh.NewClient(gh.ExecRunner{}, cfg.GitHub)
+	client := gh.NewClient(nil, cfg.GitHub)
+	client.SetTokenVars(setTokenVars(gh.TokenVars, os.Getenv))
 	service := board.NewService(cfg, client)
-	model, err := board.NewModelWithConfigPath(cfg, *configPath, service)
+	model, err := board.NewModelWithConfigPath(cfg, *configPath, service, func(settings config.SidebarConfig) *sidebar.Reporter {
+		return sidebar.NewReporter(settings, os.Getenv("HERDR_WORKSPACE_ID"), os.Getenv("HERDR_BIN_PATH"))
+	})
 	if err != nil {
 		return fail(stderr, err)
 	}
@@ -70,6 +74,18 @@ func fail(stderr io.Writer, err error) int {
 
 func defaultConfigPath() (string, error) {
 	return resolveDefaultConfigPath(os.Getenv("HERDR_PLUGIN_CONFIG_DIR"), os.UserConfigDir)
+}
+
+// setTokenVars returns the names in names whose process environment value,
+// read through getenv, is non-empty.
+func setTokenVars(names []string, getenv func(string) string) []string {
+	var set []string
+	for _, name := range names {
+		if getenv(name) != "" {
+			set = append(set, name)
+		}
+	}
+	return set
 }
 
 func resolveDefaultConfigPath(pluginConfigDir string, userConfigDir func() (string, error)) (string, error) {

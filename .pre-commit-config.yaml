@@ -25,6 +25,13 @@ repos:
         pass_filenames: false
         files: \.(go|mod|sum)$
 
+      - id: staticcheck
+        name: staticcheck
+        entry: go run honnef.co/go/tools/cmd/staticcheck@v0.6.1 ./...
+        language: system
+        pass_filenames: false
+        files: \.(go|mod|sum)$
+
       - id: bash-syntax
         name: bash syntax
         entry: bash -n bin/open bin/run

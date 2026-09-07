@@ -18,7 +18,7 @@ func layoutModel(t *testing.T, width int) Model {
 	t.Helper()
 	cfg := testConfig()
 	now := time.Now()
-	model, err := NewModel(cfg, fakeLoader{})
+	model, err := NewModel(cfg, fakeLoader{}, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -87,6 +87,23 @@ func TestModelLayoutsDropColumnsIntentionally(t *testing.T) {
 	}
 }
 
+func TestModelTabGeometryMatchesRenderedOutput(t *testing.T) {
+	for _, width := range layoutWidths {
+		model := layoutModel(t, width)
+		tabLine := stripANSI(strings.Split(model.View(), "\n")[tabRowY])
+		for i, bar := range model.tabBars() {
+			style := inactiveTab
+			if i == model.active {
+				style = activeTab
+			}
+			rendered := stripANSI(style.Render(bar.label))
+			if x := strings.Index(tabLine, rendered); x != bar.x || lipgloss.Width(rendered) != bar.width {
+				t.Fatalf("width %d: tab %d renders at x %d width %d, hitbox x %d width %d", width, i, x, lipgloss.Width(rendered), bar.x, bar.width)
+			}
+		}
+	}
+}
+
 func TestModelURLRemainsVisibleInEveryLayout(t *testing.T) {
 	for _, width := range layoutWidths {
 		model := layoutModel(t, width)
@@ -101,8 +118,8 @@ func TestModelURLRemainsVisibleInEveryLayout(t *testing.T) {
 				break
 			}
 		}
-		if urlY != model.selectedURLY() {
-			t.Fatalf("width %d: rendered URL Y = %d, mouse Y = %d", width, urlY, model.selectedURLY())
+		if urlY != model.boardLayout().selectedURLRow {
+			t.Fatalf("width %d: rendered URL Y = %d, mouse Y = %d", width, urlY, model.boardLayout().selectedURLRow)
 		}
 		if urlY >= model.height {
 			t.Fatalf("width %d: rendered URL Y = %d exceeds height %d", width, urlY, model.height)
@@ -143,11 +160,11 @@ func TestModelMouseCoordinatesMatchRenderedOutputInEachLayout(t *testing.T) {
 				urlY = y
 			}
 		}
-		if firstRowY != model.firstPRRow() {
-			t.Fatalf("width %d: rendered first row Y = %d, mouse Y = %d", width, firstRowY, model.firstPRRow())
+		if firstRowY != model.boardLayout().firstPRRow {
+			t.Fatalf("width %d: rendered first row Y = %d, mouse Y = %d", width, firstRowY, model.boardLayout().firstPRRow)
 		}
-		if urlY != model.selectedURLY() {
-			t.Fatalf("width %d: rendered URL Y = %d, mouse Y = %d", width, urlY, model.selectedURLY())
+		if urlY != model.boardLayout().selectedURLRow {
+			t.Fatalf("width %d: rendered URL Y = %d, mouse Y = %d", width, urlY, model.boardLayout().selectedURLRow)
 		}
 
 		updated, command := model.Update(tea.MouseMsg(tea.MouseEvent{
@@ -253,7 +270,7 @@ func TestFooterWrapsWithinWidthAndHeight(t *testing.T) {
 func TestModelNarrowLayoutsFitStaleAndErrorLines(t *testing.T) {
 	for _, width := range []int{40, 50, 60} {
 		cfg := testConfig()
-		model, err := NewModel(cfg, fakeLoader{})
+		model, err := NewModel(cfg, fakeLoader{}, nil)
 		if err != nil {
 			t.Fatal(err)
 		}

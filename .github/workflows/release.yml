@@ -17,12 +17,8 @@ jobs:
         with:
           persist-credentials: false
           fetch-depth: 1
-      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
-        with:
-          go-version-file: go.mod
-          cache: true
       - name: Validate tag against plugin manifest
-        run: go run ./cmd/herdr-release-check --tag "$GITHUB_REF_NAME"
+        run: python3 scripts/validate_release.py herdr-plugin.toml "$GITHUB_REF_NAME"
 
   publish:
     name: Publish source release

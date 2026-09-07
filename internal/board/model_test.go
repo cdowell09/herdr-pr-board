@@ -71,13 +71,13 @@ func TestModelReportsSidebarTokensToCurrentWorkspaceAfterFullRefresh(t *testing.
 	cfg.Sidebar.Enabled = boolPtr(true)
 	cfg.Sidebar.ReviewView = "review"
 	cfg.Sidebar.TTL = "15m"
-	t.Setenv("HERDR_WORKSPACE_ID", "w1")
-	model, err := NewModel(cfg, fakeLoader{})
+	runner := &sidebarFakeRunner{}
+	reporter := sidebar.NewReporter(cfg.Sidebar, "w1", "")
+	reporter.Runner = runner.Run
+	model, err := NewModel(cfg, fakeLoader{}, reporter)
 	if err != nil {
 		t.Fatal(err)
 	}
-	runner := &sidebarFakeRunner{}
-	model.sidebar.Runner = runner
 
 	snapshot := Snapshot{Views: []ViewData{
 		{View: cfg.Views[0], PRs: []gh.PullRequest{
@@ -120,11 +120,11 @@ func TestModelReportsSidebarTokensToCurrentWorkspaceAfterFullRefresh(t *testing.
 
 func TestModelSkipsSidebarReportWhenViewFails(t *testing.T) {
 	cfg := testConfig()
-	model, err := NewModel(cfg, fakeLoader{})
+	model, err := NewModel(cfg, fakeLoader{}, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
-	model.sidebar = &sidebar.Reporter{Runner: &sidebarFakeRunner{}}
+	model.sidebar = &sidebar.Reporter{Runner: (&sidebarFakeRunner{}).Run}
 
 	failed := Snapshot{Views: []ViewData{
 		{View: cfg.Views[0], Err: errors.New("rate limited")},
@@ -143,13 +143,11 @@ func TestModelSkipsSidebarReportWhenViewFails(t *testing.T) {
 func TestModelWarnsOnceOnSidebarFailureAndResets(t *testing.T) {
 	cfg := testConfig()
 	cfg.Sidebar.Enabled = boolPtr(true)
-	t.Setenv("HERDR_WORKSPACE_ID", "w1")
-	model, err := NewModel(cfg, fakeLoader{})
+	runner := &sidebarFakeRunner{err: errors.New("no session")}
+	model, err := NewModel(cfg, fakeLoader{}, &sidebar.Reporter{WorkspaceID: "w1", Runner: runner.Run})
 	if err != nil {
 		t.Fatal(err)
 	}
-	runner := &sidebarFakeRunner{err: errors.New("no session")}
-	model.sidebar.Runner = runner
 	snapshot := Snapshot{Views: []ViewData{
 		{View: cfg.Views[0], PRs: []gh.PullRequest{{Repository: "acme/api", Number: 1, Title: "One", URL: "https://github.com/acme/api/pull/1"}}},
 		{View: cfg.Views[1]},
@@ -203,7 +201,7 @@ func TestModelRendersConfigTitlesPRAndCI(t *testing.T) {
 		Rates:     gh.RateLimits{Search: gh.RateResource{Limit: 30, Remaining: 28}},
 		UpdatedAt: time.Now(),
 	}
-	model, err := NewModel(cfg, fakeLoader{snapshot: snapshot})
+	model, err := NewModel(cfg, fakeLoader{snapshot: snapshot}, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -230,7 +228,7 @@ func TestModelCentersCIIconsInColumn(t *testing.T) {
 		{Repository: "acme/api", Number: 5, Title: "No checks PR", URL: "https://github.com/acme/api/pull/5", Author: "cdowell09", UpdatedAt: time.Now(), CI: gh.CINone},
 		{Repository: "acme/api", Number: 6, Title: "Unknown PR", URL: "https://github.com/acme/api/pull/6", Author: "cdowell09", UpdatedAt: time.Now(), CI: gh.CIUnknown},
 	}
-	model, err := NewModel(cfg, fakeLoader{})
+	model, err := NewModel(cfg, fakeLoader{}, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -303,7 +301,7 @@ func TestModelSwitchesViewsAndFilters(t *testing.T) {
 		{View: cfg.Views[0], PRs: []gh.PullRequest{{Repository: "acme/api", Number: 1, Title: "API fix"}}},
 		{View: cfg.Views[1], PRs: []gh.PullRequest{{Repository: "acme/web", Number: 2, Title: "Web fix"}}},
 	}}
-	model, err := NewModel(cfg, fakeLoader{snapshot: snapshot})
+	model, err := NewModel(cfg, fakeLoader{snapshot: snapshot}, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -327,7 +325,7 @@ func TestModelSwitchesViewsAndFilters(t *testing.T) {
 
 func TestModelConfigShortcutReloadsCompleteConfig(t *testing.T) {
 	cfg := testConfig()
-	model, err := NewModelWithConfigPath(cfg, "/tmp/custom-pr-board.toml", fakeLoader{})
+	model, err := NewModelWithConfigPath(cfg, "/tmp/custom-pr-board.toml", fakeLoader{}, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -396,7 +394,7 @@ func TestModelConfigShortcutReloadsCompleteConfig(t *testing.T) {
 }
 
 func TestModelConfigShortcutKeepsFilterInputLiteral(t *testing.T) {
-	model, err := NewModel(testConfig(), fakeLoader{})
+	model, err := NewModel(testConfig(), fakeLoader{}, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -414,7 +412,7 @@ func TestModelConfigShortcutKeepsFilterInputLiteral(t *testing.T) {
 
 func TestModelConfigEditRejectsFailure(t *testing.T) {
 	cfg := testConfig()
-	model, err := NewModel(cfg, fakeLoader{})
+	model, err := NewModel(cfg, fakeLoader{}, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -435,7 +433,7 @@ func TestModelConfigEditRejectsFailure(t *testing.T) {
 
 func TestModelConfigEditSkipsUnchangedConfig(t *testing.T) {
 	cfg := testConfig()
-	model, err := NewModel(cfg, fakeLoader{})
+	model, err := NewModel(cfg, fakeLoader{}, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -454,7 +452,7 @@ func TestModelConfigEditSkipsUnchangedConfig(t *testing.T) {
 func TestModelConfigEditRespectsSearchCapacity(t *testing.T) {
 	cfg := testConfig()
 	capacityErr := errors.New("rate limit exhausted")
-	model, err := NewModel(cfg, fakeLoader{snapshot: Snapshot{capacityErr: capacityErr}})
+	model, err := NewModel(cfg, fakeLoader{snapshot: Snapshot{capacityErr: capacityErr}}, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -503,7 +501,7 @@ func TestEditorCommandFallsBackToVi(t *testing.T) {
 
 func TestModelIgnoresRefreshesFromAnEarlierConfig(t *testing.T) {
 	cfg := testConfig()
-	model, err := NewModel(cfg, fakeLoader{})
+	model, err := NewModel(cfg, fakeLoader{}, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -525,7 +523,7 @@ func TestModelIgnoresRefreshesFromAnEarlierConfig(t *testing.T) {
 
 func TestModelEscapeClearsFilterWhileEditing(t *testing.T) {
 	cfg := testConfig()
-	model, err := NewModel(cfg, fakeLoader{})
+	model, err := NewModel(cfg, fakeLoader{}, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -545,7 +543,7 @@ func TestModelEscapeClearsFilterWhileEditing(t *testing.T) {
 
 func TestModelMouseSelectsViewsRowsAndURL(t *testing.T) {
 	cfg := testConfig()
-	model, err := NewModel(cfg, fakeLoader{})
+	model, err := NewModel(cfg, fakeLoader{}, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -591,15 +589,15 @@ func TestModelMouseSelectsViewsRowsAndURL(t *testing.T) {
 			urlY = y
 		}
 	}
-	if secondRowY != firstPRRowY+1 {
-		t.Fatalf("second rendered row Y = %d, mouse Y = %d", secondRowY, firstPRRowY+1)
+	if secondRowY != model.boardLayout().firstPRRow+1 {
+		t.Fatalf("second rendered row Y = %d, mouse Y = %d", secondRowY, model.boardLayout().firstPRRow+1)
 	}
-	if urlY != model.selectedURLY() {
-		t.Fatalf("rendered URL Y = %d, mouse URL Y = %d", urlY, model.selectedURLY())
+	if urlY != model.boardLayout().selectedURLRow {
+		t.Fatalf("rendered URL Y = %d, mouse URL Y = %d", urlY, model.boardLayout().selectedURLRow)
 	}
 
 	updated, command = model.Update(tea.MouseMsg(tea.MouseEvent{
-		X: 2, Y: firstPRRowY + 1, Action: tea.MouseActionPress, Button: tea.MouseButtonLeft,
+		X: 2, Y: model.boardLayout().firstPRRow + 1, Action: tea.MouseActionPress, Button: tea.MouseButtonLeft,
 	}))
 	if command != nil {
 		t.Fatal("row click returned an unexpected command")
@@ -619,7 +617,7 @@ func TestModelMouseSelectsViewsRowsAndURL(t *testing.T) {
 	}
 
 	updated, command = model.Update(tea.MouseMsg(tea.MouseEvent{
-		X: 2, Y: model.selectedURLY(), Action: tea.MouseActionPress, Button: tea.MouseButtonLeft,
+		X: 2, Y: model.boardLayout().selectedURLRow, Action: tea.MouseActionPress, Button: tea.MouseButtonLeft,
 	}))
 	if command == nil {
 		t.Fatal("URL click did not return a browser command")
@@ -629,7 +627,7 @@ func TestModelMouseSelectsViewsRowsAndURL(t *testing.T) {
 
 func TestModelDoesNotRefreshWhenSearchRateIsExhausted(t *testing.T) {
 	cfg := testConfig()
-	model, err := NewModel(cfg, fakeLoader{})
+	model, err := NewModel(cfg, fakeLoader{}, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -648,7 +646,7 @@ func TestModelDoesNotRefreshWhenSearchRateIsExhausted(t *testing.T) {
 
 func TestModelDoesNotRefreshAllBeyondSearchBudget(t *testing.T) {
 	cfg := testConfig()
-	model, err := NewModel(cfg, fakeLoader{})
+	model, err := NewModel(cfg, fakeLoader{}, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -667,7 +665,7 @@ func TestModelDoesNotRefreshAllBeyondSearchBudget(t *testing.T) {
 
 func TestModelUpdatesRatesAfterActiveRefresh(t *testing.T) {
 	cfg := testConfig()
-	model, err := NewModel(cfg, fakeLoader{})
+	model, err := NewModel(cfg, fakeLoader{}, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -695,7 +693,7 @@ func TestModelUpdatesRatesAfterActiveRefresh(t *testing.T) {
 
 func TestModelKeepsLoadedRowsWhenRefreshFails(t *testing.T) {
 	cfg := testConfig()
-	model, err := NewModel(cfg, fakeLoader{})
+	model, err := NewModel(cfg, fakeLoader{}, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -721,7 +719,7 @@ func TestModelKeepsLoadedRowsWhenRefreshFails(t *testing.T) {
 
 func TestModelFreshnessAdvancesOnlyOnSuccessfulFullRefresh(t *testing.T) {
 	cfg := testConfig()
-	model, err := NewModel(cfg, fakeLoader{})
+	model, err := NewModel(cfg, fakeLoader{}, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -759,7 +757,7 @@ func TestModelFreshnessAdvancesOnlyOnSuccessfulFullRefresh(t *testing.T) {
 
 func TestModelFreshnessPreservedPerViewInMixedFullRefresh(t *testing.T) {
 	cfg := testConfig()
-	model, err := NewModel(cfg, fakeLoader{})
+	model, err := NewModel(cfg, fakeLoader{}, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -785,7 +783,7 @@ func TestModelFreshnessPreservedPerViewInMixedFullRefresh(t *testing.T) {
 
 func TestModelFreshnessAdvancesOnlyOnSuccessfulActiveRefresh(t *testing.T) {
 	cfg := testConfig()
-	model, err := NewModel(cfg, fakeLoader{})
+	model, err := NewModel(cfg, fakeLoader{}, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -810,7 +808,7 @@ func TestModelFreshnessAdvancesOnlyOnSuccessfulActiveRefresh(t *testing.T) {
 
 func TestModelFreshnessNotAdvancedByCapacityRejection(t *testing.T) {
 	cfg := testConfig()
-	model, err := NewModel(cfg, fakeLoader{})
+	model, err := NewModel(cfg, fakeLoader{}, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -844,7 +842,7 @@ func TestModelFreshnessNotAdvancedByCapacityRejection(t *testing.T) {
 
 func TestModelMarksRetainedRowsStaleWithoutHidingError(t *testing.T) {
 	cfg := testConfig()
-	model, err := NewModel(cfg, fakeLoader{})
+	model, err := NewModel(cfg, fakeLoader{}, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -884,11 +882,11 @@ func TestModelMarksRetainedRowsStaleWithoutHidingError(t *testing.T) {
 			urlY = y
 		}
 	}
-	if rowY != firstPRRowYFor(true) {
-		t.Fatalf("stale rendered row Y = %d, mouse Y = %d", rowY, firstPRRowYFor(true))
+	if rowY != model.boardLayout().firstPRRow {
+		t.Fatalf("stale rendered row Y = %d, mouse Y = %d", rowY, model.boardLayout().firstPRRow)
 	}
-	if urlY != model.selectedURLY() {
-		t.Fatalf("stale rendered URL Y = %d, mouse URL Y = %d", urlY, model.selectedURLY())
+	if urlY != model.boardLayout().selectedURLRow {
+		t.Fatalf("stale rendered URL Y = %d, mouse URL Y = %d", urlY, model.boardLayout().selectedURLRow)
 	}
 	if urlY >= model.height {
 		t.Fatalf("stale rendered URL Y = %d exceeds height %d", urlY, model.height)
@@ -977,7 +975,7 @@ func TestModelBrowserOpenTriggersFromURLMouseClick(t *testing.T) {
 	}
 
 	updated, command := model.Update(tea.MouseMsg(tea.MouseEvent{
-		X: 2, Y: model.selectedURLY(), Action: tea.MouseActionPress, Button: tea.MouseButtonLeft,
+		X: 2, Y: model.boardLayout().selectedURLRow, Action: tea.MouseActionPress, Button: tea.MouseButtonLeft,
 	}))
 	if command == nil {
 		t.Fatal("URL click did not return a browser command")
@@ -990,7 +988,7 @@ func TestModelBrowserOpenTriggersFromURLMouseClick(t *testing.T) {
 
 func browserModel(t *testing.T, cfg config.Config) Model {
 	t.Helper()
-	model, err := NewModel(cfg, fakeLoader{})
+	model, err := NewModel(cfg, fakeLoader{}, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -1022,4 +1020,69 @@ func testConfig() config.Config {
 
 func boolPtr(value bool) *bool {
 	return &value
+}
+
+func TestCtrlCQuitsWhileEditingFilter(t *testing.T) {
+	model, err := NewModel(testConfig(), fakeLoader{}, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	updated, _ := model.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("/")})
+	model = updated.(Model)
+	if !model.editing {
+		t.Fatal("expected filter editing mode")
+	}
+	_, cmd := model.Update(tea.KeyMsg{Type: tea.KeyCtrlC})
+	if cmd == nil {
+		t.Fatal("ctrl+c while editing the filter must quit")
+	}
+	if msg := cmd(); msg == nil {
+		t.Fatal("quit command returned no message")
+	} else if _, ok := msg.(tea.QuitMsg); !ok {
+		t.Fatalf("message = %T, want tea.QuitMsg", msg)
+	}
+}
+
+func TestModelListsSharedRefreshErrorOnce(t *testing.T) {
+	cfg := testConfig()
+	model, err := NewModel(cfg, fakeLoader{}, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	budget := errors.New("GitHub search rate limit has 0 requests remaining but refresh requires 2; resets at 13:00")
+	failed := Snapshot{Views: []ViewData{
+		{View: cfg.Views[0], Err: budget},
+		{View: cfg.Views[1], Err: budget},
+	}}
+	updated, _ := model.Update(snapshotMsg(failed))
+	model = updated.(Model)
+	if got := strings.Count(model.warning, "refresh requires 2"); got != 1 {
+		t.Fatalf("shared error listed %d times in %q, want once", got, model.warning)
+	}
+}
+
+func TestConfigReloadRebuildsInjectedSidebar(t *testing.T) {
+	cfg := testConfig()
+	enabled := false
+	cfg.Sidebar.Enabled = &enabled
+	model, err := NewModelWithConfigPath(cfg, "config.toml", fakeLoader{}, func(settings config.SidebarConfig) *sidebar.Reporter {
+		return sidebar.NewReporter(settings, "workspace", "/custom/herdr")
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if model.sidebar != nil {
+		t.Fatal("disabled sidebar has a reporter")
+	}
+	enabled = true
+	cfg.Sidebar.TTL = "2m"
+	model = model.applyConfig(cfg, fakeLoader{}, 0)
+	if model.sidebar == nil || model.sidebar.WorkspaceID != "workspace" || model.sidebar.Binary != "/custom/herdr" || model.sidebar.TTL != 2*time.Minute {
+		t.Fatalf("reloaded reporter = %#v", model.sidebar)
+	}
+	enabled = false
+	model = model.applyConfig(cfg, fakeLoader{}, 0)
+	if model.sidebar != nil {
+		t.Fatal("sidebar remains enabled after reload")
+	}
 }
