@@ -40,7 +40,7 @@ func (f fakeLoader) RefreshOne(_ context.Context, view config.View) discovery.Vi
 	refresh := discovery.ViewSnapshot{
 		Data:      discovery.ViewData{View: view},
 		Rates:     f.snapshot.Rates,
-		Warning:   f.snapshot.Warning,
+		Errors:    f.snapshot.Errors,
 		StartedAt: f.snapshot.StartedAt,
 	}
 	for _, data := range f.snapshot.Views {
@@ -453,7 +453,7 @@ func TestModelConfigEditSkipsUnchangedConfig(t *testing.T) {
 func TestModelConfigEditRespectsSearchCapacity(t *testing.T) {
 	cfg := testConfig()
 	capacityErr := errors.New("rate limit exhausted")
-	model, err := NewModel(cfg, fakeLoader{snapshot: discovery.Snapshot{CapacityErr: capacityErr}}, nil)
+	model, err := NewModel(cfg, fakeLoader{snapshot: discovery.Snapshot{CapacityErr: capacityErr, Errors: []discovery.RetrievalError{{Stage: "search_budget", Err: capacityErr}}}}, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -705,6 +705,7 @@ func TestModelKeepsLoadedRowsWhenRefreshFails(t *testing.T) {
 		{View: cfg.Views[0], Err: errors.New("rate limited")},
 		{View: cfg.Views[1]},
 	}}
+	failed.Errors = []discovery.RetrievalError{{Stage: "search", Err: failed.Views[0].Err}}
 	updated, command := model.Update(snapshotMsg{Snapshot: failed})
 	if command != nil {
 		t.Fatal("snapshot update returned an unexpected command")
@@ -823,6 +824,7 @@ func TestModelFreshnessNotAdvancedByCapacityRejection(t *testing.T) {
 		{View: cfg.Views[0], Err: capacityErr},
 		{View: cfg.Views[1], Err: capacityErr},
 	}, StartedAt: time.Now()}
+	rejected.Errors = []discovery.RetrievalError{{Stage: "search_budget", Err: rejected.Views[0].Err}}
 	updated, _ := model.Update(snapshotMsg{Snapshot: rejected})
 	model = updated.(Model)
 
@@ -857,6 +859,7 @@ func TestModelMarksRetainedRowsStaleWithoutHidingError(t *testing.T) {
 		{View: cfg.Views[0], Err: errors.New("GitHub search failed: timeout")},
 	}, StartedAt: time.Now()}
 	failed.Views = append(failed.Views, discovery.ViewData{View: cfg.Views[1]})
+	failed.Errors = []discovery.RetrievalError{{Stage: "search", Err: failed.Views[0].Err}}
 	updated, _ := model.Update(snapshotMsg{Snapshot: failed})
 	model = updated.(Model)
 
@@ -1041,24 +1044,6 @@ func TestCtrlCQuitsWhileEditingFilter(t *testing.T) {
 		t.Fatal("quit command returned no message")
 	} else if _, ok := msg.(tea.QuitMsg); !ok {
 		t.Fatalf("message = %T, want tea.QuitMsg", msg)
-	}
-}
-
-func TestModelListsSharedRefreshErrorOnce(t *testing.T) {
-	cfg := testConfig()
-	model, err := NewModel(cfg, fakeLoader{}, nil)
-	if err != nil {
-		t.Fatal(err)
-	}
-	budget := errors.New("GitHub search rate limit has 0 requests remaining but refresh requires 2; resets at 13:00")
-	failed := discovery.Snapshot{Views: []discovery.ViewData{
-		{View: cfg.Views[0], Err: budget},
-		{View: cfg.Views[1], Err: budget},
-	}}
-	updated, _ := model.Update(snapshotMsg{Snapshot: failed})
-	model = updated.(Model)
-	if got := strings.Count(model.warning, "refresh requires 2"); got != 1 {
-		t.Fatalf("shared error listed %d times in %q, want once", got, model.warning)
 	}
 }
 

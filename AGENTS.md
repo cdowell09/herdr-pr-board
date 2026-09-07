@@ -30,7 +30,9 @@ Read [`README.md`](README.md) for user behavior and configuration. Read [`herdr-
 1. Locate the owning package from the source map. Keep GitHub transport in `internal/github`, refresh policy in `internal/discovery`, and configuration rules in `internal/config`.
 2. Add or update a regression test at the package boundary that owns the behavior.
 3. Update `README.md` and `config.example.toml` when user-visible configuration, controls, requirements, or behavior changes.
-4. Run the completion gates before reporting the change as complete.
+4. Run `thermo-nuclear-code-quality-review` on the full branch diff before reporting completion or updating a PR.
+5. Address all P0, P1, and P2 findings. Review the fixes before reporting completion.
+6. Run the completion gates before reporting the change as complete.
 
 ## Documentation style
 
@@ -72,6 +74,7 @@ Write all technical documentation in ASD-STE100 Simplified Technical English (ST
 - Keep discovery policy shared between the board and JSON commands.
 - Keep wire types separate from discovery results and UI messages.
 - Let discovery own observation times. Keep UI retention and scheduling epochs in `internal/board`.
+- Keep discovery failures structured. Format and combine user-facing warnings in `internal/board`.
 - Return partial data with structured retrieval errors and a nonzero JSON exit status.
 - Represent unavailable metadata and rate resources with null. Do not infer complete coverage from deduplicated counts.
 

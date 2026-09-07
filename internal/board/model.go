@@ -221,13 +221,12 @@ func (m Model) Update(message tea.Msg) (tea.Model, tea.Cmd) {
 		if msg.epoch != 0 && msg.epoch != m.epoch {
 			return m, nil
 		}
-		warning := msg.Warning
 		for i := range msg.Views {
-			warning = discovery.AppendWarning(warning, m.settleView(&msg.Views[i], i))
+			m.settleView(&msg.Views[i], i)
 		}
 		m.views = msg.Views
 		m.rates = msg.Rates
-		m.warning = warning
+		m.warning = discoveryWarnings(msg.Errors)
 		m.loading = false
 		m.clampCursor()
 		var cmd tea.Cmd
@@ -242,7 +241,7 @@ func (m Model) Update(message tea.Msg) (tea.Model, tea.Cmd) {
 			m.sidebarWarn = false
 		} else if !m.sidebarWarn {
 			m.sidebarWarn = true
-			m.warning = discovery.AppendWarning(m.warning, "sidebar reporting unavailable: "+msg.err.Error())
+			m.warning = appendWarning(m.warning, "sidebar reporting unavailable: "+msg.err.Error())
 		}
 		return m, nil
 	case viewMsg:
@@ -250,10 +249,10 @@ func (m Model) Update(message tea.Msg) (tea.Model, tea.Cmd) {
 			return m, nil
 		}
 		refresh := msg.snapshot
-		m.warning = refresh.Warning
+		m.warning = discoveryWarnings(refresh.Errors)
 		if msg.index >= 0 && msg.index < len(m.views) {
 			data := refresh.Data
-			m.warning = discovery.AppendWarning(m.warning, m.settleView(&data, msg.index))
+			m.settleView(&data, msg.index)
 			m.views[msg.index] = data
 		}
 		m.rates = refresh.Rates
@@ -276,7 +275,7 @@ func (m Model) Update(message tea.Msg) (tea.Model, tea.Cmd) {
 		return m.updateConfig(msg)
 	case browserMsg:
 		if msg.err != nil {
-			m.warning = discovery.AppendWarning(m.warning, "could not open the PR in a browser: "+msg.err.Error()+"; use the URL above or press Enter/click again")
+			m.warning = appendWarning(m.warning, "could not open the PR in a browser: "+msg.err.Error()+"; use the URL above or press Enter/click again")
 		}
 		return m, nil
 	case tea.MouseMsg:
@@ -292,14 +291,13 @@ func (m Model) Update(message tea.Msg) (tea.Model, tea.Cmd) {
 
 // settleView preserves the previous successful observation after a failed search.
 // Discovery supplies timestamps; the board does not advance them.
-func (m Model) settleView(data *discovery.ViewData, index int) string {
+func (m Model) settleView(data *discovery.ViewData, index int) {
 	if data.Err == nil {
-		return ""
+		return
 	}
 	if index < len(m.views) {
 		retainFrom(data, m.views[index])
 	}
-	return data.Err.Error()
 }
 
 func (m Model) updateFilter(key tea.KeyMsg) (tea.Model, tea.Cmd) {
@@ -333,7 +331,7 @@ func (m Model) updateFilter(key tea.KeyMsg) (tea.Model, tea.Cmd) {
 
 func (m Model) updateConfig(message configEditMsg) (tea.Model, tea.Cmd) {
 	if message.err != nil {
-		m.warning = discovery.AppendWarning(m.warning, "configuration edit failed: "+message.err.Error())
+		m.warning = appendWarning(m.warning, "configuration edit failed: "+message.err.Error())
 		return m, nil
 	}
 	if message.cfg.Equal(m.cfg) {
@@ -341,12 +339,12 @@ func (m Model) updateConfig(message configEditMsg) (tea.Model, tea.Cmd) {
 	}
 	refresh, err := message.cfg.RefreshEvery()
 	if err != nil {
-		m.warning = discovery.AppendWarning(m.warning, "configuration edit failed: "+err.Error())
+		m.warning = appendWarning(m.warning, "configuration edit failed: "+err.Error())
 		return m, nil
 	}
 	nextLoader := m.loader.Reconfigured(message.cfg)
 	if nextLoader == nil {
-		m.warning = discovery.AppendWarning(m.warning, "configuration editor cannot reload the board")
+		m.warning = appendWarning(m.warning, "configuration editor cannot reload the board")
 		return m, nil
 	}
 	selectedURL := ""
@@ -364,7 +362,7 @@ func (m Model) updateConfigRefresh(message configRefreshMsg) (tea.Model, tea.Cmd
 	}
 	if message.snapshot.CapacityErr != nil {
 		m.loading = false
-		m.warning = discovery.AppendWarning(m.warning, message.snapshot.CapacityErr.Error())
+		m.warning = appendWarning(m.warning, discoveryWarnings(message.snapshot.Errors))
 		if m.refresh > 0 {
 			return m, m.tickCmd()
 		}
@@ -462,7 +460,7 @@ func (m Model) updateKey(key tea.KeyMsg) (tea.Model, tea.Cmd) {
 			return m, nil
 		}
 		if m.editConfig == nil {
-			m.warning = discovery.AppendWarning(m.warning, "configuration editor is unavailable")
+			m.warning = appendWarning(m.warning, "configuration editor is unavailable")
 			return m, nil
 		}
 		return m, m.editConfig(m.configPath)

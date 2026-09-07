@@ -152,8 +152,8 @@ func TestRefreshAllPropagatesGraphQLCapacityError(t *testing.T) {
 	service := NewService(cfg, fake)
 
 	snapshot := service.RefreshAll(context.Background())
-	if !strings.Contains(snapshot.Warning, "needs at least 2") {
-		t.Fatalf("warning = %q", snapshot.Warning)
+	if len(snapshot.Errors) != 1 || snapshot.Errors[0].Stage != "enrichment" || !errors.Is(snapshot.Errors[0].Err, fake.enrichErr) {
+		t.Fatalf("retrieval failures = %+v", snapshot.Errors)
 	}
 }
 
@@ -183,8 +183,8 @@ func TestRefreshAllUpdatesRatesAfterGraphQLError(t *testing.T) {
 	if snapshot.Rates.GraphQL.Remaining != 4 {
 		t.Fatalf("displayed GraphQL remaining = %d, want 4", snapshot.Rates.GraphQL.Remaining)
 	}
-	if !strings.Contains(snapshot.Warning, "unexpected GraphQL request") {
-		t.Fatalf("warning = %q", snapshot.Warning)
+	if len(snapshot.Errors) != 1 || snapshot.Errors[0].Stage != "enrichment" || !errors.Is(snapshot.Errors[0].Err, fake.enrichErr) {
+		t.Fatalf("retrieval failures = %+v", snapshot.Errors)
 	}
 	if len(snapshot.Views) != 1 || len(snapshot.Views[0].PRs) != 1 || snapshot.Views[0].PRs[0].CI != gh.CIUnknown {
 		t.Fatalf("PR CI = %#v, want UNKNOWN after enrichment error", snapshot.Views[0].PRs)
@@ -224,11 +224,8 @@ func TestRefreshAllKeepsCompletedCIOnEnrichmentError(t *testing.T) {
 	if successes != 1 || unknowns != 1 {
 		t.Fatalf("CI states = %#v, want one SUCCESS and one UNKNOWN", snapshot.Views[0].PRs)
 	}
-	if !strings.Contains(snapshot.Warning, "CI refresh incomplete") {
-		t.Fatalf("warning = %q, want scripted warning propagated", snapshot.Warning)
-	}
-	if !strings.Contains(snapshot.Warning, "load CI checks: boom") {
-		t.Fatalf("warning = %q, want enrichment error propagated", snapshot.Warning)
+	if len(snapshot.Errors) != 2 || snapshot.Errors[0].Stage != "enrichment" || snapshot.Errors[0].Err.Error() != "CI refresh incomplete" || snapshot.Errors[1].Stage != "enrichment" || !errors.Is(snapshot.Errors[1].Err, fake.enrichErr) {
+		t.Fatalf("retrieval failures = %+v", snapshot.Errors)
 	}
 }
 
@@ -354,17 +351,6 @@ func serviceTestConfig(view config.View) config.Config {
 	}
 }
 
-func TestAppendWarningDropsEmptyAndDuplicateEntries(t *testing.T) {
-	warning := AppendWarning("", "")
-	warning = AppendWarning(warning, "search budget exceeded")
-	warning = AppendWarning(warning, "search budget exceeded")
-	warning = AppendWarning(warning, "")
-	warning = AppendWarning(warning, "CI refresh failed: boom")
-	if warning != "search budget exceeded; CI refresh failed: boom" {
-		t.Fatalf("warning = %q", warning)
-	}
-}
-
 func TestRefreshOneWarnsOnCIErrorAndKeepsRows(t *testing.T) {
 	view := config.View{ID: "mine", Title: "Mine", Query: "is:open", Scope: config.ScopeGlobal}
 	cfg := serviceTestConfig(view)
@@ -384,8 +370,8 @@ func TestRefreshOneWarnsOnCIErrorAndKeepsRows(t *testing.T) {
 	if len(refresh.Data.PRs) != 1 {
 		t.Fatalf("PRs = %#v", refresh.Data.PRs)
 	}
-	if !strings.Contains(refresh.Warning, "CI refresh failed: load CI checks: boom") {
-		t.Fatalf("warning = %q", refresh.Warning)
+	if len(refresh.Errors) != 1 || refresh.Errors[0].Stage != "enrichment" || !errors.Is(refresh.Errors[0].Err, fake.enrichErr) {
+		t.Fatalf("retrieval failures = %+v", refresh.Errors)
 	}
 	if fake.rateCalls != 3 {
 		t.Fatalf("rate-limit calls = %d, want 3 (budget, after search, after CI failure)", fake.rateCalls)
@@ -432,9 +418,8 @@ func TestCachedEnrichmentPreservesLastReportedCost(t *testing.T) {
 	fake := &fakeGitHub{rateRemaining: []int{30}, enrichRate: gh.RateResource{Limit: 5000, Remaining: 40}}
 	service := NewService(serviceTestConfig(config.View{}), fake)
 	rates := gh.RateLimits{GraphQL: gh.RateResource{Limit: 5000, Remaining: 50, Cost: 7}}
-	var warning string
 	var failures []RetrievalError
-	service.enrichCI(context.Background(), []gh.PullRequest{{URL: "cached"}}, &rates, &warning, &failures)
+	service.enrichCI(context.Background(), []gh.PullRequest{{URL: "cached"}}, &rates, &failures)
 	if rates.GraphQL.Cost != 7 || rates.GraphQL.Remaining != 40 {
 		t.Fatalf("cached rates=%+v", rates.GraphQL)
 	}
