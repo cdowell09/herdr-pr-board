@@ -167,7 +167,13 @@ See the [version-one JSON contract](docs/json-snapshots.md) for field definition
 
 ## Monitor without a board
 
-Run the monitor in a separate terminal or process supervisor:
+The board starts a background monitor when saved settings select automatic views and enable repository automatic launches.
+The board checks these settings when it opens, after successful settings saves, and after configuration reloads.
+It reuses an existing monitor in the same state directory.
+Closing the board leaves the monitor running.
+Startup does not change review or publication permissions.
+
+Run a foreground monitor without opening the board:
 
 ```sh
 export HERDR_PLUGIN_STATE_DIR="/absolute/path/to/plugin-state"
@@ -179,8 +185,15 @@ The monitor runs until you send `Ctrl+C` or `SIGTERM`.
 Closing the board does not stop the monitor.
 Only one monitor can use a state directory.
 A crashed monitor releases ownership automatically.
-Start the command again to recover.
-Operating-system startup configuration remains optional.
+Reopen the board, save settings, or reload configuration to retry a stopped background monitor.
+The board does not continuously restart crashed monitors.
+The plugin does not install an operating-system startup service.
+
+Background diagnostics use the private `monitor.log` file in `HERDR_PLUGIN_STATE_DIR`.
+The log retains its first 1 MiB and discards further output.
+Each new background launch resets the log.
+Startup failures appear in the board.
+Use the displayed foreground command if background startup fails.
 
 The monitor scans all views immediately.
 It then uses `github.refresh_interval` between completed scans.
@@ -417,8 +430,8 @@ Select **After review: Post comment** under **Automatic posting** to post comple
 Select **After review: Keep local** to keep findings local.
 The panel shows the monitor state and any missing setup requirement.
 Use PgUp and PgDn to scroll through settings and the monitor command.
-Run the displayed command in another terminal when the monitor stops.
-Saving settings does not start a monitor.
+Successful saves start a stopped monitor when saved automatic views and repository launches are enabled.
+Run the displayed command in another terminal if background startup fails.
 New selections can take effect on the next monitor scan.
 Press Enter to save, or Esc to discard changes.
 Defaults keep launches manual and findings local.

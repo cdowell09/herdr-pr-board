@@ -1,7 +1,8 @@
 # Automatic reviews
 
 Automatic reviews run through the headless monitor.
-The board and JSON snapshots do not start automatic reviews.
+The board can start the monitor.
+JSON snapshots do not start the monitor or automatic reviews.
 The monitor uses existing discovery views.
 
 ## Enable automatic reviews
@@ -45,7 +46,13 @@ auto_publish = ""
 Repository settings also support equivalent board and command controls.
 See [repository settings](repository-publication.md).
 
-Start the monitor:
+The board starts the monitor when saved automatic views and repository automatic launches are enabled.
+It checks on board open, successful settings saves, and configuration reloads.
+It reuses an existing monitor in the same state directory.
+Closing the board leaves the monitor running.
+Startup does not grant review or publication permissions.
+
+Start a foreground monitor without opening the board:
 
 ```sh
 export HERDR_PLUGIN_STATE_DIR="/absolute/path/to/plugin-state"
@@ -56,17 +63,23 @@ The setup panel shows the monitor as running, stopped, or unknown.
 A running monitor does not prove that its latest observation succeeded.
 The panel reports failed observations and configuration differences separately.
 When the monitor stops, the panel shows its exact command.
-Copy the complete command and run it in another terminal.
+If background startup fails, copy the complete command and run it in another terminal.
 Keep the command's continuation characters when copying multiple lines.
 The command uses the current executable, configuration path, and state directory.
-Saving settings does not start a monitor.
+Startup failures remain visible until a startup retry succeeds.
+Background diagnostics use the private `monitor.log` file in `HERDR_PLUGIN_STATE_DIR`.
+The log retains its first 1 MiB and discards further output.
+Each new background launch resets the log.
+Reopen the board, save settings, or reload configuration to retry a stopped monitor.
+The plugin does not continuously restart crashed monitors or install an operating-system startup service.
 The board refreshes this local status while the review panel remains open.
 New selections can take effect on the next monitor scan.
 A ready setup still requires an eligible PR.
 
 The monitor requires one installation state directory.
 The monitor shares review claims and concurrency limits with manual reviews.
-It reports eligibility and outcomes on standard error.
+Foreground monitors report eligibility and outcomes on standard error.
+Background monitors write these diagnostics to `monitor.log`.
 Stopping the monitor cancels its reviews and waits for subprocess cleanup.
 
 ## Eligibility

@@ -59,7 +59,8 @@ scope = "configured"
 [review]
 # Select existing view IDs for automatic reviews. An empty list disables dispatch.
 # The repository panel edits this global selection for all opted-in repositories.
-# Start the monitor separately. New selections can wait until its next scan.
+# The board starts a monitor when saved views and repository automatic launches are enabled.
+# New selections can wait until the next monitor scan.
 auto_views = []
 # Share this concurrency limit across processes that use the same state directory.
 max_concurrency = 1

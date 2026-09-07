@@ -144,3 +144,58 @@ func TestMonitorCommandUsage(t *testing.T) {
 		t.Fatalf("code=%d output=%s", code, &out)
 	}
 }
+
+func TestBackgroundReadinessPrecedesFirstGitHubScan(t *testing.T) {
+	log := fakeSnapshotGH(t)
+	state := t.TempDir()
+	t.Setenv("HERDR_PLUGIN_STATE_DIR", state)
+	path := writeConfig(t, validConfigTOML)
+	scan, err := localstate.TryLock(filepath.Join(state, "scan.lock"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer scan.Close()
+	reader, writer, err := os.Pipe()
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer reader.Close()
+	child := commandProcess(t, "--monitor", "--config", path)
+	child.Env = append(child.Env, "HERDR_MONITOR_READY_FD=3")
+	child.ExtraFiles = []*os.File{writer}
+	if err := child.Start(); err != nil {
+		t.Fatal(err)
+	}
+	writer.Close()
+	t.Cleanup(func() { child.Process.Signal(syscall.SIGTERM); child.Wait() })
+	if err := reader.SetReadDeadline(time.Now().Add(5 * time.Second)); err != nil {
+		t.Fatal(err)
+	}
+	var ack [1]byte
+	if n, err := reader.Read(ack[:]); err != nil || n != 1 || ack[0] != 1 {
+		t.Fatalf("readiness: %d %v %v", n, ack, err)
+	}
+	if calls, _ := os.ReadFile(log); len(calls) != 0 {
+		t.Fatalf("GitHub request before scan release: %s", calls)
+	}
+	scan.Close()
+	waitForSnapshot(t, filepath.Join(state, "monitor-snapshot.json"))
+}
+
+func TestReadOnlyCommandsNeverStartOptedInMonitor(t *testing.T) {
+	fakeSnapshotGH(t)
+	state := t.TempDir()
+	t.Setenv("HERDR_PLUGIN_STATE_DIR", state)
+	path := writeConfig(t, validConfigTOML+"\n[review]\nauto_views=['all']\n[[reviewers]]\nid='unused'\ncommand=['never-run']\n[[repositories]]\nname='acme/api'\nreviewer='unused'\nauto_launch=true\npublish_actions=['comment']\nauto_publish='comment'\n")
+	for _, flag := range []string{"--validate", "--json", "--review-eligibility"} {
+		var out, errout bytes.Buffer
+		if code := run([]string{flag, "--config", path}, &out, &errout); code != 0 {
+			t.Fatalf("%s code%d: %s", flag, code, &errout)
+		}
+	}
+	for _, name := range []string{"monitor-start.lock", "monitor.log", "monitor-snapshot.json"} {
+		if _, err := os.Stat(filepath.Join(state, name)); !os.IsNotExist(err) {
+			t.Fatalf("read-only command started monitor: %s", name)
+		}
+	}
+}

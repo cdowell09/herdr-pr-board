@@ -142,6 +142,8 @@ const (
 )
 
 type Model struct {
+	monitorStart     func() error
+	monitorError     string
 	autoCandidates   []dispatch.Candidate
 	reviews          ReviewBackend
 	publications     PublicationBackend
@@ -215,7 +217,7 @@ func NewModelWithConfigPath(cfg config.Config, configPath string, loader discove
 }
 
 func (m Model) Init() tea.Cmd {
-	commands := []tea.Cmd{m.observationCmd()}
+	commands := []tea.Cmd{m.afterMonitorStart(m.observationCmd())}
 	if m.tickInterval() > 0 {
 		commands = append(commands, m.tickCmd())
 	}
@@ -223,6 +225,9 @@ func (m Model) Init() tea.Cmd {
 }
 
 func (m Model) Update(message tea.Msg) (tea.Model, tea.Cmd) {
+	if next, cmd, handled := m.updateMonitor(message); handled {
+		return next, cmd
+	}
 	if next, cmd, handled := m.updateRepository(message); handled {
 		return next, cmd
 	}
@@ -381,7 +386,7 @@ func (m Model) updateConfig(message configEditMsg) (tea.Model, tea.Cmd) {
 		return m, nil
 	}
 	if message.cfg.Equal(m.cfg) {
-		return m, nil
+		return m, m.startMonitorCmd()
 	}
 	refresh, err := message.cfg.RefreshEvery()
 	if err != nil {
@@ -391,7 +396,7 @@ func (m Model) updateConfig(message configEditMsg) (tea.Model, tea.Cmd) {
 	nextLoader := m.loader.Reconfigured(message.cfg)
 	if nextLoader == nil {
 		m.warning = appendWarning(m.warning, "configuration editor cannot reload the board")
-		return m, nil
+		return m, m.startMonitorCmd()
 	}
 	selectedURL := ""
 	if pr, ok := m.selectedPR(); ok {
@@ -399,7 +404,7 @@ func (m Model) updateConfig(message configEditMsg) (tea.Model, tea.Cmd) {
 	}
 	m.epoch++
 	m.loading = true
-	return m, m.refreshConfigCmd(message.cfg, nextLoader, refresh, selectedURL)
+	return m, m.afterMonitorStart(m.refreshConfigCmd(message.cfg, nextLoader, refresh, selectedURL))
 }
 
 func (m Model) updateConfigRefresh(message configRefreshMsg) (tea.Model, tea.Cmd) {
@@ -746,6 +751,9 @@ func (m Model) renderFooter() string {
 	}
 	if m.warning != "" {
 		meta += " · " + m.warning
+	}
+	if m.monitorError != "" {
+		meta = reviewText(m.monitorError) + " · " + meta
 	}
 	return strings.Join(append(help, warningStyle.Render(truncate(meta, m.width))), "\n")
 }

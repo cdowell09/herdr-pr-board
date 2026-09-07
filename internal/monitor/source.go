@@ -107,7 +107,7 @@ func (s *Source) observedSnapshot() *discovery.Snapshot {
 }
 
 // Run holds ownership until cancellation. Kernel locks release after a crash.
-func (s *Source) Run(ctx context.Context, report func(discovery.Snapshot)) error {
+func (s *Source) Run(ctx context.Context, report func(discovery.Snapshot), ready func() error) error {
 	owner, err := localstate.TryLock(filepath.Join(s.dir, "monitor.lock"))
 	if errors.Is(err, localstate.ErrLocked) {
 		return errors.New("a monitor already runs in HERDR_PLUGIN_STATE_DIR")
@@ -119,6 +119,11 @@ func (s *Source) Run(ctx context.Context, report func(discovery.Snapshot)) error
 	interval, err := s.cfg.RefreshEvery()
 	if err != nil {
 		return err
+	}
+	if ready != nil {
+		if err := ready(); err != nil {
+			return err
+		}
 	}
 	for {
 		scanCtx, cancel := context.WithTimeout(ctx, discovery.RefreshAllTimeout)
