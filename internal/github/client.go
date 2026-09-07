@@ -61,6 +61,11 @@ func NewClient(runner Runner, cfg config.GitHubConfig) *Client {
 	}
 }
 
+// Reconfigured returns a client with the same command runner and new settings.
+func (c *Client) Reconfigured(cfg config.GitHubConfig) *Client {
+	return NewClient(c.runner, cfg)
+}
+
 // SetTokenVars records which of the variables in TokenVars are set in the
 // process environment. The github package does not read the environment
 // itself; the caller checks TokenVars with os.Getenv and passes the names

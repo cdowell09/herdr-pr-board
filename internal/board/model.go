@@ -3,6 +3,7 @@ package board
 import (
 	"context"
 	"fmt"
+	"os"
 	"os/exec"
 	"runtime"
 	"sort"
@@ -68,12 +69,29 @@ var tabPadding = lipgloss.Width(inactiveTab.Render(""))
 
 type snapshotMsg Snapshot
 
+type configEditMsg struct {
+	cfg config.Config
+	err error
+}
+
+type configRefreshMsg struct {
+	cfg         config.Config
+	loader      Loader
+	refresh     time.Duration
+	snapshot    Snapshot
+	epoch       uint64
+	selectedURL string
+}
+
 type viewMsg struct {
 	index    int
 	snapshot ViewSnapshot
+	epoch    uint64
 }
 
-type tickMsg struct{}
+type tickMsg struct {
+	epoch uint64
+}
 
 type browserMsg struct {
 	err error
@@ -96,6 +114,7 @@ var keyHelp = []keyHelpEntry{
 	{"/ Enter", "filter"},
 	{"Ctrl+U Esc", "clear"},
 	{"Backspace", "edit"},
+	{"E", "edit config"},
 	{"r R", "refresh"},
 	{"Enter o", "open"},
 	{"wheel/click", "mouse"},
@@ -108,7 +127,7 @@ var keyHelp = []keyHelpEntry{
 var documentedKeys = []string{
 	"1", "9", "Tab", "Shift+Tab", "h", "l", "←", "→",
 	"j", "k", "↑", "↓", "g", "G", "Home", "End",
-	"/", "Enter", "Ctrl+U", "Esc", "Backspace", "r", "R", "o", "q", "Ctrl+C",
+	"/", "Enter", "Ctrl+U", "Esc", "Backspace", "E", "r", "R", "o", "q", "Ctrl+C",
 }
 
 // table tiers and their minimum terminal widths in cells.
@@ -120,8 +139,10 @@ const (
 
 type Model struct {
 	cfg         config.Config
+	configPath  string
 	loader      Loader
 	openBrowser func(url string) tea.Cmd
+	editConfig  func(path string) tea.Cmd
 	refresh     time.Duration
 	views       []ViewData
 	active      int
@@ -135,11 +156,24 @@ type Model struct {
 	warning     string
 	rates       gh.RateLimits
 	sidebar     *sidebar.Reporter
+	reporter    func(config.SidebarConfig) *sidebar.Reporter
 	sidebarWarn bool
+	epoch       uint64
 }
 
 // NewModel builds the board. A nil reporter disables sidebar reporting.
 func NewModel(cfg config.Config, loader Loader, reporter *sidebar.Reporter) (Model, error) {
+	return NewModelWithConfigPath(cfg, "", loader, func(settings config.SidebarConfig) *sidebar.Reporter {
+		if reporter == nil || !settings.SidebarEnabled() {
+			return nil
+		}
+		next := *reporter
+		next.TTL, _ = settings.TTLEvery()
+		return &next
+	})
+}
+
+func NewModelWithConfigPath(cfg config.Config, configPath string, loader Loader, reporter func(config.SidebarConfig) *sidebar.Reporter) (Model, error) {
 	refresh, err := cfg.RefreshEvery()
 	if err != nil {
 		return Model{}, err
@@ -148,7 +182,23 @@ func NewModel(cfg config.Config, loader Loader, reporter *sidebar.Reporter) (Mod
 	for i, view := range cfg.Views {
 		views[i].View = view
 	}
-	return Model{cfg: cfg, loader: loader, openBrowser: openBrowserCmd, refresh: refresh, views: views, loading: true, sidebar: reporter}, nil
+	var initialReporter *sidebar.Reporter
+	if reporter != nil {
+		initialReporter = reporter(cfg.Sidebar)
+	}
+	return Model{
+		cfg:         cfg,
+		configPath:  configPath,
+		loader:      loader,
+		openBrowser: openBrowserCmd,
+		editConfig:  editConfigCmd,
+		refresh:     refresh,
+		views:       views,
+		loading:     true,
+		sidebar:     initialReporter,
+		reporter:    reporter,
+		epoch:       1,
+	}, nil
 }
 
 func (m Model) Init() tea.Cmd {
@@ -166,6 +216,9 @@ func (m Model) Update(message tea.Msg) (tea.Model, tea.Cmd) {
 		m.clampCursor()
 		return m, nil
 	case snapshotMsg:
+		if msg.epoch != 0 && msg.epoch != m.epoch {
+			return m, nil
+		}
 		warning := msg.Warning
 		for i := range msg.Views {
 			warning = appendWarning(warning, m.settleView(&msg.Views[i], i, msg.UpdatedAt))
@@ -191,6 +244,9 @@ func (m Model) Update(message tea.Msg) (tea.Model, tea.Cmd) {
 		}
 		return m, nil
 	case viewMsg:
+		if msg.epoch != 0 && msg.epoch != m.epoch {
+			return m, nil
+		}
 		refresh := msg.snapshot
 		m.warning = refresh.Warning
 		if msg.index >= 0 && msg.index < len(m.views) {
@@ -203,12 +259,19 @@ func (m Model) Update(message tea.Msg) (tea.Model, tea.Cmd) {
 		m.clampCursor()
 		return m, nil
 	case tickMsg:
+		if msg.epoch != 0 && msg.epoch != m.epoch {
+			return m, nil
+		}
 		commands := []tea.Cmd{m.tickCmd()}
 		if !m.loading && m.rates.Search.HasCapacity(m.cfg.SearchRequestCount()) {
 			m.loading = true
 			commands = append(commands, m.refreshAllCmd())
 		}
 		return m, tea.Batch(commands...)
+	case configRefreshMsg:
+		return m.updateConfigRefresh(msg)
+	case configEditMsg:
+		return m.updateConfig(msg)
 	case browserMsg:
 		if msg.err != nil {
 			m.warning = appendWarning(m.warning, "could not open the PR in a browser: "+msg.err.Error()+"; use the URL above or press Enter/click again")
@@ -268,6 +331,106 @@ func (m Model) updateFilter(key tea.KeyMsg) (tea.Model, tea.Cmd) {
 	return m, nil
 }
 
+func (m Model) updateConfig(message configEditMsg) (tea.Model, tea.Cmd) {
+	if message.err != nil {
+		m.warning = appendWarning(m.warning, "configuration edit failed: "+message.err.Error())
+		return m, nil
+	}
+	if message.cfg.Equal(m.cfg) {
+		return m, nil
+	}
+	refresh, err := message.cfg.RefreshEvery()
+	if err != nil {
+		m.warning = appendWarning(m.warning, "configuration edit failed: "+err.Error())
+		return m, nil
+	}
+	nextLoader := m.loader.Reconfigured(message.cfg)
+	if nextLoader == nil {
+		m.warning = appendWarning(m.warning, "configuration editor cannot reload the board")
+		return m, nil
+	}
+	selectedURL := ""
+	if pr, ok := m.selectedPR(); ok {
+		selectedURL = pr.URL
+	}
+	m.epoch++
+	m.loading = true
+	return m, m.refreshConfigCmd(message.cfg, nextLoader, refresh, selectedURL)
+}
+
+func (m Model) updateConfigRefresh(message configRefreshMsg) (tea.Model, tea.Cmd) {
+	if message.epoch != 0 && message.epoch != m.epoch {
+		return m, nil
+	}
+	if message.snapshot.capacityErr != nil {
+		m.loading = false
+		m.warning = appendWarning(m.warning, message.snapshot.capacityErr.Error())
+		if m.refresh > 0 {
+			return m, m.tickCmd()
+		}
+		return m, nil
+	}
+
+	m = m.applyConfig(message.cfg, message.loader, message.refresh)
+	message.snapshot.epoch = m.epoch
+	updated, command := m.Update(snapshotMsg(message.snapshot))
+	model := updated.(Model)
+	model.restoreSelection(message.selectedURL)
+	if model.refresh > 0 {
+		if command == nil {
+			command = model.tickCmd()
+		} else {
+			command = tea.Batch(command, model.tickCmd())
+		}
+	}
+	return model, command
+}
+
+func (m Model) applyConfig(cfg config.Config, loader Loader, refresh time.Duration) Model {
+	activeID := m.currentView().View.ID
+	previous := make(map[string]ViewData, len(m.views))
+	for _, view := range m.views {
+		previous[view.View.ID] = view
+	}
+	nextViews := make([]ViewData, len(cfg.Views))
+	active := 0
+	for i, view := range cfg.Views {
+		nextViews[i].View = view
+		if old, ok := previous[view.ID]; ok {
+			nextViews[i].PRs = old.PRs
+			nextViews[i].UpdatedAt = old.UpdatedAt
+		}
+		if view.ID == activeID {
+			active = i
+		}
+	}
+
+	m.cfg = cfg
+	m.loader = loader
+	m.refresh = refresh
+	m.views = nextViews
+	m.active = active
+	if m.reporter != nil {
+		m.sidebar = m.reporter(cfg.Sidebar)
+	}
+	m.sidebarWarn = false
+	m.clampCursor()
+	return m
+}
+
+func (m *Model) restoreSelection(url string) {
+	if url != "" {
+		for i, pr := range m.filteredPRs() {
+			if pr.URL == url {
+				m.cursor = i
+				m.clampCursor()
+				return
+			}
+		}
+	}
+	m.clampCursor()
+}
+
 func (m Model) updateKey(key tea.KeyMsg) (tea.Model, tea.Cmd) {
 	switch key.String() {
 	case "q", "ctrl+c":
@@ -294,6 +457,15 @@ func (m Model) updateKey(key tea.KeyMsg) (tea.Model, tea.Cmd) {
 			m.filter = ""
 			m.cursor, m.offset = 0, 0
 		}
+	case "E":
+		if m.loading {
+			return m, nil
+		}
+		if m.editConfig == nil {
+			m.warning = appendWarning(m.warning, "configuration editor is unavailable")
+			return m, nil
+		}
+		return m, m.editConfig(m.configPath)
 	case "r":
 		requests := m.currentView().View.SearchRequestCount(len(m.cfg.GitHub.Scopes), m.cfg.GitHub.LimitPerScope)
 		if !m.loading && m.rates.Search.HasCapacity(requests) {
@@ -719,25 +891,71 @@ func (m Model) sidebarReportCmd(tokens map[string]string) tea.Cmd {
 	}
 }
 
-func (m Model) refreshAllCmd() tea.Cmd {
+func (m Model) refreshConfigCmd(cfg config.Config, loader Loader, refresh time.Duration, selectedURL string) tea.Cmd {
+	epoch := m.epoch
 	return func() tea.Msg {
 		ctx, cancel := context.WithTimeout(context.Background(), refreshAllTimeout)
 		defer cancel()
-		return snapshotMsg(m.loader.RefreshAll(ctx))
+		snapshot := loader.RefreshAll(ctx)
+		snapshot.epoch = epoch
+		return configRefreshMsg{cfg: cfg, loader: loader, refresh: refresh, snapshot: snapshot, epoch: epoch, selectedURL: selectedURL}
+	}
+}
+
+func (m Model) refreshAllCmd() tea.Cmd {
+	loader, epoch := m.loader, m.epoch
+	return func() tea.Msg {
+		ctx, cancel := context.WithTimeout(context.Background(), refreshAllTimeout)
+		defer cancel()
+		snapshot := loader.RefreshAll(ctx)
+		snapshot.epoch = epoch
+		return snapshotMsg(snapshot)
 	}
 }
 
 func (m Model) refreshOneCmd(index int) tea.Cmd {
+	loader, epoch := m.loader, m.epoch
 	view := m.views[index].View
 	return func() tea.Msg {
 		ctx, cancel := context.WithTimeout(context.Background(), refreshOneTimeout)
 		defer cancel()
-		return viewMsg{index: index, snapshot: m.loader.RefreshOne(ctx, view)}
+		snapshot := loader.RefreshOne(ctx, view)
+		return viewMsg{index: index, snapshot: snapshot, epoch: epoch}
 	}
 }
 
 func (m Model) tickCmd() tea.Cmd {
-	return tea.Tick(m.refresh, func(time.Time) tea.Msg { return tickMsg{} })
+	epoch := m.epoch
+	return tea.Tick(m.refresh, func(time.Time) tea.Msg { return tickMsg{epoch: epoch} })
+}
+
+func editConfigCmd(path string) tea.Cmd {
+	if strings.TrimSpace(path) == "" {
+		return func() tea.Msg {
+			return configEditMsg{err: fmt.Errorf("config path is unavailable")}
+		}
+	}
+	return tea.ExecProcess(editorCommand(path), func(err error) tea.Msg {
+		if err != nil {
+			return configEditMsg{err: fmt.Errorf("%s: editor: %w", path, err)}
+		}
+		cfg, err := config.LoadExisting(path)
+		if err != nil {
+			return configEditMsg{err: fmt.Errorf("%s: %w", path, err)}
+		}
+		return configEditMsg{cfg: cfg}
+	})
+}
+
+func editorCommand(path string) *exec.Cmd {
+	editor := strings.TrimSpace(os.Getenv("VISUAL"))
+	if editor == "" {
+		editor = strings.TrimSpace(os.Getenv("EDITOR"))
+	}
+	if editor == "" {
+		editor = "vi"
+	}
+	return exec.Command(editor, path)
 }
 
 func openBrowserCmd(url string) tea.Cmd {

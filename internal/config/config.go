@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"reflect"
 	"regexp"
 	"strings"
 	"time"
@@ -137,6 +138,16 @@ func (c Config) SearchRequestCount() int {
 	return count
 }
 
+// Equal reports whether two configurations have the same effective settings.
+func (c Config) Equal(other Config) bool {
+	if c.Sidebar.SidebarEnabled() != other.Sidebar.SidebarEnabled() {
+		return false
+	}
+	c.Sidebar.Enabled = nil
+	other.Sidebar.Enabled = nil
+	return reflect.DeepEqual(c, other)
+}
+
 func Load(path string) (Config, error) {
 	if path == "" {
 		return Config{}, errors.New("config path is required")
@@ -154,17 +165,22 @@ func Load(path string) (Config, error) {
 	return parseFile(path)
 }
 
-// Check parses and validates an existing configuration without creating it.
-func Check(path string) error {
+// LoadExisting parses and validates an existing configuration without creating it.
+func LoadExisting(path string) (Config, error) {
 	if path == "" {
-		return errors.New("config path is required")
+		return Config{}, errors.New("config path is required")
 	}
 	if _, err := os.Stat(path); errors.Is(err, os.ErrNotExist) {
-		return fmt.Errorf("config file not found: %s", path)
+		return Config{}, fmt.Errorf("config file not found: %s", path)
 	} else if err != nil {
-		return fmt.Errorf("stat config: %w", err)
+		return Config{}, fmt.Errorf("stat config: %w", err)
 	}
-	_, err := parseFile(path)
+	return parseFile(path)
+}
+
+// Check parses and validates an existing configuration without creating it.
+func Check(path string) error {
+	_, err := LoadExisting(path)
 	return err
 }
 

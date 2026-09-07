@@ -55,8 +55,9 @@ func run(args []string, stdout, stderr io.Writer) int {
 	client := gh.NewClient(nil, cfg.GitHub)
 	client.SetTokenVars(setTokenVars(gh.TokenVars, os.Getenv))
 	service := board.NewService(cfg, client)
-	reporter := sidebar.NewReporter(cfg.Sidebar, os.Getenv("HERDR_WORKSPACE_ID"), os.Getenv("HERDR_BIN_PATH"))
-	model, err := board.NewModel(cfg, service, reporter)
+	model, err := board.NewModelWithConfigPath(cfg, *configPath, service, func(settings config.SidebarConfig) *sidebar.Reporter {
+		return sidebar.NewReporter(settings, os.Getenv("HERDR_WORKSPACE_ID"), os.Getenv("HERDR_BIN_PATH"))
+	})
 	if err != nil {
 		return fail(stderr, err)
 	}

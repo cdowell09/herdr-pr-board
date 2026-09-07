@@ -698,3 +698,15 @@ func TestEnrichCIPrunesExpiredCacheEntries(t *testing.T) {
 		t.Fatal("fresh result was not cached")
 	}
 }
+
+func TestReconfiguredPreservesAuthHint(t *testing.T) {
+	client := NewClient(func(context.Context, ...string) ([]byte, error) {
+		return nil, errors.New("HTTP 401: Bad credentials")
+	}, config.GitHubConfig{})
+	client.SetTokenVars([]string{"GH_TOKEN"})
+	next := client.Reconfigured(config.GitHubConfig{})
+	_, err := next.RateLimits(context.Background())
+	if err == nil || !strings.Contains(err.Error(), "GH_TOKEN is set") {
+		t.Fatalf("reconfigured authentication error = %v", err)
+	}
+}

@@ -32,10 +32,12 @@ func (v *ViewData) retainFrom(prev ViewData) {
 }
 
 type Snapshot struct {
-	Views     []ViewData
-	Rates     gh.RateLimits
-	Warning   string
-	UpdatedAt time.Time
+	Views       []ViewData
+	Rates       gh.RateLimits
+	Warning     string
+	UpdatedAt   time.Time
+	capacityErr error
+	epoch       uint64
 }
 
 type ViewSnapshot struct {
@@ -47,6 +49,7 @@ type ViewSnapshot struct {
 
 // GitHub is the transport surface that board refresh policy depends on.
 type GitHub interface {
+	Reconfigured(config.GitHubConfig) *gh.Client
 	RateLimits(context.Context) (gh.RateLimits, error)
 	SearchView(context.Context, config.View) ([]gh.PullRequest, error)
 	EnrichCI(context.Context, []gh.PullRequest, gh.RateResource) (gh.RateResource, []string, error)
@@ -55,6 +58,7 @@ type GitHub interface {
 type Loader interface {
 	RefreshAll(context.Context) Snapshot
 	RefreshOne(context.Context, config.View) ViewSnapshot
+	Reconfigured(config.Config) Loader
 }
 
 type Service struct {
@@ -66,11 +70,16 @@ func NewService(cfg config.Config, client GitHub) *Service {
 	return &Service{cfg: cfg, client: client}
 }
 
+func (s *Service) Reconfigured(cfg config.Config) Loader {
+	return NewService(cfg, s.client.Reconfigured(cfg.GitHub))
+}
+
 func (s *Service) RefreshAll(ctx context.Context) Snapshot {
 	snapshot := Snapshot{Views: make([]ViewData, len(s.cfg.Views)), UpdatedAt: time.Now()}
 	var budgetErr error
 	snapshot.Rates, snapshot.Warning, budgetErr = s.searchBudget(ctx, s.cfg.SearchRequestCount())
 	if budgetErr != nil {
+		snapshot.capacityErr = budgetErr
 		for i, view := range s.cfg.Views {
 			snapshot.Views[i] = ViewData{View: view, Err: budgetErr}
 		}

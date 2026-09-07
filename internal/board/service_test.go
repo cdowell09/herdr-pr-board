@@ -119,6 +119,9 @@ func TestRefreshAllDoesNotExceedSearchBudget(t *testing.T) {
 	if !strings.Contains(snapshot.Views[0].Err.Error(), "requires 4") {
 		t.Fatalf("budget error = %q", snapshot.Views[0].Err)
 	}
+	if snapshot.capacityErr == nil {
+		t.Fatal("capacity error was not marked on the snapshot")
+	}
 }
 
 func TestRefreshAllBudgetsSearchPagination(t *testing.T) {
@@ -384,3 +387,5 @@ func TestRefreshOneWarnsOnCIErrorAndKeepsRows(t *testing.T) {
 		t.Fatalf("rate-limit calls = %d, want 3 (budget, after search, after CI failure)", fake.rateCalls)
 	}
 }
+
+func (f *fakeGitHub) Reconfigured(cfg config.GitHubConfig) *gh.Client { return gh.NewClient(nil, cfg) }
