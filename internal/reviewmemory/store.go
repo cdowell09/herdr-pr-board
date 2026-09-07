@@ -331,21 +331,8 @@ func (s *Store) Claim(req Request) (*Claim, error) {
 		if err != nil {
 			return err
 		}
-		var previous error
-		for _, r := range h.Runs {
-			if r.Identity != req.Identity {
-				continue
-			}
-			if active[r.ID] {
-				return ErrActive
-			}
-			if r.Status == Completed {
-				previous = ErrReviewed
-			} else if previous == nil {
-				previous = ErrRetryRequired
-			}
-		}
-		if !req.Rerun && previous != nil {
+		previous := historyStatus(h.Runs, active, req.Identity)
+		if errors.Is(previous, ErrActive) || (!req.Rerun && previous != nil) {
 			return previous
 		}
 		if len(active) >= limit {
@@ -433,4 +420,37 @@ func (c *Claim) Close() error {
 	err := c.file.Close()
 	c.file = nil
 	return err
+}
+
+// ReviewStatus checks live ownership and prior outcomes for this exact revision.
+func (s *Store) ReviewStatus(id Identity) error {
+	if err := ValidateIdentity(id); err != nil {
+		return err
+	}
+	id.Repository = strings.ToLower(id.Repository)
+	return s.transaction(func(h *history) error {
+		active, err := s.activeClaims(h)
+		if err != nil {
+			return err
+		}
+		return historyStatus(h.Runs, active, id)
+	})
+}
+
+func historyStatus(runs []Run, active map[string]bool, id Identity) error {
+	var previous error
+	for _, run := range runs {
+		if run.Identity != id {
+			continue
+		}
+		if active[run.ID] {
+			return ErrActive
+		}
+		if run.Status == Completed {
+			previous = ErrReviewed
+		} else if previous == nil {
+			previous = ErrRetryRequired
+		}
+	}
+	return previous
 }

@@ -12,6 +12,7 @@ import (
 	"github.com/cdowell09/herdr-pr-board/internal/board"
 	"github.com/cdowell09/herdr-pr-board/internal/config"
 	"github.com/cdowell09/herdr-pr-board/internal/discovery"
+	"github.com/cdowell09/herdr-pr-board/internal/dispatch"
 	gh "github.com/cdowell09/herdr-pr-board/internal/github"
 	"github.com/cdowell09/herdr-pr-board/internal/localstate"
 	"github.com/cdowell09/herdr-pr-board/internal/monitor"
@@ -88,6 +89,7 @@ func run(args []string, stdout, stderr io.Writer) int {
 	if o.monitor && stateDir == "" {
 		return fail(stderr, errors.New("--monitor requires HERDR_PLUGIN_STATE_DIR"))
 	}
+	var monitorSource *monitor.Source
 	if stateDir != "" {
 		stateDir, err = localstate.Dir()
 		if err != nil {
@@ -97,9 +99,7 @@ func run(args []string, stdout, stderr io.Writer) int {
 			return fail(stderr, err)
 		}
 		source := monitor.New(stateDir, cfg, service)
-		if o.monitor {
-			return runMonitor(source, stderr)
-		}
+		monitorSource = source
 		service = source
 	}
 	if o.json {
@@ -127,6 +127,15 @@ func run(args []string, stdout, stderr io.Writer) int {
 		if err != nil {
 			return fail(stderr, err)
 		}
+	}
+	if o.monitor {
+		return runMonitor(monitorSource, cfg, dispatch.New(o.configPath, reviews, publisher), stderr)
+	}
+	if o.eligibility {
+		if reviews == nil {
+			return fail(stderr, errors.New("review eligibility requires HERDR_PLUGIN_STATE_DIR"))
+		}
+		return printEligibility(cfg, service, reviews, stdout, stderr)
 	}
 	if o.review != "" {
 		return printReview(o, reviews, stdout, stderr)

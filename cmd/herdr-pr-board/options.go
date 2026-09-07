@@ -8,6 +8,7 @@ import (
 
 type options struct {
 	monitor      bool
+	eligibility  bool
 	publication  *publicationOptions
 	configPath   string
 	validate     bool
@@ -27,6 +28,7 @@ func parseOptions(args []string, stderr io.Writer) (options, error) {
 	f := flag.NewFlagSet("herdr-pr-board", flag.ContinueOnError)
 	f.SetOutput(stderr)
 	f.StringVar(&o.configPath, "config", "", "path to config.toml")
+	f.BoolVar(&o.eligibility, "review-eligibility", false, "print fresh automatic review eligibility as JSON")
 	f.BoolVar(&o.monitor, "monitor", false, "monitor PRs until interrupted (requires HERDR_PLUGIN_STATE_DIR)")
 	f.BoolVar(&o.validate, "validate", false, "validate the configuration and exit")
 	f.BoolVar(&o.json, "json", false, "print a fresh PR snapshot as JSON")
@@ -48,7 +50,7 @@ func parseOptions(args []string, stderr io.Writer) (options, error) {
 	specified := map[string]bool{}
 	f.Visit(func(flag *flag.Flag) { specified[flag.Name] = true })
 	modes := o.publication.modes()
-	for _, enabled := range []bool{o.monitor, o.validate, o.json, specified["review"], specified["review-history"], o.pi} {
+	for _, enabled := range []bool{o.eligibility, o.monitor, o.validate, o.json, specified["review"], specified["review-history"], o.pi} {
 		if enabled {
 			modes++
 		}

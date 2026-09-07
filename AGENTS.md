@@ -4,7 +4,8 @@
 
 Maintain PR Board as a small, reliable Herdr plugin. Preserve its config-driven views, accurate API budgeting, responsive Bubble Tea UI, and direct GitHub installation.
 
-Read [`README.md`](README.md) for user behavior and configuration. Read [`herdr-plugin.toml`](herdr-plugin.toml) before changing plugin metadata, entrypoints, placement, platforms, or build commands.
+Read [`README.md`](README.md) for user behavior and configuration.
+Read [`docs/automatic-reviews.md`](docs/automatic-reviews.md) before changing automatic eligibility or dispatch. Read [`herdr-plugin.toml`](herdr-plugin.toml) before changing plugin metadata, entrypoints, placement, platforms, or build commands.
 
 ## Source map
 
@@ -16,6 +17,14 @@ Read [`README.md`](README.md) for user behavior and configuration. Read [`herdr-
 - `internal/cli/`: subprocess execution shared by the `gh` and `herdr` runners.
 - `internal/github/`: `gh` execution, query tokenization, Search results, GraphQL CI enrichment, caching, and rate-limit decoding.
 - `internal/discovery/`: shared refresh orchestration, API budgeting, observation times, and retrieval results.
+- `internal/localstate/`: local locks and atomic state replacement.
+- `internal/reviewmemory/`: revision history, live claims, failure holds, and concurrency accounting.
+- `internal/review/`: shared reviewer launch policy, captured revisions, timeouts, and outcome recording.
+- `internal/reviewercontract/`: versioned reviewer input, results, and boundary validation.
+- `internal/piadapter/`: isolated Pi checkouts, specification context, event parsing, and claim inheritance.
+- `internal/publication/`: action permissions, publication records, and uncertain-response reconciliation.
+- `internal/monitor/`: shared discovery observations, scan ownership, and monitor lifetime.
+- `internal/dispatch/`: automatic eligibility, selected observations, dispatch scheduling, and optional publication.
 - `internal/board/`: Bubble Tea state, scheduling epochs, stale-row retention, rendering, keyboard input, and mouse input.
 - `internal/sidebar/`: Herdr sidebar token computation and `herdr` CLI metadata reporting.
 - `bin/open`: focus an existing plugin pane or open one dedicated tab.

@@ -44,6 +44,7 @@ type prJSON struct {
 	URL                string     `json:"url"`
 	Title              string     `json:"title"`
 	Author             string     `json:"author"`
+	State              *string    `json:"state"`
 	Draft              bool       `json:"draft"`
 	UpdatedAt          *time.Time `json:"updated_at"`
 	HeadOID            *string    `json:"head_oid"`
@@ -96,7 +97,7 @@ func printSnapshot(cfg config.Config, service discovery.Loader, stdout, stderr i
 				ci = ""
 			}
 			view.PRs = append(view.PRs, prJSON{Repository: pr.Repository, Number: pr.Number, URL: pr.URL,
-				Title: pr.Title, Author: pr.Author, Draft: pr.Draft, UpdatedAt: wireTime(pr.UpdatedAt),
+				Title: pr.Title, Author: pr.Author, Draft: pr.Draft, State: wireString(string(pr.State)), UpdatedAt: wireTime(pr.UpdatedAt),
 				HeadOID: wireString(pr.HeadOID), BaseRefName: wireString(pr.BaseRefName), BaseOID: wireString(pr.BaseOID),
 				CI: wireString(ci), MetadataObservedAt: wireTime(pr.MetadataObservedAt)})
 		}

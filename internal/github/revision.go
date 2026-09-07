@@ -58,12 +58,12 @@ func (c *Client) CaptureRevision(ctx context.Context, prURL string) (PullRequest
 	if err != nil || actualRepo != repo || actualNumber != number || row.Number != number {
 		return PullRequest{}, errors.New("GitHub returned a different PR identity")
 	}
-	if row.State != "OPEN" {
+	if PRState(row.State) != PROpen {
 		return PullRequest{}, errors.New("PR must be open for review")
 	}
 	id := reviewmemory.Identity{Repository: repo, Number: number, HeadOID: row.Head, BaseRefName: row.Target}
 	if err := reviewmemory.ValidateRevision(id, row.Base); err != nil {
 		return PullRequest{}, err
 	}
-	return PullRequest{Repository: repo, Number: number, URL: row.URL, Title: row.Title, Draft: row.Draft, HeadOID: row.Head, BaseOID: row.Base, BaseRefName: row.Target, MetadataObservedAt: time.Now().UTC()}, nil
+	return PullRequest{Repository: repo, Number: number, URL: row.URL, Title: row.Title, Draft: row.Draft, State: PRState(row.State), HeadOID: row.Head, BaseOID: row.Base, BaseRefName: row.Target, MetadataObservedAt: time.Now().UTC()}, nil
 }

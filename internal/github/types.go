@@ -13,12 +13,21 @@ const (
 	CIError   CIState = "ERROR"
 )
 
+type PRState string
+
+const (
+	PROpen   PRState = "OPEN"
+	PRClosed PRState = "CLOSED"
+	PRMerged PRState = "MERGED"
+)
+
 type PullRequest struct {
 	Repository         string
 	Number             int
 	Title              string
 	URL                string
 	Author             string
+	State              PRState
 	Draft              bool
 	UpdatedAt          time.Time
 	CI                 CIState

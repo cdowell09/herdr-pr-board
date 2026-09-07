@@ -63,10 +63,16 @@ func (s *Service) completedRun(prURL, runID string) (reviewmemory.Run, error) {
 	return reviewmemory.Run{}, errors.New("select a completed local review run for this PR")
 }
 
-func (s *Service) permission(repository string, action config.PublicationAction) error {
+func (s *Service) permission(repository string, action config.PublicationAction, automatic bool) error {
 	cfg, err := config.LoadExisting(s.configPath)
 	if err != nil {
 		return err
+	}
+	if automatic {
+		repo, _ := cfg.RepositoryFor(repository)
+		if repo.AutoPublish != action {
+			return errors.New("automatic publication selection changed before publication")
+		}
 	}
 	return cfg.AllowPublication(repository, action)
 }
@@ -74,6 +80,15 @@ func (s *Service) permission(repository string, action config.PublicationAction)
 // Publish sends at most one request for a completed run and publication action.
 // A lost response never authorizes another POST, including after process restart.
 func (s *Service) Publish(ctx context.Context, prURL, runID string, action config.PublicationAction) (Attempt, error) {
+	return s.publish(ctx, prURL, runID, action, false)
+}
+
+// PublishAutomatic additionally requires the explicit automatic action selector.
+func (s *Service) PublishAutomatic(ctx context.Context, prURL, runID string, action config.PublicationAction) (Attempt, error) {
+	return s.publish(ctx, prURL, runID, action, true)
+}
+
+func (s *Service) publish(ctx context.Context, prURL, runID string, action config.PublicationAction, automatic bool) (Attempt, error) {
 	ctx, cancel := context.WithTimeout(ctx, s.timeout)
 	defer cancel()
 	if !action.Valid() {
@@ -104,7 +119,7 @@ func (s *Service) Publish(ctx context.Context, prURL, runID string, action confi
 	if err != nil && !errors.Is(err, os.ErrNotExist) {
 		return Attempt{}, err
 	}
-	if err := s.permission(run.Identity.Repository, action); err != nil {
+	if err := s.permission(run.Identity.Repository, action, automatic); err != nil {
 		return Attempt{}, err
 	}
 	actor, err := s.github.PublicationActor(ctx)
@@ -128,7 +143,7 @@ func (s *Service) Publish(ctx context.Context, prURL, runID string, action confi
 		return Attempt{}, errors.New("review findings exceed the 60000-byte publication limit")
 	}
 	// Reload after network preflight. Revocation does not depend on the board's cache.
-	if err := s.permission(run.Identity.Repository, action); err != nil {
+	if err := s.permission(run.Identity.Repository, action, automatic); err != nil {
 		return Attempt{}, err
 	}
 	if err := s.write(a); err != nil {

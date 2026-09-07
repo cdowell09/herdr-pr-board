@@ -205,7 +205,8 @@ Commands without `HERDR_PLUGIN_STATE_DIR` keep independent refresh behavior.
 Use the same discovery configuration for the monitor and board.
 After changing views or GitHub settings, restart the monitor with the updated configuration.
 A configuration mismatch shows an error instead of starting duplicate scheduled scans.
-The monitor does not launch reviewers or publish GitHub reviews.
+Automatic reviews remain disabled until you select views and enable repository launches.
+See [automatic reviews](docs/automatic-reviews.md) for dispatch, eligibility, and optional publication.
 
 ## Configure the board
 

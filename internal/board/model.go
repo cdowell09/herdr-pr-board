@@ -14,6 +14,7 @@ import (
 
 	"github.com/cdowell09/herdr-pr-board/internal/config"
 	"github.com/cdowell09/herdr-pr-board/internal/discovery"
+	"github.com/cdowell09/herdr-pr-board/internal/dispatch"
 	gh "github.com/cdowell09/herdr-pr-board/internal/github"
 	"github.com/cdowell09/herdr-pr-board/internal/sidebar"
 	tea "github.com/charmbracelet/bubbletea"
@@ -141,6 +142,7 @@ const (
 )
 
 type Model struct {
+	autoCandidates   []dispatch.Candidate
 	reviews          ReviewBackend
 	publications     PublicationBackend
 	stateDir         string
@@ -241,6 +243,9 @@ func (m Model) Update(message tea.Msg) (tea.Model, tea.Cmd) {
 			return m, nil
 		}
 		current := m.observationCurrent(msg.FinishedAt)
+		if current {
+			m.autoCandidates = dispatch.Candidates(msg.Snapshot, m.cfg.Views, m.cfg.Review.AutoViews)
+		}
 		for i := range msg.Views {
 			if !m.acceptObservation(msg.Views[i].View.ID, msg.FinishedAt) {
 				msg.Views[i] = m.views[i]
@@ -282,6 +287,7 @@ func (m Model) Update(message tea.Msg) (tea.Model, tea.Cmd) {
 		}
 		if msg.index >= 0 && msg.index < len(m.views) && m.acceptObservation(refresh.Data.View.ID, refresh.FinishedAt) {
 			data := refresh.Data
+			m.invalidateAutomatic(refresh)
 			m.settleView(&data, msg.index)
 			m.views[msg.index] = data
 		}
@@ -444,6 +450,7 @@ func (m Model) applyConfig(cfg config.Config, loader discovery.Loader, refresh t
 	}
 
 	m.cfg = cfg
+	m.autoCandidates = nil
 	m.loader = loader
 	m.refresh = refresh
 	m.views = nextViews

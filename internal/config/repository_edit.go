@@ -158,6 +158,14 @@ func editRepository(data []byte, repo Repository) ([]byte, error) {
 			start := bytes.LastIndexByte(data[:offset], '\n') + 1
 			if active != nil {
 				active.end = start
+				for active.end > 0 {
+					previous := bytes.LastIndexByte(data[:active.end-1], '\n') + 1
+					line := bytes.TrimSpace(data[previous:active.end])
+					if len(line) != 0 && line[0] != '#' {
+						break
+					}
+					active.end = previous
+				}
 				active = nil
 			}
 			if n.Kind == unstable.ArrayTable && nodeKey(n) == "repositories" {
@@ -218,10 +226,11 @@ func repositoryFields(repo Repository) []repositoryField {
 	}
 	reviewer, _ := json.Marshal(repo.Reviewer)
 	publication, _ := json.Marshal(actions)
-	return []repositoryField{{"reviewer", string(reviewer)}, {"auto_launch", fmt.Sprint(repo.AutoLaunch)}, {"publish_actions", string(publication)}}
+	automatic, _ := json.Marshal(repo.AutoPublish)
+	return []repositoryField{{"reviewer", string(reviewer)}, {"auto_launch", fmt.Sprint(repo.AutoLaunch)}, {"publish_actions", string(publication)}, {"auto_publish", string(automatic)}}
 }
 
-// Only the three setup fields are edited. The TOML parser handles quoted keys,
+// Only the repository setup fields are edited. The TOML parser handles quoted keys,
 // strings, and multiline arrays; comments inside replaced arrays are retained.
 func repositoryValueRange(data []byte, n *unstable.Node) (repositoryEdit, error) {
 	v := n.Value()

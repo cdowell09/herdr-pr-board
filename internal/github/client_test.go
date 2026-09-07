@@ -28,7 +28,7 @@ func TestSearchSeparatesFlagsFromNegativeQueryTerms(t *testing.T) {
 		"search", "prs",
 		"--limit", "1",
 		"--sort", "updated", "--order", "desc",
-		"--json", "number,title,url,author,isDraft,updatedAt,repository",
+		"--json", "number,title,url,author,isDraft,updatedAt,repository,state",
 		"--", "is:open", "-is:draft",
 	}
 	if !slices.Equal(got, want) {
@@ -877,5 +877,18 @@ func TestEnrichmentRetriesIncompleteRevisionAndUnknownCI(t *testing.T) {
 		if calls != 2 {
 			t.Fatalf("incomplete response was cached; calls = %d", calls)
 		}
+	}
+}
+
+func TestSearchPreservesExplicitPRState(t *testing.T) {
+	client := NewClient(func(context.Context, ...string) ([]byte, error) {
+		return []byte(`[{"number":1,"state":"closed"},{"number":2,"state":"open"},{"number":3},{"number":4,"state":"merged"},{"number":5,"state":"unexpected"}]`), nil
+	}, config.GitHubConfig{LimitPerScope: 100})
+	prs, err := client.search(context.Background(), "repo:owner/repo")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(prs) != 5 || prs[0].State != PRClosed || prs[1].State != PROpen || prs[2].State != "" || prs[3].State != PRMerged || prs[4].State != "" {
+		t.Fatalf("PR states=%+v", prs)
 	}
 }
