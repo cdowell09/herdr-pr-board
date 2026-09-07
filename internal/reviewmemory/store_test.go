@@ -226,6 +226,76 @@ func TestChildRetainsClaimAfterParentCloses(t *testing.T) {
 	}
 }
 
+func TestFailedOutcomeRetainsChildClaimUntilExit(t *testing.T) {
+	s := openStore(t, t.TempDir())
+	c, err := s.Claim(request())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer c.Close()
+	fd, err := c.LockFile()
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer fd.Close()
+	cmd := exec.Command(os.Args[0], "-test.run=^TestInheritedClaimProcess$")
+	cmd.Env = append(os.Environ(), "REVIEW_MEMORY_INHERITED=1")
+	cmd.ExtraFiles = []*os.File{fd}
+	out, err := cmd.StdoutPipe()
+	if err != nil {
+		t.Fatal(err)
+	}
+	in, err := cmd.StdinPipe()
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer in.Close()
+	if err := cmd.Start(); err != nil {
+		t.Fatal(err)
+	}
+	defer func() { cmd.Process.Kill(); cmd.Wait() }()
+	if line, err := bufio.NewReader(out).ReadString('\n'); err != nil || line != "ready\n" {
+		t.Fatalf("%q %v", line, err)
+	}
+	fd.Close()
+	if err := c.Finish(Outcome{Status: Failed, Message: "adapter exited"}); err != nil {
+		t.Fatal(err)
+	}
+	r := request()
+	r.Rerun = true
+	if _, err := s.Claim(r); !errors.Is(err, ErrActive) {
+		t.Fatalf("explicit rerun bypassed child: %v", err)
+	}
+	other := request()
+	other.Identity.Number = 2
+	if _, err := s.Claim(other); !errors.Is(err, ErrCapacity) {
+		t.Fatalf("lost occupied slot: %v", err)
+	}
+	if available, err := s.HasCapacity(1); err != nil || available {
+		t.Fatalf("capacity=%v err=%v", available, err)
+	}
+
+	if _, err := s.Claim(request()); !errors.Is(err, ErrActive) {
+		t.Fatalf("child lost claim: %v", err)
+	}
+	in.Close()
+	if err := cmd.Wait(); err != nil {
+		t.Fatal(err)
+	}
+	h, err := s.History(request().Identity)
+	if err != nil || len(h) != 1 || h[0].Status != Failed {
+		t.Fatalf("%+v %v", h, err)
+	}
+	if available, err := s.HasCapacity(1); err != nil || !available {
+		t.Fatalf("capacity remains held: %v %v", available, err)
+	}
+	retry, err := s.Claim(r)
+	if err != nil {
+		t.Fatal(err)
+	}
+	retry.Close()
+}
+
 func TestClaimProcess(t *testing.T) {
 	if os.Getenv("REVIEW_MEMORY_HELPER") != "1" {
 		return

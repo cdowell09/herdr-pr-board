@@ -117,6 +117,7 @@ var keyHelp = []keyHelpEntry{
 	{"Ctrl+U Esc", "clear"},
 	{"Backspace", "edit"},
 	{"E", "edit config"},
+	{"v", "reviews"},
 	{"r R", "refresh"},
 	{"Enter o", "open"},
 	{"wheel/click", "mouse"},
@@ -129,7 +130,7 @@ var keyHelp = []keyHelpEntry{
 var documentedKeys = []string{
 	"1", "9", "Tab", "Shift+Tab", "h", "l", "←", "→",
 	"j", "k", "↑", "↓", "g", "G", "Home", "End",
-	"/", "Enter", "Ctrl+U", "Esc", "Backspace", "E", "r", "R", "o", "q", "Ctrl+C",
+	"/", "Enter", "Ctrl+U", "Esc", "Backspace", "E", "v", "n", "N", "r", "R", "o", "q", "Ctrl+C",
 }
 
 // table tiers and their minimum terminal widths in cells.
@@ -140,28 +141,33 @@ const (
 )
 
 type Model struct {
-	cfg          config.Config
-	configPath   string
-	loader       discovery.Loader
-	openBrowser  func(url string) tea.Cmd
-	editConfig   func(path string) tea.Cmd
-	refresh      time.Duration
-	views        []discovery.ViewData
-	active       int
-	cursor       int
-	offset       int
-	width        int
-	height       int
-	filter       string
-	editing      bool
-	loading      bool
-	warning      string
-	rates        gh.RateLimits
-	sidebar      *sidebar.Reporter
-	reporter     func(config.SidebarConfig) *sidebar.Reporter
-	sidebarWarn  bool
-	epoch        uint64
-	observations map[string]time.Time
+	reviews          ReviewBackend
+	reviewContext    context.Context
+	reviewPanel      *reviewPanel
+	reviewJobs       map[string]string
+	reviewGeneration uint64
+	cfg              config.Config
+	configPath       string
+	loader           discovery.Loader
+	openBrowser      func(url string) tea.Cmd
+	editConfig       func(path string) tea.Cmd
+	refresh          time.Duration
+	views            []discovery.ViewData
+	active           int
+	cursor           int
+	offset           int
+	width            int
+	height           int
+	filter           string
+	editing          bool
+	loading          bool
+	warning          string
+	rates            gh.RateLimits
+	sidebar          *sidebar.Reporter
+	reporter         func(config.SidebarConfig) *sidebar.Reporter
+	sidebarWarn      bool
+	epoch            uint64
+	observations     map[string]time.Time
 }
 
 // NewModel builds the board. A nil reporter disables sidebar reporting.
@@ -213,10 +219,14 @@ func (m Model) Init() tea.Cmd {
 }
 
 func (m Model) Update(message tea.Msg) (tea.Model, tea.Cmd) {
+	if next, cmd, handled := m.updateReview(message); handled {
+		return next, cmd
+	}
 	switch msg := message.(type) {
 	case tea.WindowSizeMsg:
 		m.width, m.height = msg.Width, msg.Height
 		m.clampCursor()
+		m.clampReviewOffset()
 		return m, nil
 	case snapshotMsg:
 		if msg.epoch != 0 && msg.epoch != m.epoch {
@@ -295,8 +305,14 @@ func (m Model) Update(message tea.Msg) (tea.Model, tea.Cmd) {
 		}
 		return m, nil
 	case tea.MouseMsg:
+		if m.reviewPanel != nil {
+			return m.updateReviewMouse(msg)
+		}
 		return m.updateMouse(msg)
 	case tea.KeyMsg:
+		if m.reviewPanel != nil {
+			return m.updateReviewKey(msg)
+		}
 		if m.editing {
 			return m.updateFilter(msg)
 		}
@@ -471,6 +487,8 @@ func (m Model) updateKey(key tea.KeyMsg) (tea.Model, tea.Cmd) {
 			m.filter = ""
 			m.cursor, m.offset = 0, 0
 		}
+	case "v":
+		return m.openReviewPanel()
 	case "E":
 		if m.loading {
 			return m, nil
@@ -607,6 +625,9 @@ func (m *Model) clampCursor() {
 }
 
 func (m Model) View() string {
+	if m.reviewPanel != nil {
+		return m.renderReviewPanel()
+	}
 	if m.width == 0 || m.height == 0 {
 		return "Loading PR board…"
 	}
@@ -692,9 +713,12 @@ func (m Model) renderFooter() string {
 	help := m.footerHelpLines()
 
 	meta := ""
+	if len(m.reviewJobs) > 0 {
+		meta = fmt.Sprintf("%d review requests · v reviews", len(m.reviewJobs))
+	}
 	freshness := m.currentView().UpdatedAt
 	if !freshness.IsZero() {
-		meta = fmt.Sprintf("updated %s", relativeTime(freshness))
+		meta += fmt.Sprintf(" · updated %s", relativeTime(freshness))
 	}
 	if stale(m.currentView()) {
 		meta += " · stale"

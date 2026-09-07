@@ -1,8 +1,8 @@
 package main
 
 import (
+	"context"
 	"errors"
-	"flag"
 	"fmt"
 	"io"
 	"os"
@@ -15,6 +15,7 @@ import (
 	gh "github.com/cdowell09/herdr-pr-board/internal/github"
 	"github.com/cdowell09/herdr-pr-board/internal/localstate"
 	"github.com/cdowell09/herdr-pr-board/internal/monitor"
+	"github.com/cdowell09/herdr-pr-board/internal/review"
 	"github.com/cdowell09/herdr-pr-board/internal/sidebar"
 	tea "github.com/charmbracelet/bubbletea"
 )
@@ -24,57 +25,48 @@ func main() {
 }
 
 func run(args []string, stdout, stderr io.Writer) int {
-	flags := flag.NewFlagSet("herdr-pr-board", flag.ContinueOnError)
-	flags.SetOutput(stderr)
-	configPath := flags.String("config", "", "path to config.toml")
-	validateOnly := flags.Bool("validate", false, "validate the configuration and exit")
-	monitorMode := flags.Bool("monitor", false, "monitor PRs until interrupted (requires HERDR_PLUGIN_STATE_DIR)")
-	jsonOutput := flags.Bool("json", false, "print a fresh PR snapshot as JSON")
-	viewID := flags.String("view", "", "configured view ID (requires --json)")
-	if err := flags.Parse(args); err != nil {
+	o, err := parseOptions(args, stderr)
+	if err != nil {
+		fmt.Fprintln(stderr, "herdr-pr-board:", err)
 		return 2
 	}
-	viewSpecified := false
-	flags.Visit(func(f *flag.Flag) {
-		if f.Name == "view" {
-			viewSpecified = true
-		}
-	})
-	if (*monitorMode && (*jsonOutput || *validateOnly || viewSpecified)) || flags.NArg() != 0 || (*validateOnly && (*jsonOutput || viewSpecified)) || (viewSpecified && (!*jsonOutput || *viewID == "")) {
-		fmt.Fprintln(stderr, "herdr-pr-board: invalid option combination or unexpected positional arguments")
-		return 2
+	if o.pi {
+		return runPiAdapter(o, os.Stdin, stderr)
 	}
-	if *configPath == "" {
+	if o.history != "" {
+		return printReviewHistory(o.history, stdout, stderr)
+	}
+	if o.configPath == "" {
 		path, err := defaultConfigPath()
 		if err != nil {
 			return fail(stderr, err)
 		}
-		*configPath = path
+		o.configPath = path
 	}
 
-	if *validateOnly {
-		if err := config.Check(*configPath); err != nil {
+	if o.validate {
+		if err := config.Check(o.configPath); err != nil {
 			return fail(stderr, err)
 		}
-		fmt.Fprintf(stdout, "configuration is valid: %s\n", *configPath)
+		fmt.Fprintf(stdout, "configuration is valid: %s\n", o.configPath)
 		return 0
 	}
 
-	cfg, err := config.Load(*configPath)
+	cfg, err := config.Load(o.configPath)
 	if err != nil {
 		return fail(stderr, err)
 	}
-	if viewSpecified {
+	if o.view != "" {
 		found := false
 		for _, view := range cfg.Views {
-			if view.ID == *viewID {
+			if view.ID == o.view {
 				cfg.Views = []config.View{view}
 				found = true
 				break
 			}
 		}
 		if !found {
-			fmt.Fprintf(stderr, "herdr-pr-board: unknown view %q\n", *viewID)
+			fmt.Fprintf(stderr, "herdr-pr-board: unknown view %q\n", o.view)
 			return 2
 		}
 	}
@@ -86,7 +78,7 @@ func run(args []string, stdout, stderr io.Writer) int {
 	client.SetTokenVars(setTokenVars(gh.TokenVars, os.Getenv))
 	var service discovery.Loader = discovery.NewService(cfg, client)
 	stateDir := os.Getenv("HERDR_PLUGIN_STATE_DIR")
-	if *monitorMode && stateDir == "" {
+	if o.monitor && stateDir == "" {
 		return fail(stderr, errors.New("--monitor requires HERDR_PLUGIN_STATE_DIR"))
 	}
 	if stateDir != "" {
@@ -98,19 +90,43 @@ func run(args []string, stdout, stderr io.Writer) int {
 			return fail(stderr, err)
 		}
 		source := monitor.New(stateDir, cfg, service)
-		if *monitorMode {
+		if o.monitor {
 			return runMonitor(source, stderr)
 		}
 		service = source
 	}
-	if *jsonOutput {
+	if o.json {
 		return printSnapshot(cfg, service, stdout, stderr)
 	}
-	model, err := board.NewModelWithConfigPath(cfg, *configPath, service, func(settings config.SidebarConfig) *sidebar.Reporter {
+	var reviews *review.Service
+	if o.review != "" || stateDir != "" {
+		if stateDir == "" {
+			return fail(stderr, errors.New("reviews require HERDR_PLUGIN_STATE_DIR"))
+		}
+		reviews, err = review.New(stateDir, o.configPath, client)
+		if err != nil {
+			return fail(stderr, err)
+		}
+	}
+	if o.review != "" {
+		return printReview(o, reviews, stdout, stderr)
+	}
+
+	model, err := board.NewModelWithConfigPath(cfg, o.configPath, service, func(settings config.SidebarConfig) *sidebar.Reporter {
 		return sidebar.NewReporter(settings, os.Getenv("HERDR_WORKSPACE_ID"), os.Getenv("HERDR_BIN_PATH"))
 	})
 	if err != nil {
 		return fail(stderr, err)
+	}
+	reviewCtx, cancelReviews := context.WithCancel(context.Background())
+	defer func() {
+		cancelReviews()
+		if reviews != nil {
+			reviews.Wait()
+		}
+	}()
+	if reviews != nil {
+		model = model.WithReviews(reviewCtx, reviews)
 	}
 	if _, err := tea.NewProgram(model, tea.WithAltScreen(), tea.WithMouseCellMotion()).Run(); err != nil {
 		return fail(stderr, err)

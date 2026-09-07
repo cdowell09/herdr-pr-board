@@ -55,3 +55,19 @@ scope = "configured"
 # title = "Frontend queue"
 # query = 'is:open label:"frontend" -is:draft'
 # scope = "configured"
+
+[review]
+# Share this concurrency limit across processes that use the same state directory.
+max_concurrency = 1
+# Include queue time and reviewer execution time in this limit.
+timeout = "30m"
+
+# Reuse each reviewer across repositories.
+# Use an absolute program path or a program on PATH.
+# [[reviewers]]
+# id = "pi"
+# command = ["/absolute/path/to/herdr-pr-board", "--pi-reviewer"]
+#
+# [[repositories]]
+# name = "owner/repository"
+# reviewer = "pi"

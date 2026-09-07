@@ -386,6 +386,7 @@ The reporting needs the `herdr` command on `PATH`. The board must run inside Her
 | `Backspace` | Remove the last filter character. |
 | `Ctrl+U`, `Esc` | Clear the filter. |
 | `E` | Edit the active configuration. |
+| `v` | Open local reviews for the selected PR. |
 | `r` | Refresh the active view. |
 | `R` | Refresh all views. |
 | `Enter`, `o` | Open the selected PR in a browser. |
@@ -400,6 +401,26 @@ If the operating system cannot open the browser, the board keeps the selected UR
 The footer pairs each keybinding with its action. On narrow terminals, the pairs wrap.
 
 ![Grouped keyboard shortcuts in the board footer](docs/images/keyboard-shortcuts.png)
+
+### Local review controls
+
+Press `v` to open the selected PR's review history.
+The panel shows current observed revisions and older revisions separately.
+
+| Key | Action in the review panel |
+| --- | --- |
+| `n` | Queue a review with the repository's configured reviewer. |
+| `N` | Explicitly retry or repeat a review. |
+| `j`, `k`, `↑`, `↓`, mouse wheel | Scroll through findings and diagnostics. |
+| `g`, `Home`, `G`, `End` | Move to the first or last history line. |
+| `o`, click the URL | Open the PR in a browser. |
+| `Esc`, `v` | Return to the board. |
+| `q`, `Ctrl+C` | Close the board and stop its review requests. |
+
+Reviews continue when you close the panel.
+The board remains responsive while reviews run.
+Findings remain local.
+See [manual reviews](docs/reviews.md) to configure a reviewer.
 
 ### Layouts
 
@@ -463,4 +484,4 @@ Herdr runs each plugin command from the plugin directory. Store user configurati
 Store runtime state in `HERDR_PLUGIN_STATE_DIR`. Do not store user data in `HERDR_PLUGIN_ROOT`.
 
 See [local review memory](docs/review-memory.md) for the shared history and claim contract.
-Review launch controls follow in a separate change.
+See [manual reviews](docs/reviews.md) for reviewer configuration, commands, and panel controls.

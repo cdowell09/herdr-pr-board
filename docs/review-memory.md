@@ -2,7 +2,7 @@
 
 The `internal/reviewmemory` package owns review history and local claims.
 It does not launch reviewers or publish findings.
-Review commands and board controls follow in separate changes.
+See [manual reviews](reviews.md) for commands and board controls.
 
 Supply `HERDR_PLUGIN_STATE_DIR` to `reviewmemory.Open`.
 The package stores history and lock files in its `reviews` directory.
@@ -51,6 +51,8 @@ Close the returned descriptor after the child starts.
 The child must keep its inherited descriptor open throughout execution.
 `Close` releases only the calling process's descriptor.
 The next history operation marks an unlocked running attempt as abandoned.
+A recorded outcome does not release ownership that a child process still holds.
+That ownership continues to reserve the revision and concurrency slot.
 A closed claim cannot complete an attempt or overwrite a replacement attempt.
 
 The package writes history through an atomic file replacement.

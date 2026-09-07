@@ -37,6 +37,14 @@ type Identity struct {
 
 var repositoryPattern = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9-]*/[A-Za-z0-9_.-]+$`)
 
+// ValidateRepository checks the owner/name identifier shared by review configuration and history.
+func ValidateRepository(repository string) error {
+	if !repositoryPattern.MatchString(repository) {
+		return errors.New("repository must use owner/name")
+	}
+	return nil
+}
+
 func validOID(oid string) bool {
 	decoded, err := hex.DecodeString(oid)
 	return err == nil && len(decoded) == 20 && oid == strings.ToLower(oid)
@@ -268,6 +276,40 @@ func (s *Store) PRHistory(repository string, number int) ([]Run, error) {
 	return runs, err
 }
 
+// HasCapacity checks local active claims. Claim remains the atomic reservation authority.
+func (s *Store) HasCapacity(limit int) (bool, error) {
+	if limit < 0 {
+		return false, errors.New("invalid review concurrency")
+	}
+	available := false
+	err := s.transaction(func(h *history) error {
+		active, err := s.activeClaims(h)
+		if err != nil {
+			return err
+		}
+		available = len(active) < max(1, limit)
+		return nil
+	})
+	return available, err
+}
+
+// activeClaims uses descriptor ownership even when an outcome is already recorded.
+func (s *Store) activeClaims(h *history) (map[string]bool, error) {
+	active := map[string]bool{}
+	for _, run := range h.Runs {
+		owner, err := localstate.TryLock(s.runLock(run.ID))
+		if errors.Is(err, localstate.ErrLocked) {
+			active[run.ID] = true
+			continue
+		}
+		if err != nil {
+			return nil, err
+		}
+		owner.Close()
+	}
+	return active, nil
+}
+
 type Claim struct {
 	mu    sync.Mutex
 	store *Store
@@ -285,16 +327,16 @@ func (s *Store) Claim(req Request) (*Claim, error) {
 	limit := max(1, req.MaxConcurrent)
 	c := &Claim{store: s}
 	err := s.transaction(func(h *history) error {
-		active := 0
+		active, err := s.activeClaims(h)
+		if err != nil {
+			return err
+		}
 		var previous error
 		for _, r := range h.Runs {
-			if r.Status == Running {
-				active++
-			}
 			if r.Identity != req.Identity {
 				continue
 			}
-			if r.Status == Running {
+			if active[r.ID] {
 				return ErrActive
 			}
 			if r.Status == Completed {
@@ -306,7 +348,7 @@ func (s *Store) Claim(req Request) (*Claim, error) {
 		if !req.Rerun && previous != nil {
 			return previous
 		}
-		if active >= limit {
+		if len(active) >= limit {
 			return ErrCapacity
 		}
 		var token [16]byte
@@ -314,7 +356,6 @@ func (s *Store) Claim(req Request) (*Claim, error) {
 			return err
 		}
 		c.id = hex.EncodeToString(token[:])
-		var err error
 		c.file, err = localstate.TryLock(s.runLock(c.id))
 		if err != nil {
 			return err
