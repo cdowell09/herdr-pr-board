@@ -140,27 +140,28 @@ const (
 )
 
 type Model struct {
-	cfg         config.Config
-	configPath  string
-	loader      discovery.Loader
-	openBrowser func(url string) tea.Cmd
-	editConfig  func(path string) tea.Cmd
-	refresh     time.Duration
-	views       []discovery.ViewData
-	active      int
-	cursor      int
-	offset      int
-	width       int
-	height      int
-	filter      string
-	editing     bool
-	loading     bool
-	warning     string
-	rates       gh.RateLimits
-	sidebar     *sidebar.Reporter
-	reporter    func(config.SidebarConfig) *sidebar.Reporter
-	sidebarWarn bool
-	epoch       uint64
+	cfg          config.Config
+	configPath   string
+	loader       discovery.Loader
+	openBrowser  func(url string) tea.Cmd
+	editConfig   func(path string) tea.Cmd
+	refresh      time.Duration
+	views        []discovery.ViewData
+	active       int
+	cursor       int
+	offset       int
+	width        int
+	height       int
+	filter       string
+	editing      bool
+	loading      bool
+	warning      string
+	rates        gh.RateLimits
+	sidebar      *sidebar.Reporter
+	reporter     func(config.SidebarConfig) *sidebar.Reporter
+	sidebarWarn  bool
+	epoch        uint64
+	observations map[string]time.Time
 }
 
 // NewModel builds the board. A nil reporter disables sidebar reporting.
@@ -204,8 +205,8 @@ func NewModelWithConfigPath(cfg config.Config, configPath string, loader discove
 }
 
 func (m Model) Init() tea.Cmd {
-	commands := []tea.Cmd{m.refreshAllCmd()}
-	if m.refresh > 0 {
+	commands := []tea.Cmd{m.observationCmd()}
+	if m.tickInterval() > 0 {
 		commands = append(commands, m.tickCmd())
 	}
 	return tea.Batch(commands...)
@@ -221,16 +222,23 @@ func (m Model) Update(message tea.Msg) (tea.Model, tea.Cmd) {
 		if msg.epoch != 0 && msg.epoch != m.epoch {
 			return m, nil
 		}
+		current := m.observationCurrent(msg.FinishedAt)
 		for i := range msg.Views {
+			if !m.acceptObservation(msg.Views[i].View.ID, msg.FinishedAt) {
+				msg.Views[i] = m.views[i]
+				continue
+			}
 			m.settleView(&msg.Views[i], i)
 		}
 		m.views = msg.Views
-		m.rates = msg.Rates
-		m.warning = discoveryWarnings(msg.Errors)
+		if current {
+			m.rates = msg.Rates
+			m.warning = discoveryWarnings(msg.Errors)
+		}
 		m.loading = false
 		m.clampCursor()
 		var cmd tea.Cmd
-		if m.sidebar != nil {
+		if m.sidebar != nil && current {
 			if tokens := sidebar.Tokens(m.cfg.Sidebar.ReviewView, adaptViews(m.views)); len(tokens) > 0 {
 				cmd = m.sidebarReportCmd(tokens)
 			}
@@ -249,24 +257,32 @@ func (m Model) Update(message tea.Msg) (tea.Model, tea.Cmd) {
 			return m, nil
 		}
 		refresh := msg.snapshot
-		m.warning = discoveryWarnings(refresh.Errors)
-		if msg.index >= 0 && msg.index < len(m.views) {
+		current := m.observationCurrent(refresh.FinishedAt)
+		if current {
+			m.warning = discoveryWarnings(refresh.Errors)
+			m.rates = refresh.Rates
+		}
+		if msg.index >= 0 && msg.index < len(m.views) && m.acceptObservation(refresh.Data.View.ID, refresh.FinishedAt) {
 			data := refresh.Data
 			m.settleView(&data, msg.index)
 			m.views[msg.index] = data
 		}
-		m.rates = refresh.Rates
 		m.loading = false
 		m.clampCursor()
+		return m, nil
+	case observationUnchangedMsg:
+		if msg.epoch == m.epoch {
+			m.loading = false
+		}
 		return m, nil
 	case tickMsg:
 		if msg.epoch != 0 && msg.epoch != m.epoch {
 			return m, nil
 		}
 		commands := []tea.Cmd{m.tickCmd()}
-		if !m.loading && m.rates.Search.HasCapacity(m.cfg.SearchRequestCount()) {
+		if !m.loading {
 			m.loading = true
-			commands = append(commands, m.refreshAllCmd())
+			commands = append(commands, m.observationCmd())
 		}
 		return m, tea.Batch(commands...)
 	case configRefreshMsg:
@@ -363,7 +379,7 @@ func (m Model) updateConfigRefresh(message configRefreshMsg) (tea.Model, tea.Cmd
 	if message.snapshot.CapacityErr != nil {
 		m.loading = false
 		m.warning = appendWarning(m.warning, discoveryWarnings(message.snapshot.Errors))
-		if m.refresh > 0 {
+		if m.tickInterval() > 0 {
 			return m, m.tickCmd()
 		}
 		return m, nil
@@ -373,7 +389,7 @@ func (m Model) updateConfigRefresh(message configRefreshMsg) (tea.Model, tea.Cmd
 	updated, command := m.Update(snapshotMsg{Snapshot: message.snapshot, epoch: m.epoch})
 	model := updated.(Model)
 	model.restoreSelection(message.selectedURL)
-	if model.refresh > 0 {
+	if model.tickInterval() > 0 {
 		if command == nil {
 			command = model.tickCmd()
 		} else {
@@ -897,32 +913,6 @@ func (m Model) refreshConfigCmd(cfg config.Config, loader discovery.Loader, refr
 		snapshot := loader.RefreshAll(ctx)
 		return configRefreshMsg{cfg: cfg, loader: loader, refresh: refresh, snapshot: snapshot, epoch: epoch, selectedURL: selectedURL}
 	}
-}
-
-func (m Model) refreshAllCmd() tea.Cmd {
-	loader, epoch := m.loader, m.epoch
-	return func() tea.Msg {
-		ctx, cancel := context.WithTimeout(context.Background(), discovery.RefreshAllTimeout)
-		defer cancel()
-		snapshot := loader.RefreshAll(ctx)
-		return snapshotMsg{Snapshot: snapshot, epoch: epoch}
-	}
-}
-
-func (m Model) refreshOneCmd(index int) tea.Cmd {
-	loader, epoch := m.loader, m.epoch
-	view := m.views[index].View
-	return func() tea.Msg {
-		ctx, cancel := context.WithTimeout(context.Background(), discovery.RefreshOneTimeout)
-		defer cancel()
-		snapshot := loader.RefreshOne(ctx, view)
-		return viewMsg{index: index, snapshot: snapshot, epoch: epoch}
-	}
-}
-
-func (m Model) tickCmd() tea.Cmd {
-	epoch := m.epoch
-	return tea.Tick(m.refresh, func(time.Time) tea.Msg { return tickMsg{epoch: epoch} })
 }
 
 func editConfigCmd(path string) tea.Cmd {

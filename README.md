@@ -165,6 +165,48 @@ The scan has a 90-second timeout and supports cancellation.
 
 See the [version-one JSON contract](docs/json-snapshots.md) for field definitions and failure behavior.
 
+## Monitor without a board
+
+Run the monitor in a separate terminal or process supervisor:
+
+```sh
+export HERDR_PLUGIN_STATE_DIR="/absolute/path/to/plugin-state"
+bin/herdr-pr-board --monitor
+```
+
+The state directory must use an absolute path.
+The monitor runs until you send `Ctrl+C` or `SIGTERM`.
+Closing the board does not stop the monitor.
+Only one monitor can use a state directory.
+A crashed monitor releases ownership automatically.
+Start the command again to recover.
+Operating-system startup configuration remains optional.
+
+The monitor scans all views immediately.
+It then uses `github.refresh_interval` between completed scans.
+With `"0"`, it scans once and waits until stopped.
+The monitor writes each observation atomically to `monitor-snapshot.json` in the state directory.
+This internal file is not the public JSON contract.
+
+Boards with the same state directory read monitor observations each second.
+They do not schedule additional GitHub scans while the monitor runs.
+An unchanged observation does not renew sidebar tokens.
+Failed observations preserve errors and actual observation times.
+An open board retains its previous successful rows after failed searches.
+Monitor ownership does not mean that its observation is current.
+The board resumes independent refreshes when the monitor stops.
+
+Manual refreshes and `--json` still attempt fresh scans.
+They wait for other scans in the same state directory.
+Waiting uses the command's existing timeout.
+A one-shot scan does not replace the monitor observation.
+Commands without `HERDR_PLUGIN_STATE_DIR` keep independent refresh behavior.
+
+Use the same discovery configuration for the monitor and board.
+After changing views or GitHub settings, restart the monitor with the updated configuration.
+A configuration mismatch shows an error instead of starting duplicate scheduled scans.
+The monitor does not launch reviewers or publish GitHub reviews.
+
 ## Configure the board
 
 The first run creates this file:
@@ -315,6 +357,7 @@ The board omits `$prs_ci` when no check failed. It omits `$prs_review` when no v
 
 The tokens appear under the workspace that runs the board. Each token expires after `sidebar.ttl`.
 When you close the board, the tokens expire, and the sidebar row disappears.
+The headless monitor does not report workspace tokens.
 The board reports tokens only when Herdr starts it. When you run the binary directly, the board does not report.
 
 You can style each token with an inline style table, for example:

@@ -3,6 +3,7 @@ title = "Pull Requests"
 
 [github]
 # 0 disables automatic refresh. Otherwise use a Go duration (5m, 1h, etc.).
+# The headless monitor also uses this interval.
 refresh_interval = "5m"
 # GitHub Search returns at most 1,000 results per query.
 limit_per_scope = 100

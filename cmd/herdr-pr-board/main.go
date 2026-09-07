@@ -13,6 +13,8 @@ import (
 	"github.com/cdowell09/herdr-pr-board/internal/config"
 	"github.com/cdowell09/herdr-pr-board/internal/discovery"
 	gh "github.com/cdowell09/herdr-pr-board/internal/github"
+	"github.com/cdowell09/herdr-pr-board/internal/localstate"
+	"github.com/cdowell09/herdr-pr-board/internal/monitor"
 	"github.com/cdowell09/herdr-pr-board/internal/sidebar"
 	tea "github.com/charmbracelet/bubbletea"
 )
@@ -26,6 +28,7 @@ func run(args []string, stdout, stderr io.Writer) int {
 	flags.SetOutput(stderr)
 	configPath := flags.String("config", "", "path to config.toml")
 	validateOnly := flags.Bool("validate", false, "validate the configuration and exit")
+	monitorMode := flags.Bool("monitor", false, "monitor PRs until interrupted (requires HERDR_PLUGIN_STATE_DIR)")
 	jsonOutput := flags.Bool("json", false, "print a fresh PR snapshot as JSON")
 	viewID := flags.String("view", "", "configured view ID (requires --json)")
 	if err := flags.Parse(args); err != nil {
@@ -37,7 +40,7 @@ func run(args []string, stdout, stderr io.Writer) int {
 			viewSpecified = true
 		}
 	})
-	if flags.NArg() != 0 || (*validateOnly && (*jsonOutput || viewSpecified)) || (viewSpecified && (!*jsonOutput || *viewID == "")) {
+	if (*monitorMode && (*jsonOutput || *validateOnly || viewSpecified)) || flags.NArg() != 0 || (*validateOnly && (*jsonOutput || viewSpecified)) || (viewSpecified && (!*jsonOutput || *viewID == "")) {
 		fmt.Fprintln(stderr, "herdr-pr-board: invalid option combination or unexpected positional arguments")
 		return 2
 	}
@@ -81,7 +84,25 @@ func run(args []string, stdout, stderr io.Writer) int {
 
 	client := gh.NewClient(nil, cfg.GitHub)
 	client.SetTokenVars(setTokenVars(gh.TokenVars, os.Getenv))
-	service := discovery.NewService(cfg, client)
+	var service discovery.Loader = discovery.NewService(cfg, client)
+	stateDir := os.Getenv("HERDR_PLUGIN_STATE_DIR")
+	if *monitorMode && stateDir == "" {
+		return fail(stderr, errors.New("--monitor requires HERDR_PLUGIN_STATE_DIR"))
+	}
+	if stateDir != "" {
+		stateDir, err = localstate.Dir()
+		if err != nil {
+			return fail(stderr, err)
+		}
+		if err := os.MkdirAll(stateDir, 0o700); err != nil {
+			return fail(stderr, err)
+		}
+		source := monitor.New(stateDir, cfg, service)
+		if *monitorMode {
+			return runMonitor(source, stderr)
+		}
+		service = source
+	}
 	if *jsonOutput {
 		return printSnapshot(cfg, service, stdout, stderr)
 	}

@@ -71,7 +71,7 @@ type errorJSON struct {
 	Message string  `json:"message"`
 }
 
-func printSnapshot(cfg config.Config, service *discovery.Service, stdout, stderr io.Writer) int {
+func printSnapshot(cfg config.Config, service discovery.Loader, stdout, stderr io.Writer) int {
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
 	ctx, cancel := context.WithTimeout(ctx, discovery.RefreshAllTimeout)
