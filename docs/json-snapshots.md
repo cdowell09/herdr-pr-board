@@ -130,7 +130,7 @@ Do not treat the rate resource as a guarantee for later requests.
 
 | Error field | Type | Meaning |
 | --- | --- | --- |
-| `stage` | string | `rates`, `search_budget`, `search`, or `enrichment`. |
+| `stage` | string | `rates`, `search_budget`, `search`, `enrichment`, or `monitor`. |
 | `view_id` | string or null | The affected view ID, when the failure identifies one view. |
 | `message` | string | The diagnostic explanation. |
 
@@ -139,3 +139,13 @@ Enrichment batches combine duplicate PRs across views.
 Enrichment errors therefore do not identify one view.
 Rate retrieval failures do not prevent Search when capacity is unknown.
 Known insufficient Search capacity prevents the scan's Search requests.
+
+## Monitor coordination
+
+Set `HERDR_PLUGIN_STATE_DIR` to coordinate scans with a headless monitor.
+The directory must use an absolute path.
+The command waits for other scans before it attempts fresh retrieval.
+The existing timeout includes this wait.
+Coordination failures use the `monitor` error stage.
+The command does not substitute the monitor snapshot.
+The command does not replace the monitor snapshot.
