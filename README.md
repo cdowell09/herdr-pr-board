@@ -410,8 +410,11 @@ The first review action offers repository setup when no repository settings exis
 Use the arrow keys and Space to change settings.
 Select global automatic view IDs explicitly in repository settings.
 These view selections apply to all repositories that allow automatic launches.
-Comment permission alone does not enable automatic posting.
-Select an automatic publication action separately.
+The settings panel separates reviews, GitHub permissions, automatic posting, and global views.
+Enable **Comments** under **GitHub permissions** to allow comments.
+Permission alone does not enable automatic posting.
+Select **After review: Post comment** under **Automatic posting** to post completed automatic reviews.
+Select **After review: Keep local** to keep findings local.
 The panel shows the monitor state and any missing setup requirement.
 Use PgUp and PgDn to scroll through settings and the monitor command.
 Run the displayed command in another terminal when the monitor stops.

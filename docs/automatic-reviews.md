@@ -8,7 +8,7 @@ The monitor uses existing discovery views.
 
 Press `v`, then press `s` to open repository settings.
 Enable automatic launches for the repository.
-Select existing IDs under global automatic views.
+Select existing IDs under Global views.
 These selections apply to all repositories that allow automatic launches.
 The panel does not select views automatically.
 Press Enter to save repository settings and global view selections together.
@@ -138,7 +138,9 @@ Comment permission alone does not enable automatic posting.
 The selector must also appear in `publish_actions`.
 Findings do not select an action automatically.
 
-Use the repository panel's automatic publication row to select an action.
+Select an After review action under Automatic posting in repository settings.
+Keep local sends no automatic posts.
+Post comment posts a completed automatic review as a comment.
 Selecting comment publication also enables comment permission.
 Other automatic actions require their separate permission first.
 Removing the selected permission clears the automatic selector.

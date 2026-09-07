@@ -2,7 +2,6 @@ package board
 
 import (
 	"context"
-	"fmt"
 	"os"
 	"slices"
 	"time"
@@ -203,13 +202,27 @@ func (s *repositorySetup) toggle() {
 func (s *repositorySetup) rows() []string {
 	rows := []string{"Reviewer: " + s.repo.Reviewer, repositoryToggleLabel("Automatic launches", s.repo.AutoLaunch)}
 	for _, action := range config.PublicationActions() {
-		rows = append(rows, repositoryToggleLabel(fmt.Sprintf("Allow %s publication", action), slices.Contains(s.repo.PublishActions, action)))
+		label := ""
+		switch action {
+		case config.PublishComment:
+			label = "Comments"
+		case config.PublishApprove:
+			label = "Approval"
+		case config.PublishRequestChanges:
+			label = "Change requests"
+		}
+		rows = append(rows, repositoryToggleLabel(label, slices.Contains(s.repo.PublishActions, action)))
 	}
-	publication := string(s.repo.AutoPublish)
-	if publication == "" {
-		publication = "local only"
+	publication := "Keep local"
+	switch s.repo.AutoPublish {
+	case config.PublishComment:
+		publication = "Post comment"
+	case config.PublishApprove:
+		publication = "Approve PR"
+	case config.PublishRequestChanges:
+		publication = "Request changes"
 	}
-	rows = append(rows, publication+" · Automatic publication")
+	rows = append(rows, "After review: "+publication)
 	for _, view := range s.views {
 		rows = append(rows, repositoryToggleLabel(view.ID+" · "+view.Title, slices.Contains(s.automatic.Selected, view.ID)))
 	}
