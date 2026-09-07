@@ -20,13 +20,15 @@ const (
 	ScopeGlobal     ScopeMode = "global"
 	ScopeConfigured ScopeMode = "configured"
 
-	defaultTitle           = "Pull Requests"
-	defaultRefreshInterval = "5m"
-	defaultLimitPerScope   = 100
-	defaultMaxConcurrency  = 4
-	defaultCIBatchSize     = 25
-	defaultSidebarTTL      = "15m"
-	defaultSidebarReview   = "review"
+	defaultTitle             = "Pull Requests"
+	defaultRefreshInterval   = "5m"
+	defaultLimitPerScope     = 100
+	defaultMaxConcurrency    = 4
+	defaultCIBatchSize       = 25
+	defaultSidebarTTL        = "15m"
+	defaultSidebarReview     = "review"
+	defaultReviewConcurrency = 1
+	defaultReviewTimeout     = "30m"
 
 	defaultFileTemplate = `[ui]
 title = %q
@@ -60,6 +62,10 @@ scope = %q
 enabled = true
 ttl = %q
 review_view = %q
+
+[review]
+max_concurrency = %d
+timeout = %q
 `
 )
 
@@ -76,15 +82,20 @@ var (
 		ScopeConfigured,
 		defaultSidebarTTL,
 		defaultSidebarReview,
+		defaultReviewConcurrency,
+		defaultReviewTimeout,
 	)
 	idPattern = regexp.MustCompile(`^[a-z][a-z0-9_-]*$`)
 )
 
 type Config struct {
-	UI      UIConfig      `toml:"ui"`
-	GitHub  GitHubConfig  `toml:"github"`
-	Sidebar SidebarConfig `toml:"sidebar"`
-	Views   []View        `toml:"views"`
+	Review       ReviewConfig  `toml:"review"`
+	Reviewers    []Reviewer    `toml:"reviewers"`
+	Repositories []Repository  `toml:"repositories"`
+	UI           UIConfig      `toml:"ui"`
+	GitHub       GitHubConfig  `toml:"github"`
+	Sidebar      SidebarConfig `toml:"sidebar"`
+	Views        []View        `toml:"views"`
 }
 
 // SidebarConfig controls reporting PR counts into Herdr sidebar tokens.
@@ -215,6 +226,12 @@ func decodeStrict(data []byte, cfg *Config) error {
 }
 
 func applyDefaults(cfg *Config) {
+	if cfg.Review.MaxConcurrency == 0 {
+		cfg.Review.MaxConcurrency = defaultReviewConcurrency
+	}
+	if cfg.Review.Timeout == "" {
+		cfg.Review.Timeout = defaultReviewTimeout
+	}
 	if strings.TrimSpace(cfg.UI.Title) == "" {
 		cfg.UI.Title = defaultTitle
 	}
@@ -239,6 +256,9 @@ func applyDefaults(cfg *Config) {
 }
 
 func (c Config) Validate() error {
+	if err := c.validateReviews(); err != nil {
+		return err
+	}
 	if c.GitHub.LimitPerScope < 1 || c.GitHub.LimitPerScope > 1000 {
 		return errors.New("github.limit_per_scope must be between 1 and 1000")
 	}
