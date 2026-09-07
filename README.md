@@ -139,6 +139,32 @@ The default Herdr prefix is `Ctrl+B`. Press `Ctrl+B`, and then press `Shift+B` t
 
 The shortcut does not replace `prefix+shift+p`. Herdr uses that shortcut to rename a pane.
 
+## Retrieve a JSON snapshot
+
+Scan all configured views without a terminal or Herdr:
+
+```sh
+bin/herdr-pr-board --json
+```
+
+Scan one configured view with an explicit configuration:
+
+```sh
+bin/herdr-pr-board --json --view review --config path/to/config.toml
+```
+
+Each invocation attempts a fresh scan.
+The command emits one versioned JSON document on standard output.
+Diagnostics use standard error.
+The result includes revision identity, CI, observation times, limits, rates, and structured errors.
+Unavailable metadata uses `null`.
+Result completeness remains unknown, even when Search succeeds.
+Partial results preserve available rows and produce exit status `1`.
+Invalid command usage produces exit status `2`.
+The scan has a 90-second timeout and supports cancellation.
+
+See the [version-one JSON contract](docs/json-snapshots.md) for field definitions and failure behavior.
+
 ## Configure the board
 
 The first run creates this file:

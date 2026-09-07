@@ -11,6 +11,7 @@ import (
 
 	"github.com/cdowell09/herdr-pr-board/internal/board"
 	"github.com/cdowell09/herdr-pr-board/internal/config"
+	"github.com/cdowell09/herdr-pr-board/internal/discovery"
 	gh "github.com/cdowell09/herdr-pr-board/internal/github"
 	"github.com/cdowell09/herdr-pr-board/internal/sidebar"
 	tea "github.com/charmbracelet/bubbletea"
@@ -25,7 +26,19 @@ func run(args []string, stdout, stderr io.Writer) int {
 	flags.SetOutput(stderr)
 	configPath := flags.String("config", "", "path to config.toml")
 	validateOnly := flags.Bool("validate", false, "validate the configuration and exit")
+	jsonOutput := flags.Bool("json", false, "print a fresh PR snapshot as JSON")
+	viewID := flags.String("view", "", "configured view ID (requires --json)")
 	if err := flags.Parse(args); err != nil {
+		return 2
+	}
+	viewSpecified := false
+	flags.Visit(func(f *flag.Flag) {
+		if f.Name == "view" {
+			viewSpecified = true
+		}
+	})
+	if flags.NArg() != 0 || (*validateOnly && (*jsonOutput || viewSpecified)) || (viewSpecified && (!*jsonOutput || *viewID == "")) {
+		fmt.Fprintln(stderr, "herdr-pr-board: invalid option combination or unexpected positional arguments")
 		return 2
 	}
 	if *configPath == "" {
@@ -44,17 +57,34 @@ func run(args []string, stdout, stderr io.Writer) int {
 		return 0
 	}
 
-	if _, err := exec.LookPath("gh"); err != nil {
-		return fail(stderr, errors.New("GitHub CLI (gh) is required and must be on PATH"))
-	}
 	cfg, err := config.Load(*configPath)
 	if err != nil {
 		return fail(stderr, err)
 	}
+	if viewSpecified {
+		found := false
+		for _, view := range cfg.Views {
+			if view.ID == *viewID {
+				cfg.Views = []config.View{view}
+				found = true
+				break
+			}
+		}
+		if !found {
+			fmt.Fprintf(stderr, "herdr-pr-board: unknown view %q\n", *viewID)
+			return 2
+		}
+	}
+	if _, err := exec.LookPath("gh"); err != nil {
+		return fail(stderr, errors.New("GitHub CLI (gh) is required and must be on PATH"))
+	}
 
 	client := gh.NewClient(nil, cfg.GitHub)
 	client.SetTokenVars(setTokenVars(gh.TokenVars, os.Getenv))
-	service := board.NewService(cfg, client)
+	service := discovery.NewService(cfg, client)
+	if *jsonOutput {
+		return printSnapshot(cfg, service, stdout, stderr)
+	}
 	model, err := board.NewModelWithConfigPath(cfg, *configPath, service, func(settings config.SidebarConfig) *sidebar.Reporter {
 		return sidebar.NewReporter(settings, os.Getenv("HERDR_WORKSPACE_ID"), os.Getenv("HERDR_BIN_PATH"))
 	})

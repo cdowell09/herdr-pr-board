@@ -24,7 +24,7 @@ type Runner = cli.Runner
 var TokenVars = []string{"GH_TOKEN", "GITHUB_TOKEN"}
 
 type ciCacheEntry struct {
-	state     CIState
+	pr        PullRequest
 	expiresAt time.Time
 }
 
@@ -161,9 +161,6 @@ func (c *Client) SearchView(ctx context.Context, view config.View) ([]PullReques
 		}()
 	}
 	wg.Wait()
-	if firstErr != nil {
-		return nil, fmt.Errorf("search %q: %w", view.Title, firstErr)
-	}
 
 	byURL := make(map[string]PullRequest)
 	for _, rows := range results {
@@ -180,6 +177,9 @@ func (c *Client) SearchView(ctx context.Context, view config.View) ([]PullReques
 	sort.Slice(result, func(i, j int) bool {
 		return result[i].UpdatedAt.After(result[j].UpdatedAt)
 	})
+	if firstErr != nil {
+		return result, fmt.Errorf("search %q: %w", view.Title, firstErr)
+	}
 	return result, nil
 }
 
@@ -277,9 +277,10 @@ func (c *Client) EnrichCI(ctx context.Context, prs []PullRequest, budget RateRes
 	for i := range prs {
 		entry, cached := c.ciCache[prs[i].URL]
 		if cached && now.Before(entry.expiresAt) {
-			prs[i].CI = entry.state
+			prs[i].CopyEnrichment(entry.pr)
 			continue
 		}
+		prs[i].CopyEnrichment(PullRequest{CI: CIUnknown})
 		pending = append(pending, prs[i])
 		pendingIndexes = append(pendingIndexes, i)
 	}
@@ -290,7 +291,7 @@ func (c *Client) EnrichCI(ctx context.Context, prs []PullRequest, budget RateRes
 	var warnings []string
 	applyBatch := func(batch []PullRequest, indexes []int) {
 		for i, index := range indexes {
-			prs[index].CI = batch[i].CI
+			prs[index].CopyEnrichment(batch[i])
 		}
 		c.ciMu.Lock()
 		for url, entry := range c.ciCache {
@@ -299,8 +300,8 @@ func (c *Client) EnrichCI(ctx context.Context, prs []PullRequest, budget RateRes
 			}
 		}
 		for _, pr := range batch {
-			if pr.CI != CIUnknown {
-				c.ciCache[pr.URL] = ciCacheEntry{state: pr.CI, expiresAt: now.Add(c.ciTTL)}
+			if pr.CI != CIUnknown && pr.HeadOID != "" && pr.BaseRefName != "" && pr.BaseOID != "" && !pr.MetadataObservedAt.IsZero() {
+				c.ciCache[pr.URL] = ciCacheEntry{pr: pr, expiresAt: pr.MetadataObservedAt.Add(c.ciTTL)}
 			}
 		}
 		c.ciMu.Unlock()
@@ -321,7 +322,9 @@ func (c *Client) EnrichCI(ctx context.Context, prs []PullRequest, budget RateRes
 		if err != nil {
 			return latest, warnings, err
 		}
-		latest = rate
+		if rate.Limit > 0 {
+			latest = rate
+		}
 		applyBatch(pending[start:end], pendingIndexes[start:end])
 	}
 	return latest, warnings, nil
@@ -336,7 +339,7 @@ func (c *Client) enrichBatch(ctx context.Context, prs []PullRequest) (RateResour
 			prs[i].CI = CIUnknown
 			continue
 		}
-		fmt.Fprintf(&query, "p%d: repository(owner: %s, name: %s) { pullRequest(number: %d) { commits(last: 1) { nodes { commit { statusCheckRollup { state } } } } } } ", i, strconv.Quote(owner), strconv.Quote(name), pr.Number)
+		fmt.Fprintf(&query, "p%d: repository(owner: %s, name: %s) { pullRequest(number: %d) { headRefOid baseRefName baseRefOid commits(last: 1) { nodes { commit { statusCheckRollup { state } } } } } } ", i, strconv.Quote(owner), strconv.Quote(name), pr.Number)
 	}
 	query.WriteString("}")
 
@@ -365,13 +368,29 @@ func (c *Client) enrichBatch(ctx context.Context, prs []PullRequest) (RateResour
 	}
 
 	rate := decodeGraphQLRate(response.Data["rateLimit"])
+	observedAt := time.Now()
 	for i := range prs {
 		raw, exists := response.Data[fmt.Sprintf("p%d", i)]
 		if !exists || string(raw) == "null" {
 			prs[i].CI = CIUnknown
+			if len(response.Errors) == 0 {
+				warnings = append(warnings, fmt.Sprintf("load PR metadata: %s#%d is unavailable", prs[i].Repository, prs[i].Number))
+			}
 			continue
 		}
-		prs[i].CI = decodeCI(raw)
+		prs[i].CopyEnrichment(decodeEnrichment(raw, observedAt))
+		if len(response.Errors) == 0 && (prs[i].HeadOID == "" || prs[i].BaseRefName == "" || prs[i].BaseOID == "" || prs[i].CI == CIUnknown) {
+			warnings = append(warnings, fmt.Sprintf("load PR metadata: %s#%d has unavailable revision or CI data", prs[i].Repository, prs[i].Number))
+		}
+		for _, graphErr := range response.Errors {
+			if len(graphErr.Path) > 0 && graphErr.Path[0] == fmt.Sprintf("p%d", i) {
+				for _, field := range graphErr.Path {
+					if field == "commits" {
+						prs[i].CI = CIUnknown
+					}
+				}
+			}
+		}
 	}
 	return rate, warnings, nil
 }
@@ -382,38 +401,50 @@ type graphQLResponse struct {
 	Data   map[string]json.RawMessage `json:"data"`
 	Errors []struct {
 		Message string `json:"message"`
+		Path    []any  `json:"path"`
 	} `json:"errors"`
 }
 
-func decodeCI(raw json.RawMessage) CIState {
+func decodeEnrichment(raw json.RawMessage, observedAt time.Time) PullRequest {
 	var node struct {
 		PullRequest *struct {
-			Commits struct {
+			HeadOID     string `json:"headRefOid"`
+			BaseRefName string `json:"baseRefName"`
+			BaseOID     string `json:"baseRefOid"`
+			Commits     struct {
 				Nodes []struct {
 					Commit struct {
-						Rollup *struct {
-							State string `json:"state"`
-						} `json:"statusCheckRollup"`
+						Rollup json.RawMessage `json:"statusCheckRollup"`
 					} `json:"commit"`
 				} `json:"nodes"`
 			} `json:"commits"`
 		} `json:"pullRequest"`
 	}
-	if err := json.Unmarshal(raw, &node); err != nil || node.PullRequest == nil || len(node.PullRequest.Commits.Nodes) == 0 {
-		return CIUnknown
+	if err := json.Unmarshal(raw, &node); err != nil || node.PullRequest == nil {
+		return PullRequest{CI: CIUnknown}
 	}
-	rollup := node.PullRequest.Commits.Nodes[0].Commit.Rollup
-	if rollup == nil {
-		return CINone
+	pr := PullRequest{CI: CIUnknown, HeadOID: node.PullRequest.HeadOID, BaseRefName: node.PullRequest.BaseRefName, BaseOID: node.PullRequest.BaseOID, MetadataObservedAt: observedAt}
+	if len(node.PullRequest.Commits.Nodes) == 0 {
+		return pr
+	}
+	rawRollup := node.PullRequest.Commits.Nodes[0].Commit.Rollup
+	if string(rawRollup) == "null" {
+		pr.CI = CINone
+		return pr
+	}
+	var rollup struct {
+		State string `json:"state"`
+	}
+	if json.Unmarshal(rawRollup, &rollup) != nil {
+		return pr
 	}
 	switch CIState(rollup.State) {
 	case CISuccess, CIPending, CIFailure, CIError:
-		return CIState(rollup.State)
+		pr.CI = CIState(rollup.State)
 	case "EXPECTED":
-		return CIPending
-	default:
-		return CIUnknown
+		pr.CI = CIPending
 	}
+	return pr
 }
 
 func decodeGraphQLRate(raw json.RawMessage) RateResource {

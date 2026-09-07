@@ -8,13 +8,15 @@ Read [`README.md`](README.md) for user behavior and configuration. Read [`herdr-
 
 ## Source map
 
-- `cmd/herdr-pr-board/`: process startup and dependency wiring.
+- `cmd/herdr-pr-board/`: process startup, dependency wiring, and the explicit JSON wire representation.
+- `docs/json-snapshots.md`: version-one JSON command and wire contract.
 - `cmd/ci-platform-matrix/`: convert manifest platforms into CI cross-compilation targets.
 - `scripts/validate_release.py`: release tag and plugin manifest validation.
 - `internal/config/`: TOML defaults, parsing, validation, scope modes, and Search request counts.
 - `internal/cli/`: subprocess execution shared by the `gh` and `herdr` runners.
 - `internal/github/`: `gh` execution, query tokenization, Search results, GraphQL CI enrichment, caching, and rate-limit decoding.
-- `internal/board/`: refresh orchestration, API budgeting, Bubble Tea state, rendering, keyboard input, and mouse input.
+- `internal/discovery/`: shared refresh orchestration, API budgeting, observation times, and retrieval results.
+- `internal/board/`: Bubble Tea state, scheduling epochs, stale-row retention, rendering, keyboard input, and mouse input.
 - `internal/sidebar/`: Herdr sidebar token computation and `herdr` CLI metadata reporting.
 - `bin/open`: focus an existing plugin pane or open one dedicated tab.
 - `bin/run`: record pane ownership, name the tab, run the board, and clean owned state.
@@ -25,7 +27,7 @@ Read [`README.md`](README.md) for user behavior and configuration. Read [`herdr-
 
 ## Workflow
 
-1. Locate the owning package from the source map. Keep GitHub transport in `internal/github`, refresh policy in `internal/board`, and configuration rules in `internal/config`.
+1. Locate the owning package from the source map. Keep GitHub transport in `internal/github`, refresh policy in `internal/discovery`, and configuration rules in `internal/config`.
 2. Add or update a regression test at the package boundary that owns the behavior.
 3. Update `README.md` and `config.example.toml` when user-visible configuration, controls, requirements, or behavior changes.
 4. Run the completion gates before reporting the change as complete.
@@ -64,6 +66,14 @@ Write all technical documentation in ASD-STE100 Simplified Technical English (ST
 - Keep defaults single-sourced in `internal/config/config.go`; generate `DefaultFile` from those values.
 - Validate new fields and test both default creation and invalid input.
 - Keep sidebar reporting free of GitHub requests; derive tokens only from a successful full refresh snapshot.
+
+### Discovery and JSON
+
+- Keep discovery policy shared between the board and JSON commands.
+- Keep wire types separate from discovery results and UI messages.
+- Let discovery own observation times. Keep UI retention and scheduling epochs in `internal/board`.
+- Return partial data with structured retrieval errors and a nonzero JSON exit status.
+- Represent unavailable metadata and rate resources with null. Do not infer complete coverage from deduplicated counts.
 
 ### Herdr and UI
 

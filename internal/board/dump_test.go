@@ -3,14 +3,14 @@ package board
 import (
 	"os"
 	"path/filepath"
-
-	"github.com/cdowell09/herdr-pr-board/internal/config"
-	"github.com/charmbracelet/lipgloss"
-	"github.com/muesli/termenv"
 	"testing"
 	"time"
 
+	"github.com/cdowell09/herdr-pr-board/internal/config"
+	"github.com/cdowell09/herdr-pr-board/internal/discovery"
 	gh "github.com/cdowell09/herdr-pr-board/internal/github"
+	"github.com/charmbracelet/lipgloss"
+	"github.com/muesli/termenv"
 )
 
 func TestRenderDump(t *testing.T) {
@@ -43,7 +43,7 @@ func dumpModel(t *testing.T, width, height int) Model {
 	if err != nil {
 		t.Fatal(err)
 	}
-	model.views = []ViewData{
+	model.views = []discovery.ViewData{
 		{View: cfg.Views[0], PRs: []gh.PullRequest{
 			{Repository: "cdowell09/herdr-pr-board", Number: 74, Title: "feat(ui): responsive layouts for narrow terminals", URL: "https://github.com/cdowell09/herdr-pr-board/pull/74", Author: "cdowell09", UpdatedAt: now.Add(-2 * time.Hour), CI: gh.CISuccess},
 			{Repository: "cdowell09/cookies", Number: 18, Title: "🎉 Add the cookie schedule export", URL: "https://github.com/cdowell09/cookies/pull/18", Author: "cdowell09", UpdatedAt: now.Add(-time.Hour), CI: gh.CIPending},

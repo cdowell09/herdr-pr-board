@@ -1,4 +1,4 @@
-package board
+package discovery
 
 import (
 	"context"
@@ -119,7 +119,7 @@ func TestRefreshAllDoesNotExceedSearchBudget(t *testing.T) {
 	if !strings.Contains(snapshot.Views[0].Err.Error(), "requires 4") {
 		t.Fatalf("budget error = %q", snapshot.Views[0].Err)
 	}
-	if snapshot.capacityErr == nil {
+	if snapshot.CapacityErr == nil {
 		t.Fatal("capacity error was not marked on the snapshot")
 	}
 }
@@ -165,7 +165,8 @@ func TestRefreshAllUpdatesRatesAfterGraphQLError(t *testing.T) {
 		searchResult: []gh.PullRequest{
 			{Number: 1, Title: "One", URL: "https://github.com/acme/api/pull/1", Repository: "acme/api", CI: gh.CIUnknown},
 		},
-		enrichErr: errors.New("unexpected GraphQL request"),
+		enrichRate: gh.RateResource{Limit: 5000, Remaining: 4, Cost: 7},
+		enrichErr:  errors.New("unexpected GraphQL request"),
 	}
 	service := NewService(cfg, fake)
 
@@ -175,6 +176,9 @@ func TestRefreshAllUpdatesRatesAfterGraphQLError(t *testing.T) {
 	}
 	if fake.rateCalls != 3 {
 		t.Fatalf("rate-limit calls = %d, want 3", fake.rateCalls)
+	}
+	if snapshot.Rates.GraphQL.Cost != 7 {
+		t.Fatalf("last GraphQL cost = %d, want 7", snapshot.Rates.GraphQL.Cost)
 	}
 	if snapshot.Rates.GraphQL.Remaining != 4 {
 		t.Fatalf("displayed GraphQL remaining = %d, want 4", snapshot.Rates.GraphQL.Remaining)
@@ -351,11 +355,11 @@ func serviceTestConfig(view config.View) config.Config {
 }
 
 func TestAppendWarningDropsEmptyAndDuplicateEntries(t *testing.T) {
-	warning := appendWarning("", "")
-	warning = appendWarning(warning, "search budget exceeded")
-	warning = appendWarning(warning, "search budget exceeded")
-	warning = appendWarning(warning, "")
-	warning = appendWarning(warning, "CI refresh failed: boom")
+	warning := AppendWarning("", "")
+	warning = AppendWarning(warning, "search budget exceeded")
+	warning = AppendWarning(warning, "search budget exceeded")
+	warning = AppendWarning(warning, "")
+	warning = AppendWarning(warning, "CI refresh failed: boom")
 	if warning != "search budget exceeded; CI refresh failed: boom" {
 		t.Fatalf("warning = %q", warning)
 	}
@@ -389,3 +393,49 @@ func TestRefreshOneWarnsOnCIErrorAndKeepsRows(t *testing.T) {
 }
 
 func (f *fakeGitHub) Reconfigured(cfg config.GitHubConfig) *gh.Client { return gh.NewClient(nil, cfg) }
+
+func TestDiscoveryOwnsSearchObservationTimes(t *testing.T) {
+	view := config.View{ID: "all", Title: "All", Query: "is:open", Scope: config.ScopeGlobal}
+	for _, partial := range []bool{false, true} {
+		fake := &fakeGitHub{rateRemaining: []int{30}, searchResult: []gh.PullRequest{{URL: "https://github.com/acme/api/pull/1"}}}
+		if partial {
+			fake.searchErr = errors.New("one scope failed")
+		}
+		snapshot := NewService(serviceTestConfig(view), fake).RefreshAll(context.Background())
+		data := snapshot.Views[0]
+		if data.ObservedAt.Before(snapshot.StartedAt) || data.ObservedAt.After(snapshot.FinishedAt) {
+			t.Fatalf("observation outside scan: %+v", snapshot)
+		}
+		if partial {
+			if !data.UpdatedAt.IsZero() || len(snapshot.Errors) != 1 || snapshot.Errors[0].Stage != "search" {
+				t.Fatalf("partial=%+v", snapshot)
+			}
+		} else if !data.UpdatedAt.Equal(data.ObservedAt) {
+			t.Fatalf("successful timestamp=%+v", data)
+		}
+	}
+}
+
+func TestApplyEnrichmentPreservesSearchDataAcrossViews(t *testing.T) {
+	observed := time.Now().Add(-time.Minute)
+	views := []ViewData{{PRs: []gh.PullRequest{{URL: "url", Title: "First search"}}}, {PRs: []gh.PullRequest{{URL: "url", Title: "Second search"}}}}
+	applyCI(views, []gh.PullRequest{{URL: "url", Title: "Do not copy", CI: gh.CISuccess, HeadOID: "head", BaseRefName: "main", BaseOID: "base", MetadataObservedAt: observed}})
+	for i, view := range views {
+		pr := view.PRs[0]
+		if pr.HeadOID != "head" || pr.BaseRefName != "main" || pr.BaseOID != "base" || pr.CI != gh.CISuccess || !pr.MetadataObservedAt.Equal(observed) || pr.Title == "Do not copy" {
+			t.Fatalf("view %d PR=%+v", i, pr)
+		}
+	}
+}
+
+func TestCachedEnrichmentPreservesLastReportedCost(t *testing.T) {
+	fake := &fakeGitHub{rateRemaining: []int{30}, enrichRate: gh.RateResource{Limit: 5000, Remaining: 40}}
+	service := NewService(serviceTestConfig(config.View{}), fake)
+	rates := gh.RateLimits{GraphQL: gh.RateResource{Limit: 5000, Remaining: 50, Cost: 7}}
+	var warning string
+	var failures []RetrievalError
+	service.enrichCI(context.Background(), []gh.PullRequest{{URL: "cached"}}, &rates, &warning, &failures)
+	if rates.GraphQL.Cost != 7 || rates.GraphQL.Remaining != 40 {
+		t.Fatalf("cached rates=%+v", rates.GraphQL)
+	}
+}

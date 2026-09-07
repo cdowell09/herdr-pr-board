@@ -99,9 +99,9 @@ func TestEnrichCIBatchesAndMapsRollups(t *testing.T) {
 			return nil, fmt.Errorf("missing GraphQL alias: %v", args)
 		}
 		if calls == 1 {
-			return []byte(`{"data":{"rateLimit":{"limit":5000,"remaining":4990,"resetAt":"2026-08-07T13:00:00Z","cost":10},"p0":{"pullRequest":{"commits":{"nodes":[{"commit":{"statusCheckRollup":{"state":"SUCCESS"}}}]}}},"p1":{"pullRequest":{"commits":{"nodes":[{"commit":{"statusCheckRollup":{"state":"FAILURE"}}}]}}}}}`), nil
+			return []byte(`{"data":{"rateLimit":{"limit":5000,"remaining":4990,"resetAt":"2026-08-07T13:00:00Z","cost":10},"p0":{"pullRequest":{"headRefOid":"head","baseRefName":"main","baseRefOid":"base","commits":{"nodes":[{"commit":{"statusCheckRollup":{"state":"SUCCESS"}}}]}}},"p1":{"pullRequest":{"headRefOid":"head","baseRefName":"main","baseRefOid":"base","commits":{"nodes":[{"commit":{"statusCheckRollup":{"state":"FAILURE"}}}]}}}}}`), nil
 		}
-		return []byte(`{"data":{"rateLimit":{"limit":5000,"remaining":4988,"resetAt":"2026-08-07T13:00:00Z","cost":2},"p0":{"pullRequest":{"commits":{"nodes":[{"commit":{"statusCheckRollup":null}}]}}}}}`), nil
+		return []byte(`{"data":{"rateLimit":{"limit":5000,"remaining":4988,"resetAt":"2026-08-07T13:00:00Z","cost":2},"p0":{"pullRequest":{"headRefOid":"head","baseRefName":"main","baseRefOid":"base","commits":{"nodes":[{"commit":{"statusCheckRollup":null}}]}}}}}`), nil
 	})
 	client := NewClient(runner, config.GitHubConfig{CIBatchSize: 2})
 	prs := []PullRequest{
@@ -136,9 +136,9 @@ func TestEnrichCIPreservesCompletedBatchesOnFailure(t *testing.T) {
 		calls++
 		switch calls {
 		case 1:
-			return []byte(`{"data":{"rateLimit":{"limit":5000,"remaining":4999,"resetAt":"2026-08-07T13:00:00Z","cost":1},"p0":{"pullRequest":{"commits":{"nodes":[{"commit":{"statusCheckRollup":{"state":"SUCCESS"}}}]}}}}}`), nil
+			return []byte(`{"data":{"rateLimit":{"limit":5000,"remaining":4999,"resetAt":"2026-08-07T13:00:00Z","cost":1},"p0":{"pullRequest":{"headRefOid":"head","baseRefName":"main","baseRefOid":"base","commits":{"nodes":[{"commit":{"statusCheckRollup":{"state":"SUCCESS"}}}]}}}}}`), nil
 		case 2:
-			return []byte(`{"data":{"rateLimit":{"limit":5000,"remaining":4998,"resetAt":"2026-08-07T13:00:00Z","cost":1},"p0":{"pullRequest":{"commits":{"nodes":[{"commit":{"statusCheckRollup":{"state":"FAILURE"}}}]}}}}}`), nil
+			return []byte(`{"data":{"rateLimit":{"limit":5000,"remaining":4998,"resetAt":"2026-08-07T13:00:00Z","cost":1},"p0":{"pullRequest":{"headRefOid":"head","baseRefName":"main","baseRefOid":"base","commits":{"nodes":[{"commit":{"statusCheckRollup":{"state":"FAILURE"}}}]}}}}}`), nil
 		}
 		return nil, errors.New("connection reset")
 	})
@@ -183,7 +183,7 @@ func TestEnrichCISurfacesWarningsWhenResponseHasDataAndErrors(t *testing.T) {
 	// gh api graphql exits non-zero when the response carries errors, but it
 	// still prints the body. The runner returns both.
 	runner := Runner(func(_ context.Context, _ ...string) ([]byte, error) {
-		return []byte(`{"data":{"rateLimit":{"limit":5000,"remaining":4999,"resetAt":"2026-08-07T13:00:00Z","cost":1},"p0":{"pullRequest":{"commits":{"nodes":[{"commit":{"statusCheckRollup":{"state":"SUCCESS"}}}]}}}},"errors":[{"message":"p1 resolves to a deleted repository"}]}`), errors.New("gh: p1 resolves to a deleted repository")
+		return []byte(`{"data":{"rateLimit":{"limit":5000,"remaining":4999,"resetAt":"2026-08-07T13:00:00Z","cost":1},"p0":{"pullRequest":{"headRefOid":"head","baseRefName":"main","baseRefOid":"base","commits":{"nodes":[{"commit":{"statusCheckRollup":{"state":"SUCCESS"}}}]}}}},"errors":[{"message":"p1 resolves to a deleted repository"}]}`), errors.New("gh: p1 resolves to a deleted repository")
 	})
 	client := NewClient(runner, config.GitHubConfig{CIBatchSize: 2})
 	prs := []PullRequest{
@@ -210,7 +210,7 @@ func TestEnrichCIKeepsWarningsWithCapacityError(t *testing.T) {
 	calls := 0
 	runner := Runner(func(_ context.Context, _ ...string) ([]byte, error) {
 		calls++
-		return []byte(`{"data":{"rateLimit":{"limit":5000,"remaining":1,"resetAt":"2027-08-07T13:00:00Z","cost":1},"p0":{"pullRequest":{"commits":{"nodes":[{"commit":{"statusCheckRollup":{"state":"SUCCESS"}}}]}}}},"errors":[{"message":"rate limiting may interfere"}]}`), nil
+		return []byte(`{"data":{"rateLimit":{"limit":5000,"remaining":1,"resetAt":"2027-08-07T13:00:00Z","cost":1},"p0":{"pullRequest":{"headRefOid":"head","baseRefName":"main","baseRefOid":"base","commits":{"nodes":[{"commit":{"statusCheckRollup":{"state":"SUCCESS"}}}]}}}},"errors":[{"message":"rate limiting may interfere"}]}`), nil
 	})
 	client := NewClient(runner, config.GitHubConfig{CIBatchSize: 1})
 	prs := []PullRequest{
@@ -242,10 +242,10 @@ func TestEnrichCICacheConcurrentAccess(t *testing.T) {
 	var calls atomic.Int64
 	runner := Runner(func(_ context.Context, _ ...string) ([]byte, error) {
 		calls.Add(1)
-		return []byte(`{"data":{"rateLimit":{"limit":5000,"remaining":4999,"resetAt":"2026-08-07T13:00:00Z","cost":1},"p0":{"pullRequest":{"commits":{"nodes":[{"commit":{"statusCheckRollup":{"state":"SUCCESS"}}}]}}}}}`), nil
+		return []byte(`{"data":{"rateLimit":{"limit":5000,"remaining":4999,"resetAt":"2026-08-07T13:00:00Z","cost":1},"p0":{"pullRequest":{"headRefOid":"head","baseRefName":"main","baseRefOid":"base","commits":{"nodes":[{"commit":{"statusCheckRollup":{"state":"SUCCESS"}}}]}}}}}`), nil
 	})
 	client := NewClient(runner, config.GitHubConfig{CIBatchSize: 1})
-	results := make([]CIState, 8)
+	results := make([]PullRequest, 8)
 	var wg sync.WaitGroup
 	for i := range 8 {
 		wg.Add(1)
@@ -256,13 +256,13 @@ func TestEnrichCICacheConcurrentAccess(t *testing.T) {
 				t.Error(err)
 				return
 			}
-			results[i] = prs[0].CI
+			results[i] = prs[0]
 		}()
 	}
 	wg.Wait()
-	for i, state := range results {
-		if state != CISuccess {
-			t.Fatalf("call %d CI = %q, want SUCCESS", i, state)
+	for i, pr := range results {
+		if pr.CI != CISuccess || pr.HeadOID != "head" || pr.BaseRefName != "main" || pr.BaseOID != "base" || pr.MetadataObservedAt.IsZero() {
+			t.Fatalf("call %d enrichment = %#v", i, pr)
 		}
 	}
 	if total := calls.Load(); total < 1 || total > 8 {
@@ -277,7 +277,7 @@ func TestEnrichCIStopsBeforeUnbudgetedBatch(t *testing.T) {
 		if calls > 1 {
 			return nil, errors.New("unexpected second GraphQL request")
 		}
-		return []byte(`{"data":{"rateLimit":{"limit":5000,"remaining":0,"resetAt":"2027-08-07T13:00:00Z","cost":1},"p0":{"pullRequest":{"commits":{"nodes":[{"commit":{"statusCheckRollup":{"state":"SUCCESS"}}}]}}}}}`), nil
+		return []byte(`{"data":{"rateLimit":{"limit":5000,"remaining":0,"resetAt":"2027-08-07T13:00:00Z","cost":1},"p0":{"pullRequest":{"headRefOid":"head","baseRefName":"main","baseRefOid":"base","commits":{"nodes":[{"commit":{"statusCheckRollup":{"state":"SUCCESS"}}}]}}}}}`), nil
 	})
 	client := NewClient(runner, config.GitHubConfig{CIBatchSize: 1})
 	prs := []PullRequest{
@@ -306,7 +306,7 @@ func TestEnrichCIRechecksExpiredCacheBeforeFirstBatch(t *testing.T) {
 	})
 	client := NewClient(runner, config.GitHubConfig{CIBatchSize: 1})
 	pr := PullRequest{Repository: "acme/one", Number: 1, URL: "https://github.com/acme/one/pull/1"}
-	client.ciCache[pr.URL] = ciCacheEntry{state: CISuccess, expiresAt: time.Now().Add(-time.Second)}
+	client.ciCache[pr.URL] = ciCacheEntry{pr: PullRequest{CI: CISuccess}, expiresAt: time.Now().Add(-time.Second)}
 	budget := RateResource{Limit: 5000, Remaining: 0, Reset: time.Now().Add(time.Hour)}
 
 	rate, _, err := client.EnrichCI(context.Background(), []PullRequest{pr}, budget)
@@ -630,7 +630,7 @@ func TestEnrichCIReportsExitErrorWithoutUsableBody(t *testing.T) {
 
 func TestEnrichCIKeepsDataWhenGhExitsNonZeroWithoutErrorsField(t *testing.T) {
 	runner := Runner(func(_ context.Context, _ ...string) ([]byte, error) {
-		return []byte(`{"data":{"rateLimit":{"limit":5000,"remaining":4998,"resetAt":"2026-08-07T13:00:00Z","cost":1},"p0":{"pullRequest":{"commits":{"nodes":[{"commit":{"statusCheckRollup":{"state":"FAILURE"}}}]}}}}}`), errors.New("gh: exit status 1")
+		return []byte(`{"data":{"rateLimit":{"limit":5000,"remaining":4998,"resetAt":"2026-08-07T13:00:00Z","cost":1},"p0":{"pullRequest":{"headRefOid":"head","baseRefName":"main","baseRefOid":"base","commits":{"nodes":[{"commit":{"statusCheckRollup":{"state":"FAILURE"}}}]}}}}}`), errors.New("gh: exit status 1")
 	})
 	client := NewClient(runner, config.GitHubConfig{CIBatchSize: 2})
 	prs := []PullRequest{{Repository: "acme/one", Number: 1, URL: "https://github.com/acme/one/pull/1"}}
@@ -651,7 +651,7 @@ func TestEnrichCISizesCapacityCheckWithReportedCost(t *testing.T) {
 	calls := 0
 	runner := Runner(func(_ context.Context, _ ...string) ([]byte, error) {
 		calls++
-		return []byte(`{"data":{"rateLimit":{"limit":5000,"remaining":7,"resetAt":"2027-08-07T13:00:00Z","cost":5},"p0":{"pullRequest":{"commits":{"nodes":[{"commit":{"statusCheckRollup":{"state":"SUCCESS"}}}]}}}}}`), nil
+		return []byte(`{"data":{"rateLimit":{"limit":5000,"remaining":7,"resetAt":"2027-08-07T13:00:00Z","cost":5},"p0":{"pullRequest":{"headRefOid":"head","baseRefName":"main","baseRefOid":"base","commits":{"nodes":[{"commit":{"statusCheckRollup":{"state":"SUCCESS"}}}]}}}}}`), nil
 	})
 	client := NewClient(runner, config.GitHubConfig{CIBatchSize: 1})
 	prs := []PullRequest{
@@ -678,11 +678,11 @@ func TestEnrichCISizesCapacityCheckWithReportedCost(t *testing.T) {
 
 func TestEnrichCIPrunesExpiredCacheEntries(t *testing.T) {
 	runner := Runner(func(_ context.Context, _ ...string) ([]byte, error) {
-		return []byte(`{"data":{"rateLimit":{"limit":5000,"remaining":4999,"resetAt":"2027-08-07T13:00:00Z","cost":1},"p0":{"pullRequest":{"commits":{"nodes":[{"commit":{"statusCheckRollup":{"state":"SUCCESS"}}}]}}}}}`), nil
+		return []byte(`{"data":{"rateLimit":{"limit":5000,"remaining":4999,"resetAt":"2027-08-07T13:00:00Z","cost":1},"p0":{"pullRequest":{"headRefOid":"head","baseRefName":"main","baseRefOid":"base","commits":{"nodes":[{"commit":{"statusCheckRollup":{"state":"SUCCESS"}}}]}}}}}`), nil
 	})
 	client := NewClient(runner, config.GitHubConfig{CIBatchSize: 25})
-	client.ciCache["https://github.com/acme/old/pull/1"] = ciCacheEntry{state: CIFailure, expiresAt: time.Now().Add(-time.Minute)}
-	client.ciCache["https://github.com/acme/live/pull/2"] = ciCacheEntry{state: CIPending, expiresAt: time.Now().Add(time.Hour)}
+	client.ciCache["https://github.com/acme/old/pull/1"] = ciCacheEntry{pr: PullRequest{CI: CIFailure}, expiresAt: time.Now().Add(-time.Minute)}
+	client.ciCache["https://github.com/acme/live/pull/2"] = ciCacheEntry{pr: PullRequest{CI: CIPending}, expiresAt: time.Now().Add(time.Hour)}
 	prs := []PullRequest{{Repository: "acme/one", Number: 1, URL: "https://github.com/acme/one/pull/1", CI: CIUnknown}}
 
 	if _, _, err := client.EnrichCI(context.Background(), prs, RateResource{}); err != nil {
@@ -708,5 +708,174 @@ func TestReconfiguredPreservesAuthHint(t *testing.T) {
 	_, err := next.RateLimits(context.Background())
 	if err == nil || !strings.Contains(err.Error(), "GH_TOKEN is set") {
 		t.Fatalf("reconfigured authentication error = %v", err)
+	}
+}
+
+func TestEnrichmentMetadataCacheAcrossSearchRefreshes(t *testing.T) {
+	calls := 0
+	runner := Runner(func(_ context.Context, args ...string) ([]byte, error) {
+		calls++
+		if !strings.Contains(args[len(args)-1], "headRefOid baseRefName baseRefOid commits(last: 1)") {
+			t.Fatalf("revision and CI must share one query: %v", args)
+		}
+		return []byte(fmt.Sprintf(`{"data":{"rateLimit":{"limit":5000,"remaining":4990,"cost":3},"p0":{"pullRequest":{"headRefOid":"head%d","baseRefName":"main","baseRefOid":"base%d","commits":{"nodes":[{"commit":{"statusCheckRollup":{"state":"SUCCESS"}}}]}}}}}`, calls, calls)), nil
+	})
+	client := NewClient(runner, config.GitHubConfig{CIBatchSize: 1})
+	first := []PullRequest{{URL: "https://github.com/acme/one/pull/1", Repository: "acme/one", Number: 1, Title: "old"}}
+	before := time.Now()
+	if _, _, err := client.EnrichCI(context.Background(), first, RateResource{}); err != nil {
+		t.Fatal(err)
+	}
+	pr := first[0]
+	if pr.HeadOID != "head1" || pr.BaseRefName != "main" || pr.BaseOID != "base1" || pr.CI != CISuccess || pr.MetadataObservedAt.Before(before) || pr.MetadataObservedAt.After(time.Now()) {
+		t.Fatalf("first observation = %#v", pr)
+	}
+	second := []PullRequest{{URL: pr.URL, Repository: pr.Repository, Number: 1, Title: "new", UpdatedAt: time.Now()}}
+	if _, _, err := client.EnrichCI(context.Background(), second, RateResource{}); err != nil {
+		t.Fatal(err)
+	}
+	if calls != 1 || second[0].MetadataObservedAt != pr.MetadataObservedAt || second[0].HeadOID != pr.HeadOID || second[0].BaseOID != pr.BaseOID || second[0].BaseRefName != pr.BaseRefName || second[0].Title != "new" || second[0].UpdatedAt.IsZero() {
+		t.Fatalf("cached observation replaced Search data or freshness: %#v (calls %d)", second[0], calls)
+	}
+	entry := client.ciCache[pr.URL]
+	entry.expiresAt = time.Now().Add(-time.Second)
+	client.ciCache[pr.URL] = entry
+	if _, _, err := client.EnrichCI(context.Background(), second, RateResource{}); err != nil {
+		t.Fatal(err)
+	}
+	if calls != 2 || second[0].HeadOID != "head2" || second[0].BaseOID != "base2" || !second[0].MetadataObservedAt.After(pr.MetadataObservedAt) {
+		t.Fatalf("expired observation did not refresh: %#v", second[0])
+	}
+	fresh := NewClient(runner, config.GitHubConfig{CIBatchSize: 1})
+	if _, _, err := fresh.EnrichCI(context.Background(), second, RateResource{}); err != nil || calls != 3 || second[0].HeadOID != "head3" {
+		t.Fatalf("new client must retrieve fresh metadata: calls %d, PR %#v, error %v", calls, second[0], err)
+	}
+}
+
+func TestEnrichmentPreservesPartialMetadataAndRates(t *testing.T) {
+	calls := 0
+	client := NewClient(func(context.Context, ...string) ([]byte, error) {
+		calls++
+		if calls > 1 {
+			return nil, errors.New("connection reset")
+		}
+		return []byte(`{"data":{"rateLimit":{"limit":5000,"remaining":4993,"cost":7},"p0":{"pullRequest":{"headRefOid":"head","baseRefName":"main","baseRefOid":null,"commits":null}},"p1":null},"errors":[{"message":"base commit unavailable"}]}`), errors.New("gh exited with partial data")
+	}, config.GitHubConfig{CIBatchSize: 2})
+	prs := []PullRequest{
+		{Repository: "acme/one", Number: 1, URL: "one"},
+		{Repository: "acme/two", Number: 2, URL: "two"},
+		{Repository: "acme/three", Number: 3, URL: "three"},
+	}
+	rate, warnings, err := client.EnrichCI(context.Background(), prs, RateResource{})
+	if err == nil || !strings.Contains(err.Error(), "connection reset") || len(warnings) != 1 || rate.Remaining != 4993 || rate.Cost != 7 {
+		t.Fatalf("partial result: rate %#v, warnings %v, error %v", rate, warnings, err)
+	}
+	if prs[0].HeadOID != "head" || prs[0].BaseRefName != "main" || prs[0].BaseOID != "" || prs[0].CI != CIUnknown || prs[0].MetadataObservedAt.IsZero() {
+		t.Fatalf("successful partial metadata lost: %#v", prs[0])
+	}
+	for _, pr := range prs[1:] {
+		if pr.HeadOID != "" || !pr.MetadataObservedAt.IsZero() || pr.CI != CIUnknown {
+			t.Fatalf("unavailable metadata: %#v", pr)
+		}
+	}
+	cached := []PullRequest{{Repository: "acme/one", Number: 1, URL: "one"}}
+	if _, _, err := client.EnrichCI(context.Background(), cached, rate); err == nil || calls != 3 || !cached[0].MetadataObservedAt.IsZero() || cached[0].HeadOID != "" {
+		t.Fatalf("partial metadata must retry: %#v, calls %d, error %v", cached[0], calls, err)
+	}
+}
+
+func TestEnrichmentClearsExpiredMetadataOnFailure(t *testing.T) {
+	client := NewClient(func(context.Context, ...string) ([]byte, error) {
+		return nil, errors.New("offline")
+	}, config.GitHubConfig{CIBatchSize: 1})
+	prs := []PullRequest{{Repository: "acme/one", Number: 1, URL: "one", CI: CISuccess, HeadOID: "old", BaseRefName: "main", BaseOID: "old-base", MetadataObservedAt: time.Now().Add(-time.Hour)}}
+	if _, _, err := client.EnrichCI(context.Background(), prs, RateResource{}); err == nil {
+		t.Fatal("expected failure")
+	}
+	if prs[0].HeadOID != "" || prs[0].BaseRefName != "" || prs[0].BaseOID != "" || !prs[0].MetadataObservedAt.IsZero() || prs[0].CI != CIUnknown {
+		t.Fatalf("failed fetch retained prior observation: %#v", prs[0])
+	}
+}
+
+func TestDecodeEnrichmentUnavailablePR(t *testing.T) {
+	for _, raw := range []string{`null`, `{}`, `{"pullRequest":null}`, `{"pullRequest":false}`, `invalid`} {
+		pr := decodeEnrichment([]byte(raw), time.Now())
+		if pr != (PullRequest{CI: CIUnknown}) {
+			t.Fatalf("decode %s = %#v", raw, pr)
+		}
+	}
+}
+
+func TestEnrichmentPreservesKnownRateWhenPartialResponseOmitsRate(t *testing.T) {
+	client := NewClient(func(context.Context, ...string) ([]byte, error) {
+		return []byte(`{"data":{"p0":{"pullRequest":{"headRefOid":"head"}}},"errors":[{"message":"rate unavailable"}]}`), errors.New("partial data")
+	}, config.GitHubConfig{CIBatchSize: 1})
+	budget := RateResource{Limit: 5000, Remaining: 10, Cost: 3, Reset: time.Now().Add(time.Hour)}
+	prs := []PullRequest{{Repository: "acme/one", Number: 1, URL: "one"}}
+	rate, warnings, err := client.EnrichCI(context.Background(), prs, budget)
+	if err != nil || rate != budget || len(warnings) != 1 || prs[0].HeadOID != "head" {
+		t.Fatalf("rate %#v, warnings %v, error %v, PR %#v", rate, warnings, err, prs[0])
+	}
+}
+
+func TestEnrichmentDistinguishesUnavailableChecksFromNoChecks(t *testing.T) {
+	for _, commits := range []string{`null`, `{"nodes":[]}`, `{"nodes":[null]}`, `{"nodes":[{"commit":null}]}`, `{"nodes":[{"commit":{}}]}`} {
+		pr := decodeEnrichment([]byte(`{"pullRequest":{"headRefOid":"head","commits":`+commits+`}}`), time.Now())
+		if pr.CI != CIUnknown || pr.HeadOID != "head" || pr.MetadataObservedAt.IsZero() {
+			t.Fatalf("unavailable checks %s = %#v", commits, pr)
+		}
+	}
+	client := NewClient(func(context.Context, ...string) ([]byte, error) {
+		return []byte(`{"data":{"p0":{"pullRequest":{"headRefOid":"head","commits":{"nodes":[{"commit":{"statusCheckRollup":null}}]}}}},"errors":[{"message":"checks unavailable","path":["p0","pullRequest","commits","nodes",0,"commit","statusCheckRollup"]}]}`), nil
+	}, config.GitHubConfig{CIBatchSize: 1})
+	prs := []PullRequest{{Repository: "acme/one", URL: "one", Number: 1}}
+	_, warnings, err := client.EnrichCI(context.Background(), prs, RateResource{})
+	if err != nil || len(warnings) != 1 || prs[0].CI != CIUnknown || prs[0].HeadOID != "head" {
+		t.Fatalf("partial check failure: PR %#v, warnings %v, error %v", prs[0], warnings, err)
+	}
+}
+
+func TestSearchViewPreservesCompletedScopesOnFailure(t *testing.T) {
+	succeeded := make(chan struct{})
+	client := NewClient(func(_ context.Context, args ...string) ([]byte, error) {
+		query := strings.Join(args[slices.Index(args, "--")+1:], " ")
+		if strings.Contains(query, "repo:acme/one") {
+			close(succeeded)
+			return []byte(`[{"number":1,"title":"Available","url":"https://github.com/acme/one/pull/1","updatedAt":"2026-08-07T11:00:00Z","repository":{"nameWithOwner":"acme/one"}}]`), nil
+		}
+		<-succeeded
+		return nil, errors.New("scope two unavailable")
+	}, config.GitHubConfig{LimitPerScope: 100, MaxConcurrency: 2, Scopes: []string{"repo:acme/one", "repo:acme/two"}})
+	prs, err := client.SearchView(context.Background(), config.View{Title: "All", Query: "is:open", Scope: config.ScopeConfigured})
+	if err == nil || !strings.Contains(err.Error(), "scope two unavailable") {
+		t.Fatalf("error = %v", err)
+	}
+	// The runner completes both requests even if sibling cancellation races
+	// with the successful response. The response must not be discarded.
+	if len(prs) != 1 || prs[0].Repository != "acme/one" || prs[0].CI != CIUnknown {
+		t.Fatalf("completed scope rows = %#v", prs)
+	}
+}
+
+func TestEnrichmentRetriesIncompleteRevisionAndUnknownCI(t *testing.T) {
+	for _, fields := range []string{
+		`"headRefOid":"head","baseRefName":"main","baseRefOid":null,"commits":{"nodes":[{"commit":{"statusCheckRollup":{"state":"SUCCESS"}}}]}`,
+		`"headRefOid":"head","baseRefName":"main","baseRefOid":"base","commits":null`,
+	} {
+		calls := 0
+		client := NewClient(func(context.Context, ...string) ([]byte, error) {
+			calls++
+			return []byte(`{"data":{"p0":{"pullRequest":{` + fields + `}}}}`), nil
+		}, config.GitHubConfig{CIBatchSize: 1})
+		prs := []PullRequest{{Repository: "acme/one", Number: 1, URL: "one"}}
+		for range 2 {
+			_, warnings, err := client.EnrichCI(context.Background(), prs, RateResource{})
+			if err != nil || len(warnings) != 1 || !strings.Contains(warnings[0], "unavailable revision or CI data") {
+				t.Fatalf("incomplete response: warnings %v, error %v", warnings, err)
+			}
+		}
+		if calls != 2 {
+			t.Fatalf("incomplete response was cached; calls = %d", calls)
+		}
 	}
 }
