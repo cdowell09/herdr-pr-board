@@ -88,12 +88,14 @@ func (m Model) updateRepository(message tea.Msg) (Model, tea.Cmd, bool) {
 		}
 		return m, nil, true
 	case repositorySavedMsg:
+		var start tea.Cmd
 		if msg.err == nil {
+			start = m.startMonitorCmd()
 			m.cfg.Reviewers, m.cfg.Repositories = msg.cfg.Reviewers, msg.cfg.Repositories
 			m.cfg.Review.AutoViews = slices.Clone(msg.cfg.Review.AutoViews)
 		}
 		if m.reviewPanel == nil || m.reviewPanel.pr.URL != msg.url {
-			return m, nil, true
+			return m, start, true
 		}
 		if m.reviewPanel.setup != nil {
 			m.reviewPanel.setup.saving = false
@@ -104,7 +106,7 @@ func (m Model) updateRepository(message tea.Msg) (Model, tea.Cmd, bool) {
 			m.reviewPanel.setup = nil
 			m.reviewPanel.message = "Repository settings saved. Press n to run a review."
 		}
-		return m, m.monitorStatusCmd(), true
+		return m, tea.Batch(start, m.monitorStatusCmd()), true
 	}
 	return m, nil, false
 }

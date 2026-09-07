@@ -74,6 +74,9 @@ func (m Model) monitorLines(repo config.Repository, views []string) []string {
 		status.State = monitor.Unknown
 	}
 	lines := []string{"Monitor: " + string(status.State)}
+	if m.monitorError != "" {
+		lines = append(lines, m.monitorError)
+	}
 	if !status.ObservedAt.IsZero() {
 		lines = append(lines, "Latest monitor observation: "+status.ObservedAt.Format(time.RFC3339))
 	}

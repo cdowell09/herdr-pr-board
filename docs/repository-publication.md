@@ -23,8 +23,9 @@ Press Enter to save.
 Press Esc to discard changes.
 Use PgUp, PgDn, or the mouse wheel to scroll through long settings.
 The header shows the monitor state and any missing setup requirement.
-Run the displayed monitor command in another terminal when the monitor stops.
-Saving does not start a monitor.
+Successful saves start a stopped monitor when saved automatic views and repository launches are enabled.
+The board reuses an existing monitor in the same state directory.
+Run the displayed monitor command in another terminal if background startup fails.
 New selections can take effect on the next monitor scan.
 
 When no reviewer exists, the panel offers the built-in Pi reviewer.

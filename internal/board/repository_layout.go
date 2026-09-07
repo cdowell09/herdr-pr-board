@@ -74,6 +74,9 @@ func (m Model) repositoryContent() []repositoryLine {
 	if m.reviewPanel.message != "" {
 		add(m.reviewPanel.message, -1)
 	}
+	if m.monitorError != "" {
+		add(m.monitorError, -1)
+	}
 	if s.saving {
 		add("Saving…", -1)
 	}
@@ -98,6 +101,9 @@ func (m Model) repositoryViewport() (header []string, content []repositoryLine, 
 	}
 	if m.reviewPanel.message != "" {
 		summary = m.reviewPanel.message
+	}
+	if m.monitorError != "" {
+		summary = m.monitorError
 	}
 	if m.reviewPanel.setup.saving {
 		summary = "Saving settings…"

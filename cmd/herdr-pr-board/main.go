@@ -147,6 +147,11 @@ func run(args []string, stdout, stderr io.Writer) int {
 	if err != nil {
 		return fail(stderr, err)
 	}
+	binary, err := os.Executable()
+	if err != nil {
+		return fail(stderr, err)
+	}
+	model = model.WithMonitorStarter(func() error { return monitor.EnsureRunning(context.Background(), binary, o.configPath, stateDir) })
 	reviewCtx, cancelReviews := context.WithCancel(context.Background())
 	defer func() {
 		cancelReviews()
