@@ -9,6 +9,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"slices"
 	"strings"
 	"time"
 
@@ -23,7 +24,7 @@ import (
 
 const maxResultBytes = 4 * 1024 * 1024
 
-func (s *Service) execute(ctx context.Context, claim *reviewmemory.Claim, pr gh.PullRequest, reviewer config.Reviewer) (reviewmemory.Outcome, error) {
+func (s *Service) execute(ctx context.Context, claim *reviewmemory.Claim, pr gh.PullRequest, reviewer config.Reviewer, request Request) (reviewmemory.Outcome, error) {
 	dir := s.RunDirectory(claim.ID())
 	var stderr *os.File
 	failed := func(err error) (reviewmemory.Outcome, error) {
@@ -66,6 +67,17 @@ func (s *Service) execute(ctx context.Context, claim *reviewmemory.Claim, pr gh.
 		return failed(err)
 	}
 	defer fd.Close()
+	currentConfig, err := config.LoadExisting(s.configPath)
+	if err != nil {
+		return failed(err)
+	}
+	currentReviewer, err := currentConfig.ResolveLaunch(pr.Repository, request.Reviewer, request.Automatic)
+	if err != nil {
+		return failed(err)
+	}
+	if currentReviewer.ID != reviewer.ID || !slices.Equal(currentReviewer.Command, reviewer.Command) {
+		return failed(fmt.Errorf("reviewer configuration changed before launch; retry the review"))
+	}
 	cmd := exec.Command(reviewer.Command[0], reviewer.Command[1:]...)
 	cmd.Stdin = bytes.NewReader(data)
 	cmd.Stdout = &cli.LimitedWriter{Writer: stdout, Remaining: 1024 * 1024}

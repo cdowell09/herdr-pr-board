@@ -71,3 +71,9 @@ timeout = "30m"
 # [[repositories]]
 # name = "owner/repository"
 # reviewer = "pi"
+
+# Keep automatic launches disabled until you explicitly enable them.
+# auto_launch = false
+# Allow each publication action separately. An empty list keeps findings local.
+# publish_actions = []
+# Valid actions: "comment", "approve", "request_changes".

@@ -8,6 +8,7 @@ import (
 
 type options struct {
 	monitor      bool
+	publication  *publicationOptions
 	configPath   string
 	validate     bool
 	json         bool
@@ -37,12 +38,16 @@ func parseOptions(args []string, stderr io.Writer) (options, error) {
 	f.BoolVar(&o.pi, "pi-reviewer", false, "run the Pi reference adapter with JSON input on stdin")
 	f.StringVar(&o.piExecutable, "pi-executable", "", "Pi executable (requires --pi-reviewer)")
 	f.StringVar(&o.piSkill, "pi-skill", "", "code-review skill path (requires --pi-reviewer)")
+	o.publication = addPublicationFlags(f)
 	if err := f.Parse(args); err != nil {
+		return o, err
+	}
+	if err := o.publication.validate(f); err != nil {
 		return o, err
 	}
 	specified := map[string]bool{}
 	f.Visit(func(flag *flag.Flag) { specified[flag.Name] = true })
-	modes := 0
+	modes := o.publication.modes()
 	for _, enabled := range []bool{o.monitor, o.validate, o.json, specified["review"], specified["review-history"], o.pi} {
 		if enabled {
 			modes++
