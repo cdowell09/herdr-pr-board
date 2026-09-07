@@ -82,15 +82,15 @@ func TestAutomaticPublicationSelectorUsesRenderedRow(t *testing.T) {
 	}
 	m.reviewPanel.setup = setup
 	lines := strings.Split(stripANSI(m.View()), "\n")
-	if !strings.Contains(lines[8], "local only · Automatic publication") {
-		t.Fatalf("selector row=%q", lines[8])
+	if !strings.Contains(lines[9], "local only · Automatic publication") {
+		t.Fatalf("selector row=%q", lines[9])
 	}
-	next, _ := m.Update(tea.MouseMsg{Button: tea.MouseButtonLeft, Action: tea.MouseActionPress, X: 1, Y: 8})
+	next, _ := m.Update(tea.MouseMsg{Button: tea.MouseButtonLeft, Action: tea.MouseActionPress, X: 1, Y: 9})
 	m = next.(Model)
 	if m.reviewPanel.setup.repo.AutoPublish != config.PublishComment || len(m.reviewPanel.setup.repo.PublishActions) != 1 {
 		t.Fatalf("selection=%+v", m.reviewPanel.setup.repo)
 	}
-	next, _ = m.Update(tea.MouseMsg{Button: tea.MouseButtonLeft, Action: tea.MouseActionPress, X: 1, Y: 5})
+	next, _ = m.Update(tea.MouseMsg{Button: tea.MouseButtonLeft, Action: tea.MouseActionPress, X: 1, Y: 6})
 	m = next.(Model)
 	if m.reviewPanel.setup.repo.AutoPublish != "" {
 		t.Fatal("revocation retained automatic publication")

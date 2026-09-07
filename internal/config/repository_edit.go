@@ -10,17 +10,19 @@ import (
 	"os"
 	"path/filepath"
 	"reflect"
+	"slices"
 	"sort"
 	"strings"
 
 	"github.com/cdowell09/herdr-pr-board/internal/localstate"
+	"github.com/pelletier/go-toml/v2"
 	"github.com/pelletier/go-toml/v2/unstable"
 )
 
-// SaveRepository changes only repository values in the active configuration.
+// SaveRepository changes repository settings and optional global view selections atomically.
 // Runtime locks stay in the installation state directory, outside user configuration.
 // expected must match the current repository; nil requires that it is still absent.
-func SaveRepository(ctx context.Context, path, stateDir string, repo Repository, reviewer *Reviewer, expected *Repository) (Config, error) {
+func SaveRepository(ctx context.Context, path, stateDir string, repo Repository, reviewer *Reviewer, expected *Repository, automatic *AutomaticViewsEdit) (Config, error) {
 	resolved, err := filepath.EvalSymlinks(path)
 	if err != nil {
 		return Config{}, err
@@ -49,9 +51,13 @@ func SaveRepository(ctx context.Context, path, stateDir string, repo Repository,
 	if err := decodeStrict(before, &currentConfig); err != nil {
 		return Config{}, err
 	}
+	applyDefaults(&currentConfig)
 	currentRepo, exists := currentConfig.RepositoryFor(repo.Name)
 	if (expected == nil && exists) || (expected != nil && (!exists || !reflect.DeepEqual(currentRepo, *expected))) {
 		return Config{}, errors.New("repository settings changed; reload before saving")
+	}
+	if automatic != nil && (!SameDiscovery(currentConfig, automatic.Expected) || !slices.Equal(currentConfig.Review.AutoViews, automatic.Expected.Review.AutoViews)) {
+		return Config{}, errors.New("automatic views changed; reload before saving")
 	}
 	prepared := before
 	if reviewer != nil {
@@ -67,6 +73,12 @@ func SaveRepository(ctx context.Context, path, stateDir string, repo Repository,
 	updated, err := editRepository(prepared, repo)
 	if err != nil {
 		return Config{}, err
+	}
+	if automatic != nil && !slices.Equal(currentConfig.Review.AutoViews, automatic.Selected) {
+		updated, err = editAutomaticViews(updated, automatic.Selected)
+		if err != nil {
+			return Config{}, err
+		}
 	}
 	var cfg Config
 	if err := decodeStrict(updated, &cfg); err != nil {
@@ -137,7 +149,10 @@ func editRepository(data []byte, repo Repository) ([]byte, error) {
 		}
 		return []byte(text), nil
 	}
-	fields := repositoryFields(repo)
+	return editTableFields(data, "repositories", index, repositoryFields(repo))
+}
+
+func editTableFields(data []byte, table string, index int, fields []repositoryField) ([]byte, error) {
 	owned := map[string]bool{}
 	for _, field := range fields {
 		owned[field.key] = true
@@ -168,7 +183,7 @@ func editRepository(data []byte, repo Repository) ([]byte, error) {
 				}
 				active = nil
 			}
-			if n.Kind == unstable.ArrayTable && nodeKey(n) == "repositories" {
+			if nodeKey(n) == table {
 				sectionIndex++
 				if sectionIndex == index {
 					active = &repositorySection{end: len(data), values: map[string]repositoryEdit{}}
@@ -194,11 +209,14 @@ func editRepository(data []byte, repo Repository) ([]byte, error) {
 		return nil, err
 	}
 	if selected == nil {
-		return nil, errors.New("repository setup requires [[repositories]] tables; convert inline repository settings before editing")
+		if table == "repositories" {
+			return nil, errors.New("repository setup requires [[repositories]] tables; convert inline repository settings before editing")
+		}
+		return nil, fmt.Errorf("settings require explicit %s tables; convert inline or dotted settings before editing", table)
 	}
 	var edits []repositoryEdit
 	var missing strings.Builder
-	for _, field := range repositoryFields(repo) {
+	for _, field := range fields {
 		if edit, exists := selected.values[field.key]; exists {
 			edit.value = field.value + edit.value
 			edits = append(edits, edit)
@@ -267,4 +285,29 @@ func repositoryValueRange(data []byte, n *unstable.Node) (repositoryEdit, error)
 		return repositoryEdit{}, errors.New("repository publication array is incomplete")
 	}
 	return repositoryEdit{start: start, end: end + closing + 1, value: comments.String()}, nil
+}
+
+// AutomaticViewsEdit changes the global selection together with repository settings.
+// Expected values come from the same configuration shown when editing began.
+type AutomaticViewsEdit struct {
+	Selected []string
+	Expected Config
+}
+
+func editAutomaticViews(data []byte, selected []string) ([]byte, error) {
+	if selected == nil {
+		selected = []string{}
+	}
+	encoded, err := json.Marshal(selected)
+	if err != nil {
+		return nil, err
+	}
+	var parsed map[string]any
+	if err := toml.Unmarshal(data, &parsed); err != nil {
+		return nil, err
+	}
+	if _, exists := parsed["review"]; !exists {
+		return append(data, []byte("\n[review]\nauto_views = "+string(encoded)+"\n")...), nil
+	}
+	return editTableFields(data, "review", 0, []repositoryField{{"auto_views", string(encoded)}})
 }

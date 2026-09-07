@@ -10,10 +10,21 @@ Select a PR and press `v`.
 The first review action opens repository settings when the repository has no saved settings.
 Select a reviewer with the arrow keys or Space.
 Enable automatic launches only when you want unattended reviews.
-Enable comment publication separately.
+Select existing global automatic views for unattended reviews.
+These selections apply to all repositories that allow automatic launches.
+The panel selects no views by default.
+Enable comment permission separately.
+Permission allows publication but does not schedule publication.
+Select an automatic publication action to post completed automatic reviews.
+Leave automatic publication at local only to keep findings local.
 Approval and change requests each require a separate selection.
 Press Enter to save.
 Press Esc to discard changes.
+Use PgUp, PgDn, or the mouse wheel to scroll through long settings.
+The header shows the monitor state and any missing setup requirement.
+Run the displayed monitor command in another terminal when the monitor stops.
+Saving does not start a monitor.
+New selections can take effect on the next monitor scan.
 
 When no reviewer exists, the panel offers the built-in Pi reviewer.
 Saving creates a reusable Pi reviewer definition.
@@ -28,7 +39,12 @@ The panel and setup command edit `[[repositories]]` tables.
 They do not edit inline repository arrays.
 Convert inline repository arrays to tables before using setup.
 A rejected save preserves the existing configuration file.
+The panel saves repository settings and global view selections in one operation.
 Concurrent changes to the same repository reject a stale save.
+Changed global selections, view definitions, or GitHub settings also reject a stale panel save.
+The global view editor requires an explicit `[review]` table.
+Convert inline or dotted review settings before changing global selections through the panel.
+A missing `[review]` table is added when you select views.
 Reload repository settings before saving again.
 
 ## Configure without a terminal

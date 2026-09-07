@@ -33,7 +33,7 @@ reviewer = 'pi'
 	if err := os.WriteFile(path, []byte(content), 0600); err != nil {
 		t.Fatal(err)
 	}
-	got, err := SaveRepository(context.Background(), path, t.TempDir(), Repository{Name: "ACME/API", Reviewer: "pi", AutoLaunch: true, PublishActions: []PublicationAction{PublishComment, PublishApprove}}, nil, repositoryExpectation(t, path, "acme/api"))
+	got, err := SaveRepository(context.Background(), path, t.TempDir(), Repository{Name: "ACME/API", Reviewer: "pi", AutoLaunch: true, PublishActions: []PublicationAction{PublishComment, PublishApprove}}, nil, repositoryExpectation(t, path, "acme/api"), nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -58,7 +58,7 @@ func TestFirstRepositorySetupAddsReusableReviewerAtomically(t *testing.T) {
 		t.Fatal(err)
 	}
 	reviewer := Reviewer{ID: "pi", Command: []string{"/plugin/board", "--pi-reviewer"}}
-	got, err := SaveRepository(context.Background(), path, t.TempDir(), Repository{Name: "acme/api", Reviewer: "pi"}, &reviewer, nil)
+	got, err := SaveRepository(context.Background(), path, t.TempDir(), Repository{Name: "acme/api", Reviewer: "pi"}, &reviewer, nil, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -66,7 +66,7 @@ func TestFirstRepositorySetupAddsReusableReviewerAtomically(t *testing.T) {
 		t.Fatalf("unsafe defaults: %+v", got)
 	}
 	before, _ := os.ReadFile(path)
-	_, err = SaveRepository(context.Background(), path, t.TempDir(), Repository{Name: "acme/api", Reviewer: "missing"}, nil, repositoryExpectation(t, path, "acme/api"))
+	_, err = SaveRepository(context.Background(), path, t.TempDir(), Repository{Name: "acme/api", Reviewer: "missing"}, nil, repositoryExpectation(t, path, "acme/api"), nil)
 	if err == nil {
 		t.Fatal("saved unknown reviewer")
 	}
@@ -110,7 +110,7 @@ func TestInlineRepositorySetupLeavesExistingFileUnchanged(t *testing.T) {
 	if _, err := LoadExisting(path); err != nil {
 		t.Fatalf("fixture must be valid configuration: %v", err)
 	}
-	_, err := SaveRepository(context.Background(), path, t.TempDir(), Repository{Name: "acme/api", Reviewer: "pi", AutoLaunch: true}, nil, repositoryExpectation(t, path, "acme/api"))
+	_, err := SaveRepository(context.Background(), path, t.TempDir(), Repository{Name: "acme/api", Reviewer: "pi", AutoLaunch: true}, nil, repositoryExpectation(t, path, "acme/api"), nil)
 	if err == nil || !strings.Contains(err.Error(), "inline repository settings") {
 		t.Fatalf("expected explicit inline editing limitation: %v", err)
 	}
@@ -151,21 +151,21 @@ func TestRepositorySaveRejectsStalePermissionSnapshot(t *testing.T) {
 		t.Fatal(err)
 	}
 	state := t.TempDir()
-	saved, err := SaveRepository(context.Background(), path, state, revoked, nil, expected)
+	saved, err := SaveRepository(context.Background(), path, state, revoked, nil, expected, nil)
 	if err != nil || saved.UI.Title != "Changed outside setup" {
 		t.Fatalf("unrelated change was lost: %+v %v", saved, err)
 	}
 	before, _ := os.ReadFile(path)
 	stale := *expected
 	stale.Reviewer = "other"
-	if _, err := SaveRepository(context.Background(), path, state, stale, nil, expected); err == nil || !strings.Contains(err.Error(), "changed") {
+	if _, err := SaveRepository(context.Background(), path, state, stale, nil, expected, nil); err == nil || !strings.Contains(err.Error(), "changed") {
 		t.Fatalf("stale save accepted: %v", err)
 	}
 	after, _ := os.ReadFile(path)
 	if string(before) != string(after) {
 		t.Fatal("stale save restored revoked publication permission")
 	}
-	if _, err := SaveRepository(context.Background(), path, state, stale, nil, nil); err == nil {
+	if _, err := SaveRepository(context.Background(), path, state, stale, nil, nil, nil); err == nil {
 		t.Fatal("stale absence overwrote an existing repository")
 	}
 }

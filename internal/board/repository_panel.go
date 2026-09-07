@@ -5,12 +5,10 @@ import (
 	"fmt"
 	"os"
 	"slices"
-	"strings"
 	"time"
 
 	"github.com/cdowell09/herdr-pr-board/internal/config"
 	tea "github.com/charmbracelet/bubbletea"
-	"github.com/charmbracelet/x/ansi"
 )
 
 type repositorySetup struct {
@@ -20,6 +18,9 @@ type repositorySetup struct {
 	builtin   *config.Reviewer
 	row       int
 	saving    bool
+	views     []config.View
+	automatic config.AutomaticViewsEdit
+	offset    int
 }
 
 type repositorySettingsMsg struct {
@@ -44,7 +45,7 @@ func (m Model) repositorySettingsCmd(force bool) tea.Cmd {
 
 func newRepositorySetup(cfg config.Config, name string) (*repositorySetup, error) {
 	repo, exists := cfg.RepositoryFor(name)
-	s := &repositorySetup{repo: repo, reviewers: cfg.Reviewers}
+	s := &repositorySetup{repo: repo, reviewers: cfg.Reviewers, views: cfg.Views, automatic: config.AutomaticViewsEdit{Selected: slices.Clone(cfg.Review.AutoViews), Expected: cfg}}
 	if exists {
 		s.expected = &repo
 	}
@@ -75,6 +76,7 @@ func (m Model) updateRepository(message tea.Msg) (Model, tea.Cmd, bool) {
 			return m, nil, true
 		}
 		m.cfg.Reviewers, m.cfg.Repositories = msg.cfg.Reviewers, msg.cfg.Repositories
+		m.cfg.Review.AutoViews = slices.Clone(msg.cfg.Review.AutoViews)
 		_, exists := msg.cfg.RepositoryFor(m.reviewPanel.pr.Repository)
 		if msg.force || !exists {
 			setup, err := newRepositorySetup(msg.cfg, m.reviewPanel.pr.Repository)
@@ -89,6 +91,7 @@ func (m Model) updateRepository(message tea.Msg) (Model, tea.Cmd, bool) {
 	case repositorySavedMsg:
 		if msg.err == nil {
 			m.cfg.Reviewers, m.cfg.Repositories = msg.cfg.Reviewers, msg.cfg.Repositories
+			m.cfg.Review.AutoViews = slices.Clone(msg.cfg.Review.AutoViews)
 		}
 		if m.reviewPanel == nil || m.reviewPanel.pr.URL != msg.url {
 			return m, nil, true
@@ -102,7 +105,7 @@ func (m Model) updateRepository(message tea.Msg) (Model, tea.Cmd, bool) {
 			m.reviewPanel.setup = nil
 			m.reviewPanel.message = "Repository settings saved. Press n to run a review."
 		}
-		return m, nil, true
+		return m, m.monitorStatusCmd(), true
 	}
 	return m, nil, false
 }
@@ -118,22 +121,40 @@ func (m Model) updateRepositoryKey(key tea.KeyMsg) (tea.Model, tea.Cmd) {
 	switch key.String() {
 	case "esc":
 		m.reviewPanel.setup = nil
+		return m, nil
 	case "up", "k":
 		s.row = max(0, s.row-1)
 	case "down", "j":
-		s.row = min(5, s.row+1)
+		s.row = min(len(s.rows())-1, s.row+1)
+	case "pgup":
+		s.offset = max(0, s.offset-max(1, m.height-5))
+		m.clampRepositoryOffset()
+		return m, nil
+	case "pgdown":
+		s.offset += max(1, m.height-5)
+		m.clampRepositoryOffset()
+		return m, nil
+	case "home", "g":
+		s.row, s.offset = 0, 0
+	case "end", "G":
+		s.offset = len(m.repositoryContent())
+		m.clampRepositoryOffset()
+		return m, nil
 	case "left", "right", " ":
 		s.toggle()
 	case "enter":
 		s.saving = true
+		automatic := s.automatic
+		automatic.Selected = slices.Clone(automatic.Selected)
 		path, state, url, repo, builtin, expected := m.configPath, m.stateDir, m.reviewPanel.pr.URL, s.repo, s.builtin, s.expected
 		return m, func() tea.Msg {
 			ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
 			defer cancel()
-			cfg, err := config.SaveRepository(ctx, path, state, repo, builtin, expected)
+			cfg, err := config.SaveRepository(ctx, path, state, repo, builtin, expected, &automatic)
 			return repositorySavedMsg{url, cfg, err}
 		}
 	}
+	m.revealRepositoryRow()
 	return m, nil
 }
 
@@ -161,6 +182,15 @@ func (s *repositorySetup) toggle() {
 			s.repo.PublishActions = append(s.repo.PublishActions, config.PublishComment)
 		}
 	default:
+		if s.row >= 6 {
+			id := s.views[s.row-6].ID
+			if i := slices.Index(s.automatic.Selected, id); i >= 0 {
+				s.automatic.Selected = slices.Delete(s.automatic.Selected, i, i+1)
+			} else {
+				s.automatic.Selected = append(s.automatic.Selected, id)
+			}
+			return
+		}
 		action := config.PublicationActions()[s.row-2]
 		if index := slices.Index(s.repo.PublishActions, action); index >= 0 {
 			s.repo.SetPublishActions(slices.Delete(s.repo.PublishActions, index, index+1))
@@ -170,8 +200,7 @@ func (s *repositorySetup) toggle() {
 	}
 }
 
-func (m Model) repositoryRows() []string {
-	s := m.reviewPanel.setup
+func (s *repositorySetup) rows() []string {
 	rows := []string{"Reviewer: " + s.repo.Reviewer, repositoryToggleLabel("Automatic launches", s.repo.AutoLaunch)}
 	for _, action := range config.PublicationActions() {
 		rows = append(rows, repositoryToggleLabel(fmt.Sprintf("Allow %s publication", action), slices.Contains(s.repo.PublishActions, action)))
@@ -181,52 +210,10 @@ func (m Model) repositoryRows() []string {
 		publication = "local only"
 	}
 	rows = append(rows, publication+" · Automatic publication")
-	for i := range rows {
-		if i == s.row {
-			rows[i] = "› " + rows[i]
-		} else {
-			rows[i] = "  " + rows[i]
-		}
-		rows[i] = truncate(rows[i], m.width)
+	for _, view := range s.views {
+		rows = append(rows, repositoryToggleLabel(view.ID+" · "+view.Title, slices.Contains(s.automatic.Selected, view.ID)))
 	}
 	return rows
-}
-
-func (m Model) renderRepositoryPanel() string {
-	s := m.reviewPanel.setup
-	lines := []string{titleStyle.Render("Repository settings"), urlStyle.Render(truncate(m.reviewPanel.pr.URL, m.width)), ""}
-	lines = append(lines, m.repositoryRows()...)
-	if s.builtin != nil {
-		lines = append(lines, "Pi setup adds a reusable reviewer. Pi and its review skill must be installed.")
-	}
-	if m.reviewPanel.message != "" {
-		lines = append(lines, reviewText(m.reviewPanel.message))
-	}
-	if s.saving {
-		lines = append(lines, "Saving…")
-	}
-	lines = append(lines, "↑/↓ select · Space/←/→ change · Enter save · Esc cancel · q quit")
-	for i, line := range lines {
-		if i >= 9 {
-			lines[i] = ansi.Wrap(line, max(1, m.width), "")
-		}
-	}
-	return strings.Join(lines, "\n")
-}
-
-func (m Model) updateRepositoryMouse(message tea.MouseMsg) (tea.Model, tea.Cmd) {
-	event := tea.MouseEvent(message)
-	if event.Button == tea.MouseButtonLeft && event.Action == tea.MouseActionPress && !m.reviewPanel.setup.saving {
-		if event.Y == 1 {
-			return m, m.openBrowser(m.reviewPanel.pr.URL)
-		}
-		row := event.Y - 3
-		if row >= 0 && row < len(m.repositoryRows()) {
-			m.reviewPanel.setup.row = row
-			m.reviewPanel.setup.toggle()
-		}
-	}
-	return m, nil
 }
 
 func repositoryToggleLabel(label string, enabled bool) string {
