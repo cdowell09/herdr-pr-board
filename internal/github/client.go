@@ -109,6 +109,7 @@ type searchRow struct {
 	Number    int       `json:"number"`
 	Title     string    `json:"title"`
 	URL       string    `json:"url"`
+	State     string    `json:"state"`
 	IsDraft   bool      `json:"isDraft"`
 	UpdatedAt time.Time `json:"updatedAt"`
 	Author    struct {
@@ -119,6 +120,16 @@ type searchRow struct {
 		FullName      string `json:"fullName"`
 		Name          string `json:"name"`
 	} `json:"repository"`
+}
+
+func parsePRState(value string) PRState {
+	state := PRState(strings.ToUpper(value))
+	switch state {
+	case PROpen, PRClosed, PRMerged:
+		return state
+	default:
+		return ""
+	}
 }
 
 func (c *Client) SearchView(ctx context.Context, view config.View) ([]PullRequest, error) {
@@ -198,7 +209,7 @@ func (c *Client) search(ctx context.Context, query string) ([]PullRequest, error
 		"search", "prs",
 		"--limit", strconv.Itoa(c.cfg.LimitPerScope),
 		"--sort", "updated", "--order", "desc",
-		"--json", "number,title,url,author,isDraft,updatedAt,repository",
+		"--json", "number,title,url,author,isDraft,updatedAt,repository,state",
 		"--",
 	}
 	args = append(args, terms...)
@@ -225,6 +236,7 @@ func (c *Client) search(ctx context.Context, query string) ([]PullRequest, error
 			Title:      row.Title,
 			URL:        row.URL,
 			Author:     row.Author.Login,
+			State:      parsePRState(row.State),
 			Draft:      row.IsDraft,
 			UpdatedAt:  row.UpdatedAt,
 			CI:         CIUnknown,

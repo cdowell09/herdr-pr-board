@@ -6,7 +6,6 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
-	"reflect"
 	"time"
 
 	"github.com/cdowell09/herdr-pr-board/internal/config"
@@ -97,7 +96,7 @@ func (s *Source) read() (discovery.Snapshot, error) {
 	if r.Version != 1 {
 		return discovery.Snapshot{}, fmt.Errorf("unsupported monitor snapshot version %d; restart the monitor", r.Version)
 	}
-	if !reflect.DeepEqual(r.Config, identity(s.cfg)) {
+	if !config.SameDiscovery(config.Config{GitHub: r.Config.GitHub, Views: r.Config.Views}, s.cfg) {
 		return discovery.Snapshot{}, errors.New("monitor configuration differs; restart the monitor with this configuration")
 	}
 	if r.FinishedAt.IsZero() || len(r.Views) != len(s.cfg.Views) {

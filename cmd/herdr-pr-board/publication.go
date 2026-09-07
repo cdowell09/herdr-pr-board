@@ -19,8 +19,8 @@ import (
 )
 
 type publicationOptions struct {
-	repository, publish, history, runID, action, reviewer, actions string
-	autoLaunch, autoSet, actionsSet, pi                            bool
+	repository, publish, history, runID, action, reviewer, actions, autoPublish string
+	autoLaunch, autoSet, actionsSet, autoPublishSet, pi                         bool
 }
 
 func addPublicationFlags(flags *flag.FlagSet) *publicationOptions {
@@ -29,6 +29,7 @@ func addPublicationFlags(flags *flag.FlagSet) *publicationOptions {
 	flags.StringVar(&p.reviewer, "set-reviewer", "", "reviewer ID for repository settings")
 	flags.BoolVar(&p.pi, "use-pi-reviewer", false, "add the built-in Pi reviewer during repository setup")
 	flags.BoolVar(&p.autoLaunch, "auto-launch", false, "allow automatic repository reviews (true or false)")
+	flags.StringVar(&p.autoPublish, "auto-publish", "", "automatic publication action; empty keeps findings local")
 	flags.StringVar(&p.actions, "publish-actions", "", "comma-separated allowed actions; empty keeps findings local")
 	flags.StringVar(&p.publish, "publish", "", "publish a completed local review for this PR URL")
 	flags.StringVar(&p.runID, "run", "", "completed review run ID to publish")
@@ -48,6 +49,9 @@ func (p *publicationOptions) validate(flags *flag.FlagSet) error {
 		return errors.New("publication mode requires a nonempty repository or PR URL")
 	}
 	flags.Visit(func(f *flag.Flag) {
+		if f.Name == "auto-publish" {
+			p.autoPublishSet = true
+		}
 		if f.Name == "auto-launch" {
 			p.autoSet = true
 		}
@@ -55,7 +59,7 @@ func (p *publicationOptions) validate(flags *flag.FlagSet) error {
 			p.actionsSet = true
 		}
 	})
-	if p.repository == "" && (p.reviewer != "" || p.pi || p.autoSet || p.actionsSet) {
+	if p.repository == "" && (p.reviewer != "" || p.pi || p.autoSet || p.actionsSet || p.autoPublishSet) {
 		return errors.New("repository settings flags require --repository-settings")
 	}
 	if p.pi && p.reviewer != "" {
@@ -113,12 +117,16 @@ func configureRepository(path string, p *publicationOptions, stdout, stderr io.W
 		repo.AutoLaunch = p.autoLaunch
 	}
 	if p.actionsSet {
-		repo.PublishActions = nil
+		var actions []config.PublicationAction
 		if p.actions != "" {
 			for _, action := range strings.Split(p.actions, ",") {
-				repo.PublishActions = append(repo.PublishActions, config.PublicationAction(strings.TrimSpace(action)))
+				actions = append(actions, config.PublicationAction(strings.TrimSpace(action)))
 			}
 		}
+		repo.SetPublishActions(actions)
+	}
+	if p.autoPublishSet {
+		repo.AutoPublish = config.PublicationAction(p.autoPublish)
 	}
 	dir, err := localstate.Dir()
 	if err != nil {

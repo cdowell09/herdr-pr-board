@@ -373,3 +373,35 @@ func TestProcessesCoordinateAndRecoverAfterCrash(t *testing.T) {
 	}
 	defer recovered.Close()
 }
+
+func TestReviewStatusUsesLiveClaimsAndExactRevision(t *testing.T) {
+	store := openStore(t, t.TempDir())
+	request := request()
+	claim, err := store.Claim(request)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer claim.Close()
+	inherited, err := claim.LockFile()
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer inherited.Close()
+	if err := claim.Finish(Outcome{Status: Completed, Message: "complete", Findings: []Finding{}}); err != nil {
+		t.Fatal(err)
+	}
+	if err := store.ReviewStatus(request.Identity); !errors.Is(err, ErrActive) {
+		t.Fatalf("orphan owner status=%v", err)
+	}
+	inherited.Close()
+	if err := store.ReviewStatus(request.Identity); !errors.Is(err, ErrReviewed) {
+		t.Fatalf("completed status=%v", err)
+	}
+	for _, change := range []func(*Identity){func(id *Identity) { id.HeadOID = strings.Repeat("c", 40) }, func(id *Identity) { id.BaseRefName = "release" }} {
+		id := request.Identity
+		change(&id)
+		if err := store.ReviewStatus(id); err != nil {
+			t.Fatalf("new revision status=%v", err)
+		}
+	}
+}

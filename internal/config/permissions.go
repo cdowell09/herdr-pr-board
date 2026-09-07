@@ -30,6 +30,9 @@ func (repo Repository) validatePermissions() error {
 		}
 		seen[action] = true
 	}
+	if repo.AutoPublish != "" && !slices.Contains(repo.PublishActions, repo.AutoPublish) {
+		return fmt.Errorf("repository %s auto_publish must select an allowed publication action", repo.Name)
+	}
 	return nil
 }
 
@@ -62,4 +65,12 @@ func (c Config) ResolveLaunch(repository, reviewerID string, automatic bool) (Re
 		}
 	}
 	return c.ReviewerFor(repository, reviewerID)
+}
+
+// SetPublishActions revokes automatic publication when its permission is removed.
+func (r *Repository) SetPublishActions(actions []PublicationAction) {
+	r.PublishActions = actions
+	if !slices.Contains(actions, r.AutoPublish) {
+		r.AutoPublish = ""
+	}
 }

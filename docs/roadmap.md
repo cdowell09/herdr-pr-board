@@ -1,6 +1,9 @@
 # Agent review roadmap
 
-Status: Milestone one is implemented locally. Later milestones remain planned.
+Status: All four delivery milestones are implemented.
+
+See the [JSON contract](json-snapshots.md), [review execution](reviews.md), and [review memory](review-memory.md).
+See [repository publication](repository-publication.md) and [automatic reviews](automatic-reviews.md) for unattended workflows.
 
 ## Accepted decisions
 
@@ -16,7 +19,7 @@ See [review execution ownership](adr/0001-delegate-review-execution.md).
 
 An agent must retrieve a configured view as JSON without opening a board session.
 The PR snapshot must include commit identity, CI status, freshness, and retrieval errors.
-Review memory and review launch follow as separate increments.
+Review memory and review launch use the contracts below.
 
 ### PR snapshot contract
 
@@ -60,7 +63,7 @@ Coordination between separate computers is out of scope.
 Users must enable automatic review launches for each repository.
 Review findings remain local by default.
 Publishing GitHub reviews requires separate persistent publication permission.
-Publication permission is a planned feature.
+Repository settings store publication permissions.
 Repository visibility grants neither launch permission nor publication permission.
 Users must configure allowed publication actions for each repository.
 Publication starts with comment-only permission when the user enables it.

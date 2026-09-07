@@ -59,3 +59,28 @@ func TestPublicationCommandUsageRequiresExplicitActionAndRun(t *testing.T) {
 		}
 	}
 }
+
+func TestRepositorySettingsRevokesAutomaticPublication(t *testing.T) {
+	t.Setenv("HERDR_PLUGIN_STATE_DIR", t.TempDir())
+	path := writeConfig(t, validConfigTOML+"\n[[reviewers]]\nid = \"agent\"\ncommand = [\"agent\"]\n")
+	var stdout, stderr bytes.Buffer
+	base := []string{"--config", path, "--repository-settings", "acme/api"}
+	if code := run(append(base, "--set-reviewer", "agent", "--publish-actions", "comment", "--auto-publish", "comment"), &stdout, &stderr); code != 0 {
+		t.Fatalf("setup: %d %s", code, &stderr)
+	}
+	stdout.Reset()
+	if code := run(append(base, "--publish-actions", ""), &stdout, &stderr); code != 0 {
+		t.Fatalf("revoke: %d %s", code, &stderr)
+	}
+	cfg, err := config.LoadExisting(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	repo, _ := cfg.RepositoryFor("acme/api")
+	if len(repo.PublishActions) != 0 || repo.AutoPublish != "" {
+		t.Fatalf("authority remains: %+v", repo)
+	}
+	if code := run(append(base, "--publish-actions", "", "--auto-publish", "comment"), &stdout, &stderr); code == 0 {
+		t.Fatal("explicit unauthorized selector accepted")
+	}
+}

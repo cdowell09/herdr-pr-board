@@ -71,6 +71,9 @@ func (s *Service) execute(ctx context.Context, claim *reviewmemory.Claim, pr gh.
 	if err != nil {
 		return failed(err)
 	}
+	if err := request.validateAutomatic(pr, currentConfig); err != nil {
+		return failed(err)
+	}
 	currentReviewer, err := currentConfig.ResolveLaunch(pr.Repository, request.Reviewer, request.Automatic)
 	if err != nil {
 		return failed(err)

@@ -121,7 +121,7 @@ func (m Model) updateRepositoryKey(key tea.KeyMsg) (tea.Model, tea.Cmd) {
 	case "up", "k":
 		s.row = max(0, s.row-1)
 	case "down", "j":
-		s.row = min(4, s.row+1)
+		s.row = min(5, s.row+1)
 	case "left", "right", " ":
 		s.toggle()
 	case "enter":
@@ -148,10 +148,22 @@ func (s *repositorySetup) toggle() {
 		}
 	case 1:
 		s.repo.AutoLaunch = !s.repo.AutoLaunch
+	case 5:
+		choices := []config.PublicationAction{"", config.PublishComment}
+		for _, action := range config.PublicationActions() {
+			if action != config.PublishComment && slices.Contains(s.repo.PublishActions, action) {
+				choices = append(choices, action)
+			}
+		}
+		index := slices.Index(choices, s.repo.AutoPublish)
+		s.repo.AutoPublish = choices[(index+1)%len(choices)]
+		if s.repo.AutoPublish == config.PublishComment && !slices.Contains(s.repo.PublishActions, config.PublishComment) {
+			s.repo.PublishActions = append(s.repo.PublishActions, config.PublishComment)
+		}
 	default:
 		action := config.PublicationActions()[s.row-2]
 		if index := slices.Index(s.repo.PublishActions, action); index >= 0 {
-			s.repo.PublishActions = slices.Delete(s.repo.PublishActions, index, index+1)
+			s.repo.SetPublishActions(slices.Delete(s.repo.PublishActions, index, index+1))
 		} else {
 			s.repo.PublishActions = append(s.repo.PublishActions, action)
 		}
@@ -164,6 +176,11 @@ func (m Model) repositoryRows() []string {
 	for _, action := range config.PublicationActions() {
 		rows = append(rows, repositoryToggleLabel(fmt.Sprintf("Allow %s publication", action), slices.Contains(s.repo.PublishActions, action)))
 	}
+	publication := string(s.repo.AutoPublish)
+	if publication == "" {
+		publication = "local only"
+	}
+	rows = append(rows, publication+" · Automatic publication")
 	for i := range rows {
 		if i == s.row {
 			rows[i] = "› " + rows[i]
@@ -190,7 +207,7 @@ func (m Model) renderRepositoryPanel() string {
 	}
 	lines = append(lines, "↑/↓ select · Space/←/→ change · Enter save · Esc cancel · q quit")
 	for i, line := range lines {
-		if i >= 8 {
+		if i >= 9 {
 			lines[i] = ansi.Wrap(line, max(1, m.width), "")
 		}
 	}

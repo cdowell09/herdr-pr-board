@@ -57,6 +57,8 @@ scope = "configured"
 # scope = "configured"
 
 [review]
+# Select existing view IDs for automatic reviews. An empty list disables dispatch.
+auto_views = []
 # Share this concurrency limit across processes that use the same state directory.
 max_concurrency = 1
 # Include queue time and reviewer execution time in this limit.
@@ -77,3 +79,5 @@ timeout = "30m"
 # Allow each publication action separately. An empty list keeps findings local.
 # publish_actions = []
 # Valid actions: "comment", "approve", "request_changes".
+# Select one allowed action for automatic publication. Empty keeps findings local.
+# auto_publish = ""

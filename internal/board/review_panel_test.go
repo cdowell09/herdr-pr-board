@@ -175,3 +175,5 @@ func TestReviewPanelScrollBoundariesRemainResponsive(t *testing.T) {
 		t.Fatal("shorter history retained an invisible offset")
 	}
 }
+
+func (*reviewFake) ReviewStatus(reviewmemory.Identity) error { return nil }

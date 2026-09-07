@@ -8,6 +8,7 @@ import (
 	"unicode"
 
 	"github.com/cdowell09/herdr-pr-board/internal/config"
+	"github.com/cdowell09/herdr-pr-board/internal/dispatch"
 	gh "github.com/cdowell09/herdr-pr-board/internal/github"
 	"github.com/cdowell09/herdr-pr-board/internal/publication"
 	"github.com/cdowell09/herdr-pr-board/internal/review"
@@ -17,6 +18,7 @@ import (
 )
 
 type ReviewBackend interface {
+	ReviewStatus(reviewmemory.Identity) error
 	History(string) ([]reviewmemory.Run, error)
 	Review(context.Context, review.Request, func(string)) (reviewmemory.Run, error)
 	RunDirectory(string) string
@@ -24,6 +26,7 @@ type ReviewBackend interface {
 
 type reviewPanel struct {
 	pr              gh.PullRequest
+	automatic       dispatch.Decision
 	runs            []reviewmemory.Run
 	message         string
 	offset          int
@@ -34,9 +37,10 @@ type reviewPanel struct {
 }
 
 type reviewHistoryMsg struct {
-	url  string
-	runs []reviewmemory.Run
-	err  error
+	automatic dispatch.Decision
+	url       string
+	runs      []reviewmemory.Run
+	err       error
 }
 type reviewDoneMsg struct {
 	url string
@@ -70,8 +74,12 @@ func (m Model) openReviewPanel() (tea.Model, tea.Cmd) {
 }
 
 func (m Model) reviewHistoryCmd(url string) tea.Cmd {
+	m.autoCandidates = append([]dispatch.Candidate(nil), m.autoCandidates...)
 	backend := m.reviews
-	return func() tea.Msg { runs, err := backend.History(url); return reviewHistoryMsg{url, runs, err} }
+	return func() tea.Msg {
+		runs, err := backend.History(url)
+		return reviewHistoryMsg{url: url, runs: runs, err: err, automatic: m.automaticDecision(url)}
+	}
 }
 
 func reviewTick(url string, generation uint64) tea.Cmd {
@@ -85,6 +93,7 @@ func (m Model) updateReview(message tea.Msg) (Model, tea.Cmd, bool) {
 			return m, nil, true
 		}
 		m.reviewPanel.runs = msg.runs
+		m.reviewPanel.automatic = msg.automatic
 		if msg.err != nil {
 			m.reviewPanel.message = msg.err.Error()
 		}
@@ -230,6 +239,9 @@ func (m Model) reviewLines() []string {
 	}
 	for _, line := range m.publicationLines() {
 		add(line)
+	}
+	if p.automatic.Reason != "" {
+		add("Automatic (latest full observation): " + p.automatic.Reason)
 	}
 	if status := m.reviewJobs[p.pr.URL]; status != "" {
 		add("Request: " + status)

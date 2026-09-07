@@ -1,0 +1,135 @@
+# Automatic reviews
+
+Automatic reviews run through the headless monitor.
+The board and JSON snapshots do not start automatic reviews.
+The monitor uses existing discovery views.
+
+## Enable automatic reviews
+
+Select existing view IDs in `config.toml`:
+
+```toml
+[review]
+auto_views = ["review"]
+max_concurrency = 1
+timeout = "30m"
+```
+
+An empty `auto_views` list disables automatic reviews.
+Each selected ID must identify one configured view.
+Duplicate IDs are invalid.
+
+Configure a reviewer and enable each repository:
+
+```toml
+[[reviewers]]
+id = "pi"
+command = ["/absolute/path/to/herdr-pr-board", "--pi-reviewer"]
+
+[[repositories]]
+name = "owner/repository"
+reviewer = "pi"
+auto_launch = true
+publish_actions = []
+auto_publish = ""
+```
+
+Repository settings also support equivalent board and command controls.
+See [repository settings](repository-publication.md).
+
+Start the monitor:
+
+```sh
+export HERDR_PLUGIN_STATE_DIR="/absolute/path/to/plugin-state"
+bin/herdr-pr-board --monitor --config /absolute/path/to/config.toml
+```
+
+The monitor requires one installation state directory.
+The monitor shares review claims and concurrency limits with manual reviews.
+It reports eligibility and outcomes on standard error.
+Stopping the monitor cancels its reviews and waits for subprocess cleanup.
+
+## Eligibility
+
+A PR must meet every condition:
+
+- A selected view contains the PR.
+- The latest full observation succeeds.
+- The observation includes current revision metadata.
+- The PR is open and is not a draft.
+- The repository allows automatic launches.
+- The revision has no active process or completed review.
+- The revision has no failed, blocked, or abandoned attempt that requires retry.
+
+Failed CI does not prevent review.
+Duplicate PRs across views produce one candidate.
+Conflicting observations prevent dispatch.
+Cached metadata from an earlier scan does not establish current revision evidence.
+Retained board rows do not enter automatic dispatch.
+
+Before launch, the service rechecks repository permission, selected views, and the current revision.
+A changed head or target prevents launch from the earlier observation.
+A later full observation can make that revision eligible.
+Comments and title edits do not change review identity.
+
+Failed attempts require explicit retry through `N` or `--review --rerun`.
+Other eligible PRs continue after a failed review.
+Automatic requests do not wait indefinitely for capacity.
+New monitor observations replace pending work.
+
+Change launch permissions or selected automatic views without restarting the monitor.
+Restart the monitor after changing discovery queries, scopes, or GitHub settings.
+The monitor holds dispatch when its discovery configuration differs from the current configuration.
+
+## Inspect eligibility
+
+Retrieve a fresh eligibility report:
+
+```sh
+bin/herdr-pr-board --review-eligibility --config /absolute/path/to/config.toml
+```
+
+The command emits version-one JSON with observation time and per-PR decisions.
+Each decision includes identity, URL, view IDs, eligibility, and its reason.
+Retrieval failures preserve available decisions and return exit status `1`.
+The command does not launch a reviewer.
+
+Press `v` on the board to inspect the selected PR.
+The review panel shows the same eligibility reason from the latest full observation.
+A newer active-view revision invalidates that earlier eligibility evidence.
+Run history records completed, failed, blocked, and abandoned outcomes separately.
+
+## Optional automatic publication
+
+Automatic publication requires an explicit selector and the corresponding permission:
+
+```toml
+[[repositories]]
+name = "owner/repository"
+reviewer = "pi"
+auto_launch = true
+publish_actions = ["comment"]
+auto_publish = "comment"
+```
+
+Valid selectors are `comment`, `approve`, `request_changes`, and an empty string.
+An empty selector keeps findings local.
+The selector must also appear in `publish_actions`.
+Findings do not select an action automatically.
+
+Use the repository panel's automatic publication row to select an action.
+Selecting comment publication also enables comment permission.
+Other automatic actions require their separate permission first.
+Removing the selected permission clears the automatic selector.
+
+Equivalent command:
+
+```sh
+bin/herdr-pr-board --repository-settings owner/repository \
+  --publish-actions comment --auto-publish comment
+```
+
+Only a completed automatic review can enter automatic publication.
+The publication service rechecks revision, action permission, and the automatic selector before sending.
+Manual publication uses its separate action permission.
+Review adapters must keep findings local.

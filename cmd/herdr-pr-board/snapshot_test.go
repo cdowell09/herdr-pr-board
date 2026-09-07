@@ -139,7 +139,7 @@ func TestRunJSONAllViewsAndSelectedView(t *testing.T) {
 		if strings.Count(string(calls), "search prs") != want || strings.Count(string(calls), "api graphql") != 1 {
 			t.Fatalf("calls=%s", calls)
 		}
-		if !strings.Contains(string(calls), "--limit 100 --sort updated --order desc --json number,title,url,author,isDraft,updatedAt,repository -- is:open") {
+		if !strings.Contains(string(calls), "--limit 100 --sort updated --order desc --json number,title,url,author,isDraft,updatedAt,repository,state -- is:open") {
 			t.Fatalf("search arguments=%s", calls)
 		}
 		if selected != "" && strings.Contains(string(calls), "org:acme") {
@@ -241,8 +241,8 @@ func assertSnapshotWireKeys(t *testing.T, data []byte) {
 	view := doc["views"].([]any)[0].(map[string]any)
 	check(view, "id title query scope scopes observed_at search_succeeded completeness prs")
 	pr := view["prs"].([]any)[0].(map[string]any)
-	check(pr, "repository number url title author draft updated_at head_oid base_ref_name base_oid ci metadata_observed_at")
-	for _, key := range []string{"head_oid", "base_ref_name", "base_oid", "ci", "metadata_observed_at"} {
+	check(pr, "repository number url title author draft state updated_at head_oid base_ref_name base_oid ci metadata_observed_at")
+	for _, key := range []string{"state", "head_oid", "base_ref_name", "base_oid", "ci", "metadata_observed_at"} {
 		if pr[key] != nil {
 			t.Fatalf("%s=%v want null", key, pr[key])
 		}

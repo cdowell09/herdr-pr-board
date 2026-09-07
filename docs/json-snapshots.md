@@ -94,6 +94,7 @@ Do not infer completeness from the row count or the configured limit.
 | `author` | string | The author's GitHub login from Search. |
 | `draft` | boolean | The draft state from Search. |
 | `updated_at` | timestamp or null | GitHub's PR update time from Search. This is not an observation time. |
+| `state` | string or null | The Search state: `OPEN`, `CLOSED`, or `MERGED`. |
 | `head_oid` | string or null | The observed head commit identity. |
 | `base_ref_name` | string or null | The observed target branch name. |
 | `base_oid` | string or null | The observed target branch commit identity. |

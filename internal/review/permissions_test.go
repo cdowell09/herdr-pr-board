@@ -45,16 +45,21 @@ func TestReviewerRevokedDuringCaptureDoesNotClaimOrLaunch(t *testing.T) {
 }
 
 func TestPermissionRevocationAtExecutionBoundaryPreventsLaunch(t *testing.T) {
-	s, _ := testService(t, "valid")
+	s, source := testService(t, "valid")
+	request := automaticRequest(t, s)
+	s.source = captureHook(func(ctx context.Context, url string) (gh.PullRequest, error) {
+		pr, err := source.CaptureRevision(ctx, url)
+		pr.State = gh.PROpen
+		return pr, err
+	})
 	data, err := os.ReadFile(s.configPath)
 	if err != nil {
 		t.Fatal(err)
 	}
-	data = append(data, []byte("auto_launch = true\n")...)
 	if err := os.WriteFile(s.configPath, data, 0600); err != nil {
 		t.Fatal(err)
 	}
-	run, err := s.Review(context.Background(), Request{URL: testPRURL, Automatic: true}, func(state string) {
+	run, err := s.Review(context.Background(), request, func(state string) {
 		if state == "running" {
 			if err := os.WriteFile(s.configPath, []byte(strings.Replace(string(data), "auto_launch = true", "auto_launch = false", 1)), 0600); err != nil {
 				t.Fatal(err)

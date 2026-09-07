@@ -64,6 +64,7 @@ ttl = %q
 review_view = %q
 
 [review]
+auto_views = []
 max_concurrency = %d
 timeout = %q
 `

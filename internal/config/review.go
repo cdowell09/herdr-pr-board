@@ -9,8 +9,9 @@ import (
 )
 
 type ReviewConfig struct {
-	MaxConcurrency int    `toml:"max_concurrency"`
-	Timeout        string `toml:"timeout"`
+	AutoViews      []string `toml:"auto_views"`
+	MaxConcurrency int      `toml:"max_concurrency"`
+	Timeout        string   `toml:"timeout"`
 }
 
 type Reviewer struct {
@@ -19,6 +20,7 @@ type Reviewer struct {
 }
 
 type Repository struct {
+	AutoPublish    PublicationAction   `toml:"auto_publish"`
 	Name           string              `toml:"name"`
 	Reviewer       string              `toml:"reviewer"`
 	AutoLaunch     bool                `toml:"auto_launch"`
@@ -38,6 +40,18 @@ func (r ReviewConfig) TimeoutDuration() (time.Duration, error) {
 }
 
 func (c Config) validateReviews() error {
+	knownViews := map[string]bool{}
+	for _, view := range c.Views {
+		knownViews[view.ID] = true
+	}
+	selected := map[string]bool{}
+	for _, id := range c.Review.AutoViews {
+		if !knownViews[id] || selected[id] {
+			return fmt.Errorf("review.auto_views must contain unique configured view IDs: %q", id)
+		}
+		selected[id] = true
+	}
+
 	if c.Review.MaxConcurrency < 0 || c.Review.MaxConcurrency > 8 {
 		return errors.New("review.max_concurrency must be between 1 and 8")
 	}
@@ -92,4 +106,21 @@ func (c Config) ReviewerFor(repository, id string) (Reviewer, error) {
 		}
 	}
 	return Reviewer{}, fmt.Errorf("configure a reviewer for %s or select --reviewer", repository)
+}
+
+// SelectsAutomaticView matches captured definitions against current selected views.
+func (c Config) SelectsAutomaticView(observed []View) bool {
+	for _, selected := range c.Review.AutoViews {
+		for _, current := range c.Views {
+			if current.ID != selected {
+				continue
+			}
+			for _, view := range observed {
+				if view == current {
+					return true
+				}
+			}
+		}
+	}
+	return false
 }

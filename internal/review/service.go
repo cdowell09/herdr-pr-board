@@ -19,10 +19,13 @@ type RevisionSource interface {
 }
 
 type Request struct {
-	URL       string
-	Reviewer  string
-	Rerun     bool
-	Automatic bool
+	URL              string
+	Reviewer         string
+	Rerun            bool
+	Automatic        bool
+	ExpectedRevision *reviewmemory.Identity
+	ObservedViews    []config.View
+	ObservedConfig   config.Config
 }
 
 type Service struct {
@@ -53,6 +56,8 @@ func (s *Service) History(prURL string) ([]reviewmemory.Run, error) {
 
 func (s *Service) Wait() { s.mu.Lock(); s.closed = true; s.mu.Unlock(); s.wg.Wait() }
 
+func (s *Service) ReviewStatus(id reviewmemory.Identity) error { return s.store.ReviewStatus(id) }
+
 func (s *Service) RunDirectory(id string) string { return filepath.Join(s.stateDir, "reviews", id) }
 
 // Review queues only for capacity. Each launch rechecks configuration and revision.
@@ -66,6 +71,9 @@ func (s *Service) Review(ctx context.Context, request Request, notify func(strin
 	s.wg.Add(1)
 	s.mu.Unlock()
 	defer s.wg.Done()
+	if request.Automatic && (request.Rerun || request.ExpectedRevision == nil) {
+		return reviewmemory.Run{}, errors.New("automatic review requires an observed revision and cannot rerun")
+	}
 	initial, err := config.LoadExisting(s.configPath)
 	if err != nil {
 		return reviewmemory.Run{}, err
@@ -110,13 +118,19 @@ func (s *Service) Review(ctx context.Context, request Request, notify func(strin
 		if err != nil {
 			return reviewmemory.Run{}, err
 		}
+		identity := reviewmemory.Identity{Repository: pr.Repository, Number: pr.Number, HeadOID: pr.HeadOID, BaseRefName: pr.BaseRefName}
+		if err := request.validateAutomatic(pr, cfg); err != nil {
+			return reviewmemory.Run{}, err
+		}
 		reviewer, err := cfg.ResolveLaunch(pr.Repository, request.Reviewer, request.Automatic)
 		if err != nil {
 			return reviewmemory.Run{}, err
 		}
-		identity := reviewmemory.Identity{Repository: pr.Repository, Number: pr.Number, HeadOID: pr.HeadOID, BaseRefName: pr.BaseRefName}
 		claim, err := s.store.Claim(reviewmemory.Request{Identity: identity, BaseOID: pr.BaseOID, Reviewer: reviewer.ID, Rerun: request.Rerun, MaxConcurrent: cfg.Review.MaxConcurrency})
 		if errors.Is(err, reviewmemory.ErrCapacity) {
+			if request.Automatic {
+				return reviewmemory.Run{}, err
+			}
 			if !queued && notify != nil {
 				notify("queued")
 			}
@@ -162,4 +176,27 @@ func waitForSlot(ctx context.Context) error {
 	case <-timer.C:
 		return nil
 	}
+}
+
+func (request Request) validateAutomatic(pr gh.PullRequest, cfg config.Config) error {
+	if !request.Automatic {
+		return nil
+	}
+	if request.Rerun || request.ExpectedRevision == nil {
+		return errors.New("automatic review requires an observed revision and cannot rerun")
+	}
+	if !config.SameDiscovery(request.ObservedConfig, cfg) {
+		return errors.New("discovery configuration changed since the selected observation")
+	}
+	id := reviewmemory.Identity{Repository: pr.Repository, Number: pr.Number, HeadOID: pr.HeadOID, BaseRefName: pr.BaseRefName}
+	if id != *request.ExpectedRevision {
+		return errors.New("PR revision changed since the selected observation")
+	}
+	if pr.Draft || pr.State != gh.PROpen {
+		return errors.New("automatic review requires an open, non-draft PR")
+	}
+	if !cfg.SelectsAutomaticView(request.ObservedViews) {
+		return errors.New("observed view is no longer selected for automatic reviews")
+	}
+	return nil
 }
