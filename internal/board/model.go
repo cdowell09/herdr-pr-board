@@ -142,6 +142,8 @@ const (
 
 type Model struct {
 	reviews          ReviewBackend
+	publications     PublicationBackend
+	stateDir         string
 	reviewContext    context.Context
 	reviewPanel      *reviewPanel
 	reviewJobs       map[string]string
@@ -219,6 +221,12 @@ func (m Model) Init() tea.Cmd {
 }
 
 func (m Model) Update(message tea.Msg) (tea.Model, tea.Cmd) {
+	if next, cmd, handled := m.updateRepository(message); handled {
+		return next, cmd
+	}
+	if next, cmd, handled := m.updatePublication(message); handled {
+		return next, cmd
+	}
 	if next, cmd, handled := m.updateReview(message); handled {
 		return next, cmd
 	}

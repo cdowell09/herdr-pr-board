@@ -405,12 +405,20 @@ The footer pairs each keybinding with its action. On narrow terminals, the pairs
 ### Local review controls
 
 Press `v` to open the selected PR's review history.
+The first review action offers repository setup when no repository settings exist.
+Use the arrow keys and Space to change settings.
+Press Enter to save, or Esc to discard changes.
+Defaults keep launches manual and findings local.
 The panel shows current observed revisions and older revisions separately.
 
 | Key | Action in the review panel |
 | --- | --- |
 | `n` | Queue a review with the repository's configured reviewer. |
 | `N` | Explicitly retry or repeat a review. |
+| `s` | Edit repository settings. |
+| `c` | Publish the latest completed run as a comment. |
+| `a` | Publish the latest completed run as an approval. |
+| `x` | Publish the latest completed run as a change request. |
 | `j`, `k`, `↑`, `↓`, mouse wheel | Scroll through findings and diagnostics. |
 | `g`, `Home`, `G`, `End` | Move to the first or last history line. |
 | `o`, click the URL | Open the PR in a browser. |
@@ -419,8 +427,9 @@ The panel shows current observed revisions and older revisions separately.
 
 Reviews continue when you close the panel.
 The board remains responsive while reviews run.
-Findings remain local.
+Findings remain local unless you publish them.
 See [manual reviews](docs/reviews.md) to configure a reviewer.
+See [repository setup and publication](docs/repository-publication.md) for permissions, CLI configuration, and failure recovery.
 
 ### Layouts
 

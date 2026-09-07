@@ -7,6 +7,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/cdowell09/herdr-pr-board/internal/config"
 	gh "github.com/cdowell09/herdr-pr-board/internal/github"
 	"github.com/cdowell09/herdr-pr-board/internal/review"
 	"github.com/cdowell09/herdr-pr-board/internal/reviewmemory"
@@ -30,11 +31,13 @@ func panelModel(t *testing.T) Model {
 		t.Fatal(err)
 	}
 	m = m.WithReviews(context.Background(), &reviewFake{})
+	m.cfg.Repositories = []config.Repository{{Name: "acme/repo", Reviewer: "agent"}}
 	m.width, m.height = 100, 35
 	m.loading = false
 	m.views[0].PRs = []gh.PullRequest{{Repository: "acme/repo", Number: 1, URL: "https://github.com/acme/repo/pull/1", HeadOID: strings.Repeat("a", 40), BaseRefName: "main", MetadataObservedAt: time.Now()}}
 	next, _ := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("v")})
-	return next.(Model)
+	loaded, _ := next.(Model).Update(repositorySettingsMsg{url: m.views[0].PRs[0].URL, cfg: m.cfg})
+	return loaded.(Model)
 }
 
 func TestReviewPanelHistoryCoordinatesAndControls(t *testing.T) {

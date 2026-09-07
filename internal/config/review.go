@@ -19,8 +19,10 @@ type Reviewer struct {
 }
 
 type Repository struct {
-	Name     string `toml:"name"`
-	Reviewer string `toml:"reviewer"`
+	Name           string              `toml:"name"`
+	Reviewer       string              `toml:"reviewer"`
+	AutoLaunch     bool                `toml:"auto_launch"`
+	PublishActions []PublicationAction `toml:"publish_actions"`
 }
 
 func (r ReviewConfig) TimeoutDuration() (time.Duration, error) {
@@ -64,6 +66,9 @@ func (c Config) validateReviews() error {
 			return errors.New("repository names must use unique owner/name values")
 		}
 		repositories[name] = true
+		if err := repo.validatePermissions(); err != nil {
+			return err
+		}
 		if !seen[repo.Reviewer] {
 			return fmt.Errorf("repository %s references unknown reviewer %q", repo.Name, repo.Reviewer)
 		}

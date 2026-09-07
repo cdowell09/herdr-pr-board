@@ -19,9 +19,10 @@ type RevisionSource interface {
 }
 
 type Request struct {
-	URL      string
-	Reviewer string
-	Rerun    bool
+	URL       string
+	Reviewer  string
+	Rerun     bool
+	Automatic bool
 }
 
 type Service struct {
@@ -105,7 +106,11 @@ func (s *Service) Review(ctx context.Context, request Request, notify func(strin
 		if err != nil {
 			return reviewmemory.Run{}, fmt.Errorf("capture current PR revision: %w", err)
 		}
-		reviewer, err := cfg.ReviewerFor(pr.Repository, request.Reviewer)
+		cfg, err = config.LoadExisting(s.configPath)
+		if err != nil {
+			return reviewmemory.Run{}, err
+		}
+		reviewer, err := cfg.ResolveLaunch(pr.Repository, request.Reviewer, request.Automatic)
 		if err != nil {
 			return reviewmemory.Run{}, err
 		}
@@ -130,7 +135,7 @@ func (s *Service) Review(ctx context.Context, request Request, notify func(strin
 		}
 		timeout, _ := cfg.Review.TimeoutDuration()
 		runCtx, cancel := context.WithTimeout(ctx, timeout)
-		outcome, executionErr := s.execute(runCtx, claim, pr, reviewer)
+		outcome, executionErr := s.execute(runCtx, claim, pr, reviewer, request)
 		cancel()
 		if err := claim.Finish(outcome); err != nil {
 			return reviewmemory.Run{}, fmt.Errorf("record review outcome: %w", err)

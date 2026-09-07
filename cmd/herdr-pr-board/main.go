@@ -15,6 +15,7 @@ import (
 	gh "github.com/cdowell09/herdr-pr-board/internal/github"
 	"github.com/cdowell09/herdr-pr-board/internal/localstate"
 	"github.com/cdowell09/herdr-pr-board/internal/monitor"
+	"github.com/cdowell09/herdr-pr-board/internal/publication"
 	"github.com/cdowell09/herdr-pr-board/internal/review"
 	"github.com/cdowell09/herdr-pr-board/internal/sidebar"
 	tea "github.com/charmbracelet/bubbletea"
@@ -32,6 +33,9 @@ func run(args []string, stdout, stderr io.Writer) int {
 	}
 	if o.pi {
 		return runPiAdapter(o, os.Stdin, stderr)
+	}
+	if o.publication.history != "" {
+		return printPublicationHistory(o.publication.history, stdout, stderr)
 	}
 	if o.history != "" {
 		return printReviewHistory(o.history, stdout, stderr)
@@ -55,6 +59,9 @@ func run(args []string, stdout, stderr io.Writer) int {
 	cfg, err := config.Load(o.configPath)
 	if err != nil {
 		return fail(stderr, err)
+	}
+	if o.publication.repository != "" {
+		return configureRepository(o.configPath, o.publication, stdout, stderr)
 	}
 	if o.view != "" {
 		found := false
@@ -98,6 +105,19 @@ func run(args []string, stdout, stderr io.Writer) int {
 	if o.json {
 		return printSnapshot(cfg, service, stdout, stderr)
 	}
+	var publisher *publication.Service
+	if o.publication.publish != "" || stateDir != "" {
+		if stateDir == "" {
+			return fail(stderr, errors.New("publication requires HERDR_PLUGIN_STATE_DIR"))
+		}
+		publisher, err = publication.New(stateDir, o.configPath, client)
+		if err != nil {
+			return fail(stderr, err)
+		}
+	}
+	if o.publication.publish != "" {
+		return printPublication(o.publication, publisher, stdout, stderr)
+	}
 	var reviews *review.Service
 	if o.review != "" || stateDir != "" {
 		if stateDir == "" {
@@ -126,7 +146,7 @@ func run(args []string, stdout, stderr io.Writer) int {
 		}
 	}()
 	if reviews != nil {
-		model = model.WithReviews(reviewCtx, reviews)
+		model = model.WithReviews(reviewCtx, reviews).WithPublications(stateDir, publisher)
 	}
 	if _, err := tea.NewProgram(model, tea.WithAltScreen(), tea.WithMouseCellMotion()).Run(); err != nil {
 		return fail(stderr, err)
