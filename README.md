@@ -418,3 +418,6 @@ The CI workflow enforces the same checks on pull requests and on `main`:
 Herdr runs each plugin command from the plugin directory. Store user configuration in `HERDR_PLUGIN_CONFIG_DIR`.
 
 Store runtime state in `HERDR_PLUGIN_STATE_DIR`. Do not store user data in `HERDR_PLUGIN_ROOT`.
+
+See [local review memory](docs/review-memory.md) for the shared history and claim contract.
+Review launch controls follow in a separate change.
