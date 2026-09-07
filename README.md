@@ -408,6 +408,15 @@ The footer pairs each keybinding with its action. On narrow terminals, the pairs
 Press `v` to open the selected PR's review history.
 The first review action offers repository setup when no repository settings exist.
 Use the arrow keys and Space to change settings.
+Select global automatic view IDs explicitly in repository settings.
+These view selections apply to all repositories that allow automatic launches.
+Comment permission alone does not enable automatic posting.
+Select an automatic publication action separately.
+The panel shows the monitor state and any missing setup requirement.
+Use PgUp and PgDn to scroll through settings and the monitor command.
+Run the displayed command in another terminal when the monitor stops.
+Saving settings does not start a monitor.
+New selections can take effect on the next monitor scan.
 Press Enter to save, or Esc to discard changes.
 Defaults keep launches manual and findings local.
 The panel shows current observed revisions and older revisions separately.

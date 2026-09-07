@@ -10,6 +10,7 @@ import (
 	"github.com/cdowell09/herdr-pr-board/internal/config"
 	"github.com/cdowell09/herdr-pr-board/internal/dispatch"
 	gh "github.com/cdowell09/herdr-pr-board/internal/github"
+	"github.com/cdowell09/herdr-pr-board/internal/monitor"
 	"github.com/cdowell09/herdr-pr-board/internal/publication"
 	"github.com/cdowell09/herdr-pr-board/internal/review"
 	"github.com/cdowell09/herdr-pr-board/internal/reviewmemory"
@@ -25,6 +26,8 @@ type ReviewBackend interface {
 }
 
 type reviewPanel struct {
+	monitor         monitor.Status
+	monitorCommand  monitorInvocation
 	pr              gh.PullRequest
 	automatic       dispatch.Decision
 	runs            []reviewmemory.Run
@@ -70,7 +73,7 @@ func (m Model) openReviewPanel() (tea.Model, tea.Cmd) {
 		return m, nil
 	}
 	m.reviewPanel.settingsLoading = true
-	return m, tea.Batch(m.reviewHistoryCmd(pr.URL), m.publicationHistoryCmd(pr.URL), m.repositorySettingsCmd(false), reviewTick(pr.URL, m.reviewGeneration))
+	return m, tea.Batch(m.reviewHistoryCmd(pr.URL), m.publicationHistoryCmd(pr.URL), m.repositorySettingsCmd(false), m.monitorStatusCmd(), reviewTick(pr.URL, m.reviewGeneration))
 }
 
 func (m Model) reviewHistoryCmd(url string) tea.Cmd {
@@ -88,6 +91,15 @@ func reviewTick(url string, generation uint64) tea.Cmd {
 
 func (m Model) updateReview(message tea.Msg) (Model, tea.Cmd, bool) {
 	switch msg := message.(type) {
+	case monitorStatusMsg:
+		if m.reviewPanel != nil && m.reviewPanel.pr.URL == msg.url && m.reviewGeneration == msg.generation {
+			m.reviewPanel.monitor, m.reviewPanel.monitorCommand = msg.status, msg.command
+			if msg.cfg.Views != nil {
+				m.cfg.Reviewers, m.cfg.Repositories, m.cfg.Review.AutoViews = msg.cfg.Reviewers, msg.cfg.Repositories, msg.cfg.Review.AutoViews
+			}
+			m.clampReviewOffset()
+		}
+		return m, nil, true
 	case reviewHistoryMsg:
 		if m.reviewPanel == nil || m.reviewPanel.pr.URL != msg.url {
 			return m, nil, true
@@ -106,7 +118,7 @@ func (m Model) updateReview(message tea.Msg) (Model, tea.Cmd, bool) {
 		return m, nil, true
 	case reviewTickMsg:
 		if m.reviewPanel != nil && m.reviewPanel.pr.URL == msg.url && msg.generation == m.reviewGeneration && m.reviews != nil {
-			return m, tea.Batch(m.reviewHistoryCmd(msg.url), m.publicationHistoryCmd(msg.url), reviewTick(msg.url, msg.generation)), true
+			return m, tea.Batch(m.reviewHistoryCmd(msg.url), m.publicationHistoryCmd(msg.url), m.monitorStatusCmd(), reviewTick(msg.url, msg.generation)), true
 		}
 		return m, nil, true
 	case reviewDoneMsg:
@@ -237,6 +249,11 @@ func (m Model) reviewLines() []string {
 	add := func(value string) {
 		lines = append(lines, strings.Split(ansi.Wrap(reviewText(value), max(1, m.width), ""), "\n")...)
 	}
+	repo, _ := m.cfg.RepositoryFor(p.pr.Repository)
+	for _, line := range m.monitorLines(repo, m.cfg.Review.AutoViews) {
+		add(line)
+	}
+	lines = append(lines, m.monitorCommandLines()...)
 	for _, line := range m.publicationLines() {
 		add(line)
 	}
@@ -286,6 +303,10 @@ func (m Model) reviewViewport() ([]string, int) {
 }
 func (m *Model) clampReviewOffset() {
 	if m.reviewPanel == nil {
+		return
+	}
+	if m.reviewPanel.setup != nil {
+		m.clampRepositoryOffset()
 		return
 	}
 	_, visible := m.reviewViewport()

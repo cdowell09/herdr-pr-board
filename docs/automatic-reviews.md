@@ -6,7 +6,15 @@ The monitor uses existing discovery views.
 
 ## Enable automatic reviews
 
-Select existing view IDs in `config.toml`:
+Press `v`, then press `s` to open repository settings.
+Enable automatic launches for the repository.
+Select existing IDs under global automatic views.
+These selections apply to all repositories that allow automatic launches.
+The panel does not select views automatically.
+Press Enter to save repository settings and global view selections together.
+Use PgUp, PgDn, or the mouse wheel to scroll through long settings.
+
+You can also select existing view IDs in `config.toml`:
 
 ```toml
 [review]
@@ -43,6 +51,18 @@ Start the monitor:
 export HERDR_PLUGIN_STATE_DIR="/absolute/path/to/plugin-state"
 bin/herdr-pr-board --monitor --config /absolute/path/to/config.toml
 ```
+
+The setup panel shows the monitor as running, stopped, or unknown.
+A running monitor does not prove that its latest observation succeeded.
+The panel reports failed observations and configuration differences separately.
+When the monitor stops, the panel shows its exact command.
+Copy the complete command and run it in another terminal.
+Keep the command's continuation characters when copying multiple lines.
+The command uses the current executable, configuration path, and state directory.
+Saving settings does not start a monitor.
+The board refreshes this local status while the review panel remains open.
+New selections can take effect on the next monitor scan.
+A ready setup still requires an eligible PR.
 
 The monitor requires one installation state directory.
 The monitor shares review claims and concurrency limits with manual reviews.
@@ -114,6 +134,7 @@ auto_publish = "comment"
 
 Valid selectors are `comment`, `approve`, `request_changes`, and an empty string.
 An empty selector keeps findings local.
+Comment permission alone does not enable automatic posting.
 The selector must also appear in `publish_actions`.
 Findings do not select an action automatically.
 

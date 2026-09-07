@@ -46,7 +46,7 @@ func TestAutomaticPublicationSelectionSurvivesSafeRepositorySave(t *testing.T) {
 	expected := repositoryExpectation(t, path, "owner/repo")
 	changed := *expected
 	changed.AutoLaunch = true
-	cfg, err := SaveRepository(context.Background(), path, t.TempDir(), changed, nil, expected)
+	cfg, err := SaveRepository(context.Background(), path, t.TempDir(), changed, nil, expected, nil)
 	if err != nil {
 		t.Fatal(err)
 	}

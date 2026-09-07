@@ -30,7 +30,7 @@ func TestFirstReviewSetupControlsAndSavedConfiguration(t *testing.T) {
 	for _, width := range []int{30, 100} {
 		m.width = width
 		lines := strings.Split(stripANSI(m.View()), "\n")
-		if !strings.Contains(lines[3], "Reviewer:") || !strings.Contains(lines[5], "Allow comment") {
+		if !strings.Contains(lines[4], "Reviewer:") || !strings.Contains(lines[6], "Allow comment") {
 			t.Fatalf("setup row coordinates changed: %v", lines)
 		}
 		for _, line := range lines {
@@ -40,7 +40,7 @@ func TestFirstReviewSetupControlsAndSavedConfiguration(t *testing.T) {
 		}
 	}
 	m.width = 100
-	updated, _ := m.Update(tea.MouseMsg{Button: tea.MouseButtonLeft, Action: tea.MouseActionPress, X: 1, Y: 5})
+	updated, _ := m.Update(tea.MouseMsg{Button: tea.MouseButtonLeft, Action: tea.MouseActionPress, X: 1, Y: 6})
 	m = updated.(Model)
 	settings := m.reviewPanel.setup.repo
 	if len(settings.PublishActions) != 1 || settings.PublishActions[0] != config.PublishComment || settings.AutoLaunch {
@@ -119,10 +119,20 @@ func TestNarrowSetupKeepsEveryPermissionIndicatorVisible(t *testing.T) {
 			setup.repo.PublishActions = config.PublicationActions()
 			want = "[x]"
 		}
-		lines := strings.Split(stripANSI(m.View()), "\n")
-		for row := 4; row <= 7; row++ {
-			if !strings.HasPrefix(strings.TrimSpace(lines[row]), want) {
-				t.Fatalf("permission state hidden at width 30: row %d = %q", row, lines[row])
+		for row := 1; row <= 4; row++ {
+			setup.row = row
+			m.revealRepositoryRow()
+			header, content, start, size := m.repositoryViewport()
+			lines := strings.Split(stripANSI(m.View()), "\n")
+			found := false
+			for i := start; i < min(len(content), start+size); i++ {
+				if content[i].row == row && strings.Contains(lines[len(header)+i-start], want) {
+					found = true
+					break
+				}
+			}
+			if !found {
+				t.Fatalf("permission state hidden at width 30: row %d: %v", row, lines)
 			}
 		}
 	}

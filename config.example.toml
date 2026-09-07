@@ -58,6 +58,8 @@ scope = "configured"
 
 [review]
 # Select existing view IDs for automatic reviews. An empty list disables dispatch.
+# The repository panel edits this global selection for all opted-in repositories.
+# Start the monitor separately. New selections can wait until its next scan.
 auto_views = []
 # Share this concurrency limit across processes that use the same state directory.
 max_concurrency = 1
@@ -80,4 +82,5 @@ timeout = "30m"
 # publish_actions = []
 # Valid actions: "comment", "approve", "request_changes".
 # Select one allowed action for automatic publication. Empty keeps findings local.
+# Comment permission alone does not enable automatic posting.
 # auto_publish = ""
