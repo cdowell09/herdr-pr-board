@@ -30,9 +30,8 @@ func TestFirstReviewSetupControlsAndSavedConfiguration(t *testing.T) {
 	for _, width := range []int{30, 100} {
 		m.width = width
 		lines := strings.Split(stripANSI(m.View()), "\n")
-		if !strings.Contains(lines[4], "Reviewer:") || !strings.Contains(lines[6], "Allow comment") {
-			t.Fatalf("setup row coordinates changed: %v", lines)
-		}
+		renderedRepositoryLine(t, m, "Reviewer:")
+		renderedRepositoryLine(t, m, "[ ] Comments")
 		for _, line := range lines {
 			if lipgloss.Width(line) > width {
 				t.Fatalf("setup overflows width %d: %q", width, line)
@@ -40,7 +39,7 @@ func TestFirstReviewSetupControlsAndSavedConfiguration(t *testing.T) {
 		}
 	}
 	m.width = 100
-	updated, _ := m.Update(tea.MouseMsg{Button: tea.MouseButtonLeft, Action: tea.MouseActionPress, X: 1, Y: 6})
+	updated, _ := m.Update(tea.MouseMsg{Button: tea.MouseButtonLeft, Action: tea.MouseActionPress, X: 1, Y: renderedRepositoryLine(t, m, "[ ] Comments")})
 	m = updated.(Model)
 	settings := m.reviewPanel.setup.repo
 	if len(settings.PublishActions) != 1 || settings.PublishActions[0] != config.PublishComment || settings.AutoLaunch {
@@ -136,4 +135,16 @@ func TestNarrowSetupKeepsEveryPermissionIndicatorVisible(t *testing.T) {
 			}
 		}
 	}
+}
+
+// Find mouse coordinates in actual terminal output, including wrapped sections.
+func renderedRepositoryLine(t *testing.T, m Model, text string) int {
+	t.Helper()
+	for y, line := range strings.Split(stripANSI(m.View()), "\n") {
+		if strings.Contains(line, text) {
+			return y
+		}
+	}
+	t.Fatalf("missing %q in panel:\n%s", text, stripANSI(m.View()))
+	return -1
 }

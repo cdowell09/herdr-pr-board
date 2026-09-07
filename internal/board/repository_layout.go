@@ -2,6 +2,7 @@ package board
 
 import (
 	"strings"
+	"time"
 
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/x/ansi"
@@ -17,30 +18,58 @@ func (m Model) repositoryContent() []repositoryLine {
 	var lines []repositoryLine
 	add := func(text string, row int) {
 		for _, line := range strings.Split(ansi.Wrap(reviewText(text), max(1, m.width), ""), "\n") {
+			if row >= 0 && row == s.row {
+				line = selectedStyle.Width(max(1, m.width)).Render(line)
+			}
 			lines = append(lines, repositoryLine{line, row})
 		}
 	}
+	section := func(title string) {
+		if len(lines) > 0 && m.height >= 20 {
+			add("", -1)
+		}
+		start := len(lines)
+		add(title, -1)
+		for i := start; i < len(lines); i++ {
+			lines[i].text = keyStyle.Render(lines[i].text)
+		}
+	}
 	for i, row := range s.rows() {
-		if i == 6 {
-			add("Global automatic views: these selections apply to ALL opted-in repositories.", -1)
+		switch i {
+		case 0:
+			section("Reviews")
+		case 2:
+			section("GitHub permissions")
+			add("Allowed actions, not automatic posts.", -1)
+		case 5:
+			section("Automatic posting")
+		case 6:
+			section("Global views")
+			add("Shared by all opted-in repositories.", -1)
 		}
 		prefix := "  "
 		if i == s.row {
 			prefix = "› "
 		}
 		add(prefix+row, i)
+		if i == 5 {
+			add("For completed automatic reviews.", -1)
+		}
 	}
 	if len(s.views) == 0 {
+		section("Global views")
 		add("No configured views are available.", -1)
 	}
-	add("Allowed publication permits an action. It does not schedule publication.", -1)
-	add("Automatic publication chooses the action after a completed automatic review. Local only sends nothing.", -1)
-	add("Preview of these settings. Save to apply changes.", -1)
-	for _, line := range m.monitorLines(s.repo, s.automatic.Selected) {
-		add(line, -1)
-	}
 	if s.builtin != nil {
-		add("Pi setup adds a reusable reviewer. Pi and its review skill must be installed.", -1)
+		section("Pi reviewer")
+		add("Install Pi and its review skill before running a review.", -1)
+	}
+	section("Monitor")
+	if observed := m.reviewPanel.monitor.ObservedAt; !observed.IsZero() {
+		add("Latest observation: "+observed.Format(time.RFC3339), -1)
+	}
+	if message := m.reviewPanel.monitor.Message; message != "" {
+		add(message, -1)
 	}
 	if m.reviewPanel.message != "" {
 		add(m.reviewPanel.message, -1)
@@ -48,8 +77,11 @@ func (m Model) repositoryContent() []repositoryLine {
 	if s.saving {
 		add("Saving…", -1)
 	}
-	for _, line := range m.monitorCommandLines() {
-		lines = append(lines, repositoryLine{line, -1})
+	if command := m.monitorCommandLines(); len(command) > 0 {
+		add("Run in another terminal:", -1)
+		for _, line := range command {
+			lines = append(lines, repositoryLine{line, -1})
+		}
 	}
 	return lines
 }
@@ -71,6 +103,9 @@ func (m Model) repositoryViewport() (header []string, content []repositoryLine, 
 		summary = "Saving settings…"
 	}
 	header = []string{titleStyle.Render(truncate("Repository settings", m.width)), urlStyle.Render(truncate(reviewText(m.reviewPanel.pr.URL), m.width)), truncate("Monitor: "+string(status), m.width), truncate(reviewText(summary), m.width)}
+	if m.width < 60 {
+		header = []string{titleStyle.Render(truncate("Settings · monitor "+string(status), m.width)), header[1], header[3]}
+	}
 	height := max(3, m.height)
 	help := m.repositoryHelp()
 	header = header[:min(len(header), max(0, height-len(help)-1))]

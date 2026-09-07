@@ -8,15 +8,16 @@ Repository visibility grants no publication permission.
 
 Select a PR and press `v`.
 The first review action opens repository settings when the repository has no saved settings.
-Select a reviewer with the arrow keys or Space.
+The panel groups settings under Reviews, GitHub permissions, Automatic posting, and Global views.
+Select a reviewer under Reviews with the arrow keys or Space.
 Enable automatic launches only when you want unattended reviews.
 Select existing global automatic views for unattended reviews.
 These selections apply to all repositories that allow automatic launches.
 The panel selects no views by default.
-Enable comment permission separately.
+Enable Comments under GitHub permissions to allow comments.
 Permission allows publication but does not schedule publication.
-Select an automatic publication action to post completed automatic reviews.
-Leave automatic publication at local only to keep findings local.
+Select After review: Post comment under Automatic posting to post completed automatic reviews.
+Select After review: Keep local to keep findings local.
 Approval and change requests each require a separate selection.
 Press Enter to save.
 Press Esc to discard changes.
