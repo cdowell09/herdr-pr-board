@@ -510,6 +510,7 @@ Changing settings does not publish earlier completed reviews.
 | --- | --- |
 | `n` | Queue a review with the repository's configured reviewer. |
 | `N` | Explicitly retry or repeat a review. |
+| `t` | Stop the newest active review shown for this PR. |
 | `s` | Edit repository settings. |
 | `c` | Publish the latest completed run as a comment. |
 | `a` | Publish the latest completed run as an approval. |
@@ -523,6 +524,14 @@ Changing settings does not publish earlier completed reviews.
 Reviews continue when you close the panel.
 Closing the board cancels its queued and active reviews.
 The background monitor and its reviews continue.
+Press `t` to stop one active review without closing the board or stopping the monitor.
+The panel identifies the target run and reports cleanup progress.
+The stop request uses the shared state directory and works across boards and monitors.
+The reviewer owner stops its reviewer processes before the review slot becomes available.
+A stopped review records a failure with a cancellation reason. It does not publish findings.
+Press `N` to retry the stopped revision explicitly.
+If completion wins the race, the panel reports that the review is no longer running.
+An older or unavailable owner cannot accept stop requests. The panel reports this error without signaling an arbitrary process.
 The board remains responsive while reviews run.
 The saved **After review** setting controls automatic posting.
 Select **Keep local** to publish findings only with the manual controls.

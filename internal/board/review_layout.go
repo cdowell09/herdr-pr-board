@@ -29,6 +29,7 @@ func (m Model) reviewLines() []string {
 		add(title, keyStyle)
 	}
 	body := keyStyle.Bold(false)
+	stopTarget, _ := p.stopTarget()
 	if status := m.reviewJobs[p.pr.URL]; status != "" {
 		add("Request: "+status, keyStyle)
 	}
@@ -63,6 +64,13 @@ func (m Model) reviewLines() []string {
 			statusStyle = warningStyle.Bold(true)
 		}
 		add(string(run.Status)+" · "+run.Reviewer, statusStyle)
+		if run.ID == stopTarget.ID && run.ID != "" {
+			if p.stopping == run.ID {
+				add("Stopping run "+shortRevision(run.ID)+" · waiting for reviewer cleanup", warningStyle)
+			} else {
+				add("t stop run "+shortRevision(run.ID), keyStyle)
+			}
+		}
 		comparison := "older revision"
 		if current.HeadOID == "" || current.BaseRefName == "" {
 			comparison = "current revision unknown"
@@ -176,9 +184,18 @@ func shortRevision(value string) string { r := []rune(value); return string(r[:m
 
 func (m Model) reviewViewport() ([]string, int) {
 	text := "n run · N rerun · s settings · c comment · a approve · x changes · j/k scroll · o open · Esc back · q quit"
+	stopControl := ""
+	if target, ok := m.reviewPanel.stopTarget(); ok {
+		stopControl = "t stop " + shortRevision(target.ID)
+		text = stopControl + " · " + text
+	}
 	help := strings.Split(ansi.Wrap(text, max(1, m.width), ""), "\n")
 	if len(help) > max(1, m.height-4) {
-		help = []string{truncate("Enlarge panel for controls.", m.width)}
+		fallback := "Enlarge panel for controls."
+		if stopControl != "" {
+			fallback = stopControl
+		}
+		help = []string{truncate(fallback, m.width)}
 	}
 	return help, max(0, m.height-2-len(help))
 }

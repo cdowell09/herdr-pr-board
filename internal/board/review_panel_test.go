@@ -17,6 +17,8 @@ import (
 
 type reviewFake struct{ request review.Request }
 
+func (*reviewFake) Stop(string) error { return nil }
+
 func (*reviewFake) History(string) ([]reviewmemory.Run, error) { return nil, nil }
 func (f *reviewFake) Review(_ context.Context, request review.Request, _ func(string)) (reviewmemory.Run, error) {
 	f.request = request
