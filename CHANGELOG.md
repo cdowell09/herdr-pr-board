@@ -1,0 +1,134 @@
+# Changelog
+
+This file lists notable changes to PR Board.
+
+## 0.4.0 - 2026-09-08
+
+### Bug Fixes
+
+- Address review findings across board, github, and sidebar (#46)
+- Name the environment token that overrides gh login
+- Complete automatic review onboarding (#62)
+- Improve repository settings readability (#65)
+- Clarify reviews and honor configured posting (#70)
+- Show when reviews wait for a slot (#74)
+- Preserve review origin and refresh failed page rates (#77)
+
+### Features
+
+- Edit config from board (#44)
+- Expose JSON PR snapshots (#54)
+- Track local review history and claims (#55)
+- Share headless monitor observations (#56)
+- Launch configurable PR reviewers (#57)
+- Configure repository review publication (#58)
+- Dispatch eligible PR reviews automatically (#59)
+- Start opted-in review monitors automatically (#67)
+- Show review progress and publication sources (#75)
+
+### Refactoring
+
+- Simplify release and runner plumbing
+- Deepen rendering and refresh
+- Trim review overhead
+
+## 0.3.1 - 2026-08-15
+
+### Bug Fixes
+
+- Scope counts to current workspace
+
+### Documentation
+
+- Document plugin versioning policy
+
+### Maintenance
+
+- Bump plugin version to 0.3.1
+
+## 0.3.0 - 2026-08-14
+
+### Documentation
+
+- Align README with STE writing standards (#37)
+
+### Features
+
+- Report PR counts into Herdr sidebar tokens (#39)
+
+## 0.2.2 - 2026-08-14
+
+### Bug Fixes
+
+- Simplify shortcut footer
+
+## 0.2.1 - 2026-08-14
+
+### Bug Fixes
+
+- Clarify shortcut footer
+
+## 0.2.0 - 2026-08-14
+
+### Bug Fixes
+
+- Preserve completed CI enrichment batches (#17)
+- Show accurate refresh freshness
+- Keep stale layout within the screen
+- Report browser-open failures; add contributor, security, and troubleshooting docs (#18)
+- Diff whitespace against merge-base and whole push
+- Center CI icons beneath the column heading
+- Checkout before publishing release (#34)
+
+### Documentation
+
+- Add multi-org board screenshot
+- Rewrite config reference in Simplified Technical English
+- Add screenshot of CI completion gates
+- Broaden the README screenshot to a full-screen board
+- Fix README screenshot so every column renders
+- Consolidate hook instructions
+- Clarify source plugin setup
+
+### Features
+
+- Reject configuration mistakes and add validation mode
+- Make the board readable and controls discoverable (#28)
+
+### Maintenance
+
+- Enforce completion gates in CI
+- Automate dependency maintenance and update go-toml
+- Bump the actions group with 2 updates
+- Add pre-commit hooks
+- Cross-build manifest platforms
+
+### Performance
+
+- Run configured-scope searches concurrently
+
+### Testing
+
+- Measure ANSI rows and derive CI glyphs from renderCI
+- Verify pane reuse and state ownership end to end
+- Pin freshest-row dedup; cover views+scopes concurrency cap
+
+## 0.1.1 - 2026-08-09
+
+### Bug Fixes
+
+- Decouple PR Board from Pickr
+
+### Documentation
+
+- Add agent guidance
+
+## 0.1.0 - 2026-08-07
+
+### Features
+
+- Add cross-repository PR board
+
+### Maintenance
+
+- Initialize repository

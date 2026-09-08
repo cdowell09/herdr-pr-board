@@ -53,7 +53,8 @@ Keep the behavior in its owning package:
 - `scripts/validate_release.py` — release tag and plugin manifest validation.
 - `internal/config/` — TOML defaults, parsing, validation, scope modes, and Search request counts.
 - `internal/github/` — `gh` execution, query tokenization, Search results, GraphQL CI enrichment, caching, and rate-limit decoding.
-- `internal/board/` — refresh orchestration, API budgeting, Bubble Tea state, rendering, keyboard input, and mouse input.
+- `internal/discovery/` — shared refresh orchestration, API budgeting, and discovery observations.
+- `internal/board/` — Bubble Tea state, rendering, keyboard input, and mouse input.
 - `bin/open` — focus an existing plugin pane or open one dedicated tab.
 - `bin/run` — record pane ownership, name the tab, run the board, and clean owned state.
 - `internal/plugin/` — end-to-end tests for the `bin/open` and `bin/run` entrypoints.
@@ -61,7 +62,10 @@ Keep the behavior in its owning package:
 - `.github/workflows/ci.yml` — release gates enforced on pull requests and `main`.
 - `.github/workflows/release.yml` — run release validation and publish source releases.
 
-Keep GitHub transport in `internal/github`. Keep refresh policy in `internal/board`. Keep configuration rules in `internal/config`. Keep `bin/open` and `bin/run` in plain `bash`.
+Keep GitHub transport in `internal/github`.
+Keep refresh policy in `internal/discovery`.
+Keep configuration rules in `internal/config`.
+Keep `bin/open` and `bin/run` in plain `bash`.
 
 ## Regression tests
 
@@ -69,7 +73,7 @@ Add a regression test at the package boundary that owns the behavior:
 
 - Configuration rules → `internal/config/config_test.go`.
 - `gh` execution, tokenization, CI enrichment, and rate limits → `internal/github/client_test.go` (and `query_test.go` for tokenization).
-- Refresh orchestration and API budgeting → `internal/board/service_test.go`.
+- Refresh orchestration and API budgeting → `internal/discovery/service_test.go`.
 - Bubble Tea state, rendering, and input → `internal/board/model_test.go`.
 - Plugin entrypoint pane reuse and state ownership → `internal/plugin/entrypoint_test.go`.
 - Release validation → `scripts/validate_release_test.py`.
@@ -99,6 +103,7 @@ Write all technical documentation in ASD-STE100 Simplified Technical English (ST
 ## Release
 
 Follow [`docs/releasing.md`](docs/releasing.md) to change the version, create a tag, and upgrade an installation.
+The release workflow generates notes with git-cliff and `cliff.toml`.
 
 ## Completion gates
 
