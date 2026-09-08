@@ -29,6 +29,7 @@ func (c *Client) enrichReviews(ctx context.Context, prs []PullRequest, actor str
 	cursors := make(map[int]string)
 	seen := make(map[int]map[string]bool)
 	var warnings []string
+	var pageErr error
 	for i := range prs {
 		cursors[i] = ""
 		seen[i] = make(map[string]bool)
@@ -66,6 +67,9 @@ func (c *Client) enrichReviews(ctx context.Context, prs []PullRequest, actor str
 				cursors[i] = next
 			}
 		}
+		if pageErr != nil {
+			return budget, warnings, pageErr
+		}
 		if len(cursors) == 0 {
 			break
 		}
@@ -89,18 +93,24 @@ func (c *Client) enrichReviews(ctx context.Context, prs []PullRequest, actor str
 			if runErr != nil {
 				err = runErr
 			}
-			warnings = append(warnings, "load viewer reviews: "+err.Error())
-			break
+			return budget, warnings, fmt.Errorf("load viewer reviews: %w", err)
 		}
 		if rate := decodeGraphQLRate(response.Data["rateLimit"]); rate.Limit > 0 {
 			budget = rate
+		} else if len(response.Errors) > 0 {
+			pageErr = fmt.Errorf("load viewer reviews: failed review page has unavailable rate limits")
+		}
+		if len(response.Data) == 0 {
+			if len(response.Errors) > 0 {
+				return budget, warnings, fmt.Errorf("load viewer reviews: %s", response.Errors[0].Message)
+			}
+			return budget, warnings, fmt.Errorf("load viewer reviews: review page returned no data")
 		}
 		for _, graphErr := range response.Errors {
 			warnings = append(warnings, "load viewer reviews: "+graphErr.Message)
 		}
 		if runErr != nil && len(response.Errors) == 0 {
-			warnings = append(warnings, "load viewer reviews: "+runErr.Error())
-			break
+			return budget, warnings, fmt.Errorf("load viewer reviews: %w", runErr)
 		}
 	}
 	return budget, warnings, nil

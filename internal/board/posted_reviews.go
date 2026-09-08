@@ -45,7 +45,7 @@ func postedReviewSummary(pr gh.PullRequest, attempts []publication.Attempt, loca
 			continue
 		}
 		source := "GitHub"
-		if attempt, ok := owned[posted.ID]; ok && attempt.Identity.HeadOID == posted.HeadOID {
+		if attempt, ok := owned[posted.ID]; ok && (posted.HeadOID == "" || attempt.Identity.HeadOID == posted.HeadOID) {
 			source = "PR Board"
 		}
 		add(source, posted.HeadOID)
