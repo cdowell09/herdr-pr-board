@@ -1,4 +1,4 @@
-package piadapter
+package agentadapter
 
 import (
 	"context"
@@ -17,10 +17,10 @@ import (
 	"github.com/cdowell09/herdr-pr-board/internal/reviewmemory"
 )
 
-func TestPiRetainsClaimAfterAdapterIsKilled(t *testing.T) {
+func TestAgentRetainsClaimAfterAdapterIsKilled(t *testing.T) {
 	if dir := os.Getenv("PR_BOARD_CLAIM_HELPER"); dir != "" {
 		in := reviewercontract.Input{Version: 1, Identity: reviewmemory.Identity{Repository: "owner/repo", Number: 42, HeadOID: strings.Repeat("a", 40), BaseRefName: "main"}, BaseOID: strings.Repeat("b", 40), ResultPath: filepath.Join(dir, "result.json")}
-		if err := runPi(context.Background(), in, Options{Pi: filepath.Join(dir, "pi"), Skill: "unused"}, dir, dir, nil); err != nil {
+		if err := runAgent(context.Background(), in, Options{Name: "pi", Binary: filepath.Join(dir, "pi"), Command: func(binary, skill, work, checkout string) (*exec.Cmd, error) { return exec.Command(binary), nil }}, dir, dir, ""); err != nil {
 			t.Fatal(err)
 		}
 		return
@@ -40,7 +40,7 @@ wait
 	if err := os.WriteFile(filepath.Join(dir, "pi"), []byte(script), 0700); err != nil {
 		t.Fatal(err)
 	}
-	adapter := exec.Command(os.Args[0], "-test.run=^TestPiRetainsClaimAfterAdapterIsKilled$")
+	adapter := exec.Command(os.Args[0], "-test.run=^TestAgentRetainsClaimAfterAdapterIsKilled$")
 	adapter.Env = append(os.Environ(), "PR_BOARD_CLAIM_HELPER="+dir, "HERDR_REVIEW_CLAIM_FD=3")
 	adapter.ExtraFiles = []*os.File{claim}
 	if err := adapter.Start(); err != nil {
@@ -63,7 +63,7 @@ wait
 		time.Sleep(10 * time.Millisecond)
 	}
 	if pid == 0 {
-		t.Fatal("fake Pi did not start")
+		t.Fatal("fake agent did not start")
 	}
 	defer syscall.Kill(-pid, syscall.SIGKILL)
 	if err := adapter.Process.Kill(); err != nil {
@@ -75,7 +75,7 @@ wait
 		acquired.Close()
 	}
 	if !errors.Is(err, localstate.ErrLocked) {
-		t.Fatalf("claim released while orphan Pi runs: %v", err)
+		t.Fatalf("claim released while orphan agent runs: %v", err)
 	}
 	if err := syscall.Kill(-pid, syscall.SIGKILL); err != nil {
 		t.Fatal(err)
@@ -92,7 +92,7 @@ wait
 		}
 		time.Sleep(10 * time.Millisecond)
 	}
-	t.Fatal("claim remains locked after Pi exits")
+	t.Fatal("claim remains locked after the agent exits")
 }
 
 func TestInheritedClaimRejectsInvalidDescriptorVariable(t *testing.T) {

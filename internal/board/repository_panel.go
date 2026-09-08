@@ -14,7 +14,7 @@ type repositorySetup struct {
 	repo      config.Repository
 	expected  *config.Repository
 	reviewers []config.Reviewer
-	builtin   *config.Reviewer
+	builtins  []config.Reviewer
 	row       int
 	saving    bool
 	views     []config.View
@@ -49,13 +49,16 @@ func newRepositorySetup(cfg config.Config, name string) (*repositorySetup, error
 		s.expected = &repo
 	}
 	s.repo.PublishActions = append([]config.PublicationAction(nil), repo.PublishActions...)
-	if len(s.reviewers) == 0 {
-		binary, err := os.Executable()
-		if err != nil {
-			return nil, err
+	binary, err := os.Executable()
+	if err != nil {
+		return nil, err
+	}
+	s.reviewers = slices.Clone(cfg.Reviewers)
+	for _, builtin := range config.BuiltinReviewers(binary) {
+		if !slices.ContainsFunc(cfg.Reviewers, func(r config.Reviewer) bool { return r.ID == builtin.ID }) {
+			s.builtins = append(s.builtins, builtin)
+			s.reviewers = append(s.reviewers, builtin)
 		}
-		s.builtin = &config.Reviewer{ID: "pi", Command: []string{binary, "--pi-reviewer"}}
-		s.reviewers = []config.Reviewer{*s.builtin}
 	}
 	if s.repo.Reviewer == "" {
 		s.repo.Reviewer = s.reviewers[0].ID
@@ -147,7 +150,7 @@ func (m Model) updateRepositoryKey(key tea.KeyMsg) (tea.Model, tea.Cmd) {
 		s.saving = true
 		automatic := s.automatic
 		automatic.Selected = slices.Clone(automatic.Selected)
-		path, state, url, repo, builtin, expected := m.configPath, m.stateDir, m.reviewPanel.pr.URL, s.repo, s.builtin, s.expected
+		path, state, url, repo, builtin, expected := m.configPath, m.stateDir, m.reviewPanel.pr.URL, s.repo, s.selectedBuiltin(), s.expected
 		return m, func() tea.Msg {
 			ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
 			defer cancel()
@@ -237,4 +240,13 @@ func repositoryToggleLabel(label string, enabled bool) string {
 		indicator = "[x]"
 	}
 	return indicator + " " + label
+}
+
+func (s *repositorySetup) selectedBuiltin() *config.Reviewer {
+	for i := range s.builtins {
+		if s.builtins[i].ID == s.repo.Reviewer {
+			return &s.builtins[i]
+		}
+	}
+	return nil
 }

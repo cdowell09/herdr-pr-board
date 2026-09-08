@@ -1,0 +1,6 @@
+{"type":"thread.started","thread_id":"review"}
+{"type":"turn.started"}
+{"type":"item.started","item":{"id":"plan","type":"todo_list","items":[{"text":"Review both axes","completed":false}]}}
+{"type":"item.completed","item":{"id":"result","type":"agent_message","text":"{\"version\":1,\"identity\":{\"repository\":\"owner/repo\",\"number\":42,\"head_oid\":\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"base_ref_name\":\"main\"},\"base_oid\":\"bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb\",\"outcome\":{\"status\":\"completed\",\"message\":\"Both review axes completed\",\"findings\":[]}}"}}
+{"type":"item.completed","item":{"id":"plan","type":"todo_list","items":[{"text":"Review both axes","completed":true}]}}
+{"type":"turn.completed","usage":{"input_tokens":100,"output_tokens":50}}

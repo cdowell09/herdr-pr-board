@@ -32,8 +32,8 @@ func run(args []string, stdout, stderr io.Writer) int {
 		fmt.Fprintln(stderr, "herdr-pr-board:", err)
 		return 2
 	}
-	if o.pi {
-		return runPiAdapter(o, os.Stdin, stderr)
+	if o.adapter.enabled {
+		return runAdapter(o.adapter, os.Stdin, stderr)
 	}
 	if o.publication.history != "" {
 		return printPublicationHistory(o.publication.history, stdout, stderr)

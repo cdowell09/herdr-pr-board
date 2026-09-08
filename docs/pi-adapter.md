@@ -39,7 +39,10 @@ Pi receives these arguments:
 --no-context-files --no-approve --skill <skill-file>
 ```
 
-The adapter supplies review instructions and JSON evidence through standard input.
+The adapter supplies review instructions, the selected skill, and JSON evidence through standard input.
+It also supplies the captured comparison diff and commit log.
+Each captured Git command output has a four MiB limit.
+Oversized diff or log output blocks the review.
 Repository instructions remain review evidence.
 Pi must not publish findings or change source files.
 This instruction does not sandbox Pi or its tools.

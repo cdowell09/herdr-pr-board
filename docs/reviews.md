@@ -53,7 +53,9 @@ The default is 30 minutes.
 The timeout includes queue time and execution time.
 PR Board checks current configuration before each launch attempt.
 
-See the [Pi adapter guide](pi-adapter.md) for Pi requirements and its validated event contract.
+Built-in adapters support Pi, Codex, and Claude Code.
+See the [Pi adapter guide](pi-adapter.md) and [Codex and Claude Code guide](agent-adapters.md).
+Each adapter requires its own installed agent CLI.
 Other reviewers do not require Pi.
 Existing Pickr settings remain unchanged.
 
@@ -81,12 +83,15 @@ reviewer = "pi-product"
 ```
 
 Replace the example paths with installed programs and skill files.
-The Pi adapter accepts one explicit skill file per reviewer command.
+Each built-in adapter accepts one explicit skill file per reviewer command.
 Its review prompt and result contract remain fixed.
 PR Board does not provide a prompt-template configuration field.
 
-You can configure a Codex adapter as another reviewer command.
-PR Board does not include a built-in Codex adapter.
+Use `--codex-reviewer` with `--codex-skill` for a Codex profile.
+Use `--claude-reviewer` with `--claude-skill` for a Claude Code profile.
+Repository setup offers all missing built-in reviewers alongside existing reviewer commands.
+Saving setup adds only the selected missing reviewer.
+Existing reviewer IDs and custom commands remain unchanged.
 A bare agent CLI command does not implement the PR Board reviewer contract automatically.
 A custom adapter must read the input and write the validated result described below.
 Keep custom prompts and skill selection inside that adapter or its command arguments.
@@ -217,5 +222,5 @@ The program inherits its claim descriptor as file descriptor three.
 `HERDR_REVIEW_CLAIM_FD=3` identifies that descriptor.
 The program must retain that descriptor until its review work stops.
 It must forward ownership to child processes that can outlive it.
-The Pi reference adapter forwards ownership to Pi.
+The built-in adapters forward ownership to their agent processes.
 The operating system releases ownership after every inherited descriptor closes.

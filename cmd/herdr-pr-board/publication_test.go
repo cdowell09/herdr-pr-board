@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"encoding/json"
 	"os"
+	"slices"
 	"strings"
 	"testing"
 
@@ -82,5 +83,66 @@ func TestRepositorySettingsRevokesAutomaticPublication(t *testing.T) {
 	}
 	if code := run(append(base, "--publish-actions", "", "--auto-publish", "comment"), &stdout, &stderr); code == 0 {
 		t.Fatal("explicit unauthorized selector accepted")
+	}
+}
+
+func TestBuiltinRepositorySetupAddsOnlySelectedReviewer(t *testing.T) {
+	for _, name := range []string{"pi", "codex", "claude"} {
+		t.Run(name, func(t *testing.T) {
+			t.Setenv("HERDR_PLUGIN_STATE_DIR", t.TempDir())
+			t.Setenv("PATH", "")
+			original := validConfigTOML + "\n# Preserve custom reviewer.\n[[reviewers]]\nid = \"custom\"\ncommand = [\"custom-program\", \"literal argument\"]\n"
+			path := writeConfig(t, original)
+			args := []string{"--config", path, "--repository-settings", "acme/repo", "--use-" + name + "-reviewer"}
+			var output bytes.Buffer
+			if code := run(args, &output, &output); code != 0 {
+				t.Fatalf("code=%d output=%s", code, &output)
+			}
+			cfg, err := config.LoadExisting(path)
+			if err != nil {
+				t.Fatal(err)
+			}
+			repo, _ := cfg.RepositoryFor("acme/repo")
+			if len(cfg.Reviewers) != 2 || repo.Reviewer != name || repo.AutoLaunch || len(repo.PublishActions) != 0 || repo.AutoPublish != "" {
+				t.Fatalf("unexpected setup: reviewers=%+v repository=%+v", cfg.Reviewers, repo)
+			}
+			binary, err := os.Executable()
+			if err != nil {
+				t.Fatal(err)
+			}
+			want := []string{binary, "--" + name + "-reviewer"}
+			if !slices.Equal(cfg.Reviewers[1].Command, want) {
+				t.Fatalf("command=%v want=%v", cfg.Reviewers[1].Command, want)
+			}
+			before, err := os.ReadFile(path)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if !bytes.HasPrefix(before, []byte(original)) {
+				t.Fatal("rewrote existing configuration")
+			}
+			output.Reset()
+			if code := run(args, &output, &output); code != 1 || !strings.Contains(output.String(), "already exists") {
+				t.Fatalf("duplicate reviewer accepted: code=%d output=%s", code, &output)
+			}
+			after, err := os.ReadFile(path)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if !bytes.Equal(before, after) {
+				t.Fatal("duplicate setup changed configuration")
+			}
+			for _, conflicting := range []string{"--set-reviewer=custom", "--use-pi-reviewer", "--use-codex-reviewer", "--use-claude-reviewer"} {
+				if conflicting == "--use-"+name+"-reviewer" {
+					continue
+				}
+				if _, err := parseOptions(append(args, conflicting), &bytes.Buffer{}); err == nil {
+					t.Fatalf("accepted conflicting %s", conflicting)
+				}
+			}
+			if _, err := parseOptions([]string{"--use-" + name + "-reviewer"}, &bytes.Buffer{}); err == nil {
+				t.Fatal("setup flag accepted outside setup")
+			}
+		})
 	}
 }

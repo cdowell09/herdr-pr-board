@@ -13,6 +13,15 @@ import (
 // Give an outer wrapper a longer grace period than its child processes.
 // Callers supply standard streams and must use exec.Command, not CommandContext.
 func RunProcess(ctx context.Context, cmd *exec.Cmd, grace time.Duration) error {
+	return RunProcessWithSignal(ctx, cmd, grace, 0)
+}
+
+// RunProcessWithSignal selects the graceful cancellation signal for programs
+// with a different shutdown contract. Zero preserves the default SIGTERM.
+func RunProcessWithSignal(ctx context.Context, cmd *exec.Cmd, grace time.Duration, cancelSignal syscall.Signal) error {
+	if cancelSignal == 0 {
+		cancelSignal = syscall.SIGTERM
+	}
 	if err := ctx.Err(); err != nil {
 		return err
 	}
@@ -28,7 +37,7 @@ func RunProcess(ctx context.Context, cmd *exec.Cmd, grace time.Duration) error {
 		_ = syscall.Kill(-cmd.Process.Pid, syscall.SIGKILL)
 		return err
 	case <-ctx.Done():
-		_ = syscall.Kill(-cmd.Process.Pid, syscall.SIGTERM)
+		_ = syscall.Kill(-cmd.Process.Pid, cancelSignal)
 		timer := time.NewTimer(grace)
 		defer timer.Stop()
 		select {

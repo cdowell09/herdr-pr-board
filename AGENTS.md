@@ -21,7 +21,10 @@ Read [`docs/automatic-reviews.md`](docs/automatic-reviews.md) before changing au
 - `internal/reviewmemory/`: revision history, live claims, failure holds, and concurrency accounting.
 - `internal/review/`: shared reviewer launch policy, captured revisions, timeouts, and outcome recording.
 - `internal/reviewercontract/`: versioned reviewer input, results, and boundary validation.
-- `internal/piadapter/`: isolated Pi checkouts, specification context, event parsing, and claim inheritance.
+- `internal/agentadapter/`: shared isolated checkouts, specification context, result validation, process cleanup, and claim inheritance.
+- `internal/piadapter/`: Pi command arguments and terminal event parsing.
+- `internal/codexadapter/`: Codex command arguments, cancellation signal, and terminal event parsing.
+- `internal/claudeadapter/`: Claude Code command arguments and structured result parsing.
 - `internal/publication/`: action permissions, publication records, and uncertain-response reconciliation.
 - `internal/monitor/`: shared discovery observations, scan ownership, and monitor lifetime.
 - `internal/dispatch/`: automatic eligibility, selected observations, dispatch scheduling, and optional publication.

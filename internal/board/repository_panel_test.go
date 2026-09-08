@@ -1,6 +1,7 @@
 package board
 
 import (
+	"bytes"
 	"context"
 	"os"
 	"path/filepath"
@@ -24,7 +25,7 @@ func TestFirstReviewSetupControlsAndSavedConfiguration(t *testing.T) {
 	}
 	next, _, _ := m.updateRepository(repositorySettingsMsg{url: m.reviewPanel.pr.URL, cfg: cfg})
 	m = next
-	if m.reviewPanel.setup == nil || m.reviewPanel.setup.builtin == nil {
+	if m.reviewPanel.setup == nil || m.reviewPanel.setup.selectedBuiltin() == nil {
 		t.Fatal("first review did not offer Pi setup")
 	}
 	for _, width := range []int{30, 100} {
@@ -154,4 +155,59 @@ func renderedRepositoryLine(t *testing.T, m Model, text string) int {
 	}
 	t.Fatalf("missing %q in panel:\n%s", text, stripANSI(m.View()))
 	return -1
+}
+
+func TestRepositorySetupOffersMissingAdaptersAndPreservesCustomCommands(t *testing.T) {
+	for _, selected := range []string{"codex", "claude"} {
+		t.Run(selected, func(t *testing.T) {
+			m := panelModel(t)
+			m.configPath = filepath.Join(t.TempDir(), "config.toml")
+			m = m.WithPublications(t.TempDir(), nil)
+			data := config.DefaultFile + "\n# Custom Pi must remain unchanged.\n[[reviewers]]\nid = \"pi\"\ncommand = [\"custom-pi\", \"custom argument\"]\n"
+			if err := os.WriteFile(m.configPath, []byte(data), 0600); err != nil {
+				t.Fatal(err)
+			}
+			cfg, err := config.LoadExisting(m.configPath)
+			if err != nil {
+				t.Fatal(err)
+			}
+			m, _, _ = m.updateRepository(repositorySettingsMsg{url: m.reviewPanel.pr.URL, cfg: cfg})
+			setup := m.reviewPanel.setup
+			if setup == nil || len(setup.reviewers) != 3 || setup.selectedBuiltin() != nil {
+				t.Fatalf("setup=%+v", setup)
+			}
+			for i := 0; i < len(setup.reviewers) && setup.repo.Reviewer != selected; i++ {
+				next, _ := m.Update(tea.KeyMsg{Type: tea.KeySpace})
+				m = next.(Model)
+			}
+			if setup.selectedBuiltin() == nil || setup.selectedBuiltin().ID != selected {
+				t.Fatalf("selected builtin=%+v", setup.selectedBuiltin())
+			}
+			next, save := m.Update(tea.KeyMsg{Type: tea.KeyEnter})
+			m = next.(Model)
+			if save == nil {
+				t.Fatal("missing save")
+			}
+			next, _ = m.Update(save())
+			m = next.(Model)
+			if m.reviewPanel.setup != nil {
+				t.Fatalf("save failed: %s", m.reviewPanel.message)
+			}
+			cfg, err = config.LoadExisting(m.configPath)
+			if err != nil {
+				t.Fatal(err)
+			}
+			repo, _ := cfg.RepositoryFor(m.reviewPanel.pr.Repository)
+			if repo.Reviewer != selected || len(cfg.Reviewers) != 2 || cfg.Reviewers[0].Command[0] != "custom-pi" || cfg.Reviewers[1].ID != selected {
+				t.Fatalf("unexpected saved selection: %+v %+v", cfg.Reviewers, repo)
+			}
+			saved, err := os.ReadFile(m.configPath)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if !bytes.HasPrefix(saved, []byte(data)) {
+				t.Fatal("changed existing configuration")
+			}
+		})
+	}
 }

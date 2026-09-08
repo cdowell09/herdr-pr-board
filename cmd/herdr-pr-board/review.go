@@ -9,6 +9,8 @@ import (
 	"os/signal"
 	"syscall"
 
+	"github.com/cdowell09/herdr-pr-board/internal/claudeadapter"
+	"github.com/cdowell09/herdr-pr-board/internal/codexadapter"
 	gh "github.com/cdowell09/herdr-pr-board/internal/github"
 	"github.com/cdowell09/herdr-pr-board/internal/localstate"
 	"github.com/cdowell09/herdr-pr-board/internal/piadapter"
@@ -18,7 +20,7 @@ import (
 	"github.com/cdowell09/herdr-pr-board/internal/reviewmemory"
 )
 
-func runPiAdapter(o options, stdin io.Reader, stderr io.Writer) int {
+func runAdapter(o adapterOptions, stdin io.Reader, stderr io.Writer) int {
 	data, err := io.ReadAll(io.LimitReader(stdin, 4*1024*1024+1))
 	if err != nil {
 		return fail(stderr, err)
@@ -32,7 +34,17 @@ func runPiAdapter(o options, stdin io.Reader, stderr io.Writer) int {
 	}
 	ctx, cancel := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer cancel()
-	if err := piadapter.Run(ctx, input, piadapter.Options{Pi: o.piExecutable, Skill: o.piSkill}); err != nil {
+	switch o.name {
+	case "pi":
+		err = piadapter.Run(ctx, input, piadapter.Options{Pi: o.executable, Skill: o.skill})
+	case "codex":
+		err = codexadapter.Run(ctx, input, codexadapter.Options{Codex: o.executable, Skill: o.skill})
+	case "claude":
+		err = claudeadapter.Run(ctx, input, claudeadapter.Options{Claude: o.executable, Skill: o.skill})
+	default:
+		err = fmt.Errorf("unknown review adapter %q", o.name)
+	}
+	if err != nil {
 		return fail(stderr, err)
 	}
 	return 0

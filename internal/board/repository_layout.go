@@ -60,9 +60,9 @@ func (m Model) repositoryContent() []repositoryLine {
 		section("Global views")
 		add("No configured views are available.", -1)
 	}
-	if s.builtin != nil {
-		section("Pi reviewer")
-		add("Install Pi and its review skill before running a review.", -1)
+	if builtin := s.selectedBuiltin(); builtin != nil {
+		section("New reviewer: " + builtin.ID)
+		add("Install the agent CLI and review skill before running a review.", -1)
 	}
 	section("Monitor")
 	if observed := m.reviewPanel.monitor.ObservedAt; !observed.IsZero() {

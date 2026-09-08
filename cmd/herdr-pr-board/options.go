@@ -4,23 +4,28 @@ import (
 	"errors"
 	"flag"
 	"io"
+
+	"github.com/cdowell09/herdr-pr-board/internal/config"
 )
 
 type options struct {
-	monitor      bool
-	eligibility  bool
-	publication  *publicationOptions
-	configPath   string
-	validate     bool
-	json         bool
-	view         string
-	review       string
-	history      string
-	reviewer     string
-	rerun        bool
-	pi           bool
-	piExecutable string
-	piSkill      string
+	monitor     bool
+	eligibility bool
+	publication *publicationOptions
+	configPath  string
+	validate    bool
+	json        bool
+	view        string
+	review      string
+	history     string
+	reviewer    string
+	rerun       bool
+	adapter     adapterOptions
+}
+
+type adapterOptions struct {
+	name, executable, skill string
+	enabled                 bool
 }
 
 func parseOptions(args []string, stderr io.Writer) (options, error) {
@@ -37,9 +42,14 @@ func parseOptions(args []string, stderr io.Writer) (options, error) {
 	f.StringVar(&o.history, "review-history", "", "print local history for a GitHub PR URL")
 	f.StringVar(&o.reviewer, "reviewer", "", "configured reviewer ID (requires --review)")
 	f.BoolVar(&o.rerun, "rerun", false, "explicitly retry or repeat a review")
-	f.BoolVar(&o.pi, "pi-reviewer", false, "run the Pi reference adapter with JSON input on stdin")
-	f.StringVar(&o.piExecutable, "pi-executable", "", "Pi executable (requires --pi-reviewer)")
-	f.StringVar(&o.piSkill, "pi-skill", "", "code-review skill path (requires --pi-reviewer)")
+	var adapters []*adapterOptions
+	for _, builtin := range config.BuiltinReviewers("") {
+		a := &adapterOptions{name: builtin.ID}
+		f.BoolVar(&a.enabled, a.name+"-reviewer", false, "run the "+a.name+" adapter with JSON input on stdin")
+		f.StringVar(&a.executable, a.name+"-executable", "", "agent executable (requires --"+a.name+"-reviewer)")
+		f.StringVar(&a.skill, a.name+"-skill", "", "review skill path (requires --"+a.name+"-reviewer)")
+		adapters = append(adapters, a)
+	}
 	o.publication = addPublicationFlags(f)
 	if err := f.Parse(args); err != nil {
 		return o, err
@@ -50,18 +60,25 @@ func parseOptions(args []string, stderr io.Writer) (options, error) {
 	specified := map[string]bool{}
 	f.Visit(func(flag *flag.Flag) { specified[flag.Name] = true })
 	modes := o.publication.modes()
-	for _, enabled := range []bool{o.eligibility, o.monitor, o.validate, o.json, specified["review"], specified["review-history"], o.pi} {
+	for _, enabled := range []bool{o.eligibility, o.monitor, o.validate, o.json, specified["review"], specified["review-history"]} {
 		if enabled {
 			modes++
 		}
 	}
-	invalid := modes > 1 || f.NArg() != 0
+	invalid := false
+	for _, a := range adapters {
+		if a.enabled {
+			modes++
+			o.adapter = *a
+		}
+		invalid = invalid || (specified[a.name+"-executable"] || specified[a.name+"-skill"]) && !a.enabled
+	}
+	invalid = invalid || modes > 1 || f.NArg() != 0
 	invalid = invalid || specified["view"] && (!o.json || o.view == "")
 	invalid = invalid || specified["review"] && o.review == "" || specified["review-history"] && o.history == ""
 	invalid = invalid || (specified["reviewer"] || specified["rerun"]) && o.review == ""
 	invalid = invalid || specified["reviewer"] && o.reviewer == ""
-	invalid = invalid || (specified["pi-executable"] || specified["pi-skill"]) && !o.pi
-	invalid = invalid || o.pi && specified["config"]
+	invalid = invalid || o.adapter.enabled && specified["config"]
 	if invalid {
 		return o, errors.New("invalid option combination or unexpected positional arguments")
 	}

@@ -77,6 +77,7 @@ Install these tools:
 
 The plugin supports macOS and Linux.
 Local reviews also require a configured reviewer program.
+Built-in adapters support Pi, Codex, and Claude Code.
 See [manual reviews](docs/reviews.md) for reviewer requirements.
 
 Authenticate GitHub CLI before you use the plugin:
@@ -479,6 +480,7 @@ The footer pairs each keybinding with its action. On narrow terminals, the pairs
 
 Press `v` to open the selected PR's review history.
 The first review action offers repository setup when no repository settings exist.
+Choose Pi, Codex, Claude Code, or an existing custom reviewer command.
 Use the arrow keys and Space to change settings.
 Select global automatic view IDs explicitly in repository settings.
 These view selections apply to all repositories that allow automatic launches.
