@@ -129,9 +129,9 @@ var keyHelp = []keyHelpEntry{
 	{"q Ctrl+C", "quit"},
 }
 
-// documentedKeys lists every key literal the README must document. The
-// README drift test fails when one is missing, so a new binding added to
-// updateKey or updateFilter must be added here and to the README.
+// documentedKeys lists every key literal the board and review guides must document.
+// The documentation drift test fails when one is missing. Add new bindings
+// from updateKey or updateFilter here and to the corresponding guide.
 var documentedKeys = []string{
 	"1", "9", "Tab", "Shift+Tab", "h", "l", "←", "→",
 	"j", "k", "↑", "↓", "g", "G", "Home", "End",
