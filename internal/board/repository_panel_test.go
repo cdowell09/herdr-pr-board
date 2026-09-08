@@ -81,6 +81,9 @@ func (f *publicationFake) Publish(_ context.Context, _ string, runID string, act
 	f.runID, f.action = runID, action
 	return publication.Attempt{Action: action, Status: publication.Published}, nil
 }
+func (f *publicationFake) PublishConfigured(ctx context.Context, url, runID string) (publication.Attempt, error) {
+	return f.Publish(ctx, url, runID, config.PublishComment)
+}
 func (*publicationFake) History(string) ([]publication.Attempt, error) { return nil, nil }
 
 func TestPublicationControlsTargetLatestCompletion(t *testing.T) {

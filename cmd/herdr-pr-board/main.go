@@ -138,7 +138,7 @@ func run(args []string, stdout, stderr io.Writer) int {
 		return printEligibility(cfg, service, reviews, stdout, stderr)
 	}
 	if o.review != "" {
-		return printReview(o, reviews, stdout, stderr)
+		return printReview(o, reviews, publisher, stdout, stderr)
 	}
 
 	model, err := board.NewModelWithConfigPath(cfg, o.configPath, service, func(settings config.SidebarConfig) *sidebar.Reporter {
@@ -157,6 +157,9 @@ func run(args []string, stdout, stderr io.Writer) int {
 		cancelReviews()
 		if reviews != nil {
 			reviews.Wait()
+		}
+		if publisher != nil {
+			publisher.Wait()
 		}
 	}()
 	if reviews != nil {

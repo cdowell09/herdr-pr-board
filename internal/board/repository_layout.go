@@ -53,7 +53,7 @@ func (m Model) repositoryContent() []repositoryLine {
 		}
 		add(prefix+row, i)
 		if i == 5 {
-			add("For completed automatic reviews.", -1)
+			add("For every completed review.", -1)
 		}
 	}
 	if len(s.views) == 0 {
