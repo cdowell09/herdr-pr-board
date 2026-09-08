@@ -31,6 +31,16 @@ func Inspect(dir string, cfg config.Config) Status {
 	if !filepath.IsAbs(dir) {
 		return Status{State: Unknown, Message: "absolute state directory is required"}
 	}
+	info, err := os.Stat(dir)
+	if errors.Is(err, os.ErrNotExist) {
+		return Status{State: Stopped, Message: "start the monitor in another terminal"}
+	}
+	if err != nil {
+		return Status{State: Unknown, Message: err.Error()}
+	}
+	if !info.IsDir() {
+		return Status{State: Unknown, Message: "state path must be a directory"}
+	}
 	owner, err := localstate.TryLock(filepath.Join(dir, "monitor.lock"))
 	if err == nil {
 		owner.Close()

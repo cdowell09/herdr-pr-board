@@ -34,7 +34,7 @@ func Open(ctx context.Context) error {
 	}
 	defer lock.Close()
 	path := filepath.Join(dir, "pane-id")
-	data, err := os.ReadFile(path)
+	data, err := localstate.ReadFile(path)
 	if err != nil && !os.IsNotExist(err) {
 		return err
 	}
@@ -108,7 +108,7 @@ func Prepare(ctx context.Context) (string, func() error, error) {
 		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 		defer cancel()
 		return changePane(ctx, dir, func(path string) error {
-			data, err := os.ReadFile(path)
+			data, err := localstate.ReadFile(path)
 			if os.IsNotExist(err) {
 				return nil
 			}

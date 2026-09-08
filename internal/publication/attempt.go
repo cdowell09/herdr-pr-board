@@ -84,7 +84,7 @@ type record struct {
 
 func (s *Service) readAll(runID string, action config.PublicationAction) ([]Attempt, error) {
 	var r record
-	data, err := os.ReadFile(s.path(runID, action))
+	data, err := localstate.ReadFile(s.path(runID, action))
 	if err != nil {
 		return nil, err
 	}

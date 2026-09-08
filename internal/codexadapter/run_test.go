@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"os"
 	"path/filepath"
+	"runtime"
 	"slices"
 	"strconv"
 	"testing"
@@ -53,7 +54,11 @@ func TestCodexCommandIsolationAndSchema(t *testing.T) {
 		t.Fatalf("schema=%s error=%v", schema, err)
 	}
 	info, err := os.Stat(filepath.Join(work, "result-schema.json"))
-	if err != nil || info.Mode().Perm() != 0600 {
+	if err != nil {
+		t.Fatal(err)
+	}
+	// Windows uses inherited directory ACLs, not Unix permission bits.
+	if runtime.GOOS != "windows" && info.Mode().Perm() != 0600 {
 		t.Fatalf("schema permissions: %v %v", info, err)
 	}
 }

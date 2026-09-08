@@ -124,7 +124,7 @@ func (s *Store) transaction(fn func(*history) error) error {
 	}
 	defer lock.Close()
 	var h history
-	data, err := os.ReadFile(filepath.Join(s.dir, "history.json"))
+	data, err := localstate.ReadFile(filepath.Join(s.dir, "history.json"))
 	if err == nil {
 		if err := json.Unmarshal(data, &h); err != nil {
 			return fmt.Errorf("invalid review history: %w", err)

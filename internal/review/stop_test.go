@@ -31,11 +31,27 @@ func TestStoppableReviewerProcess(t *testing.T) {
 	}
 	ctx, cancel := signal.NotifyContext(context.Background(), syscall.SIGTERM)
 	defer cancel()
-	claim := os.NewFile(3, "claim")
+	claim, err := cli.InheritedFile("HERDR_REVIEW_CLAIM_FD")
+	if err != nil || claim == nil {
+		t.Fatalf("missing claim: %v", err)
+	}
 	defer claim.Close()
-	child := exec.Command("sh", "-c", `trap '' TERM; echo $$ > "$1"; sleep 30 & wait`, "sh", filepath.Join(filepath.Dir(input.ResultPath), "child.pid"))
-	child.ExtraFiles = []*os.File{claim}
+	child := exec.Command(os.Args[0], "-test.run=^TestStoppableReviewerChild$", "--", filepath.Join(filepath.Dir(input.ResultPath), "child.pid"))
+	if err := cli.PassFile(child, claim, "HERDR_REVIEW_CLAIM_FD"); err != nil {
+		t.Fatal(err)
+	}
 	_ = cli.RunProcess(ctx, child, 100*time.Millisecond)
+}
+
+func TestStoppableReviewerChild(t *testing.T) {
+	if os.Getenv("PR_BOARD_STOP_REVIEWER") != "1" {
+		return
+	}
+	signal.Ignore(syscall.SIGTERM)
+	if err := os.WriteFile(os.Args[len(os.Args)-1], []byte(strconv.Itoa(os.Getpid())), 0600); err != nil {
+		t.Fatal(err)
+	}
+	time.Sleep(30 * time.Second)
 }
 
 func TestStopFromAnotherBoardCancelsOnlySelectedReviewerAndChildren(t *testing.T) {
@@ -101,6 +117,7 @@ func TestStopFromAnotherBoardCancelsOnlySelectedReviewerAndChildren(t *testing.T
 			time.Sleep(10 * time.Millisecond)
 		}
 	}
+	alive := [2]func() bool{reviewChildAlive(t, childPIDs[0]), reviewChildAlive(t, childPIDs[1])}
 	for i := range runs {
 		if err := controller.Stop(runs[i].ID); err != nil {
 			t.Fatal(err)
@@ -113,8 +130,8 @@ func TestStopFromAnotherBoardCancelsOnlySelectedReviewerAndChildren(t *testing.T
 		case <-ctx.Done():
 			t.Fatal("stop did not finish")
 		}
-		if err := syscall.Kill(childPIDs[i], 0); err != syscall.ESRCH {
-			t.Fatalf("reviewer child %d survived cancellation: %v", childPIDs[i], err)
+		if alive[i]() {
+			t.Fatalf("reviewer child %d survived cancellation", childPIDs[i])
 		}
 		if i == 0 {
 			select {
@@ -122,8 +139,8 @@ func TestStopFromAnotherBoardCancelsOnlySelectedReviewerAndChildren(t *testing.T
 				t.Fatalf("stop affected another review: %+v", got)
 			default:
 			}
-			if err := syscall.Kill(childPIDs[1], 0); err != nil {
-				t.Fatalf("other reviewer child stopped: %v", err)
+			if !alive[1]() {
+				t.Fatal("other reviewer child stopped")
 			}
 		}
 		if err := controller.ReviewCapacity(); err != nil {

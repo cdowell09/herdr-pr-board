@@ -4,7 +4,6 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"os"
 	"path/filepath"
 	"time"
 
@@ -86,7 +85,7 @@ func (s *Source) write(snapshot discovery.Snapshot) error {
 
 func (s *Source) read() (discovery.Snapshot, error) {
 	var r record
-	b, err := os.ReadFile(filepath.Join(s.dir, "monitor-snapshot.json"))
+	b, err := localstate.ReadFile(filepath.Join(s.dir, "monitor-snapshot.json"))
 	if err != nil {
 		return discovery.Snapshot{}, err
 	}

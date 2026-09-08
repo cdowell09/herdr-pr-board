@@ -51,3 +51,5 @@ func OpenRegular(path string, write bool) (*os.File, error) {
 	f := os.NewFile(uintptr(fd), path)
 	return regularFile(f, write)
 }
+
+func openRead(path string) (*os.File, error) { return os.Open(path) }

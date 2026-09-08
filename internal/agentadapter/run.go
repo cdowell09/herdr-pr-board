@@ -132,6 +132,9 @@ func runAgent(ctx context.Context, in reviewercontract.Input, opts Options, work
 	if err != nil {
 		return err
 	}
+	if err := cli.ResolveNodeShim(cmd); err != nil {
+		return err
+	}
 	claim, err := inheritedClaim()
 	if err != nil {
 		return err

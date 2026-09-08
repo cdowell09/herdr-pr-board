@@ -4,6 +4,7 @@ package localstate
 import (
 	"context"
 	"errors"
+	"io"
 	"os"
 	"path/filepath"
 	"strings"
@@ -37,6 +38,17 @@ func Lock(ctx context.Context, path string) (*os.File, error) {
 		case <-timer.C:
 		}
 	}
+}
+
+// ReadFile permits concurrent atomic replacement while retaining one complete
+// file version. It follows links, including user configuration links.
+func ReadFile(path string) ([]byte, error) {
+	file, err := openRead(path)
+	if err != nil {
+		return nil, err
+	}
+	defer file.Close()
+	return io.ReadAll(file)
 }
 
 func AtomicWrite(path string, data []byte) error {
