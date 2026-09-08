@@ -31,19 +31,21 @@ The changelog omits `chore(release):` commits.
 Keep feature and bug-fix changes separate from release preparation.
 
 1. Change `version` in `herdr-plugin.toml`.
-2. Generate `CHANGELOG.md` with the new version.
-3. Review the generated entries against the commits since the previous release.
-4. Run every completion gate from the repository root.
-5. Commit the release preparation with a `chore(release):` subject.
-6. Review the change and merge it into `main`.
-7. Pull the updated `main` branch.
+2. Write `docs/releases/vX.Y.Z.md` with the release summary and feature highlights.
+3. Generate `CHANGELOG.md` with the new version and highlights.
+4. Review the highlights and generated entries against the commits since the previous release.
+5. Run every completion gate from the repository root.
+6. Commit the release preparation with a `chore(release):` subject.
+7. Review the change and merge it into `main`.
+8. Pull the updated `main` branch.
 
 Use the manifest version for the changelog tag:
 
 ```sh
 version="$(python3 -c 'import tomllib; print(tomllib.load(open("herdr-plugin.toml", "rb"))["version"])')"
-git-cliff --tag "v$version" --offline --output CHANGELOG.md
-git-cliff --unreleased --tag "v$version" --strip header --offline
+highlights="docs/releases/v$version.md"
+git-cliff --tag "v$version" --with-tag-message "$(cat "$highlights")" --offline --output CHANGELOG.md
+git-cliff --unreleased --tag "v$version" --with-tag-message "$(cat "$highlights")" --strip header --offline
 ```
 
 The first git-cliff command generates the full changelog.
@@ -51,6 +53,24 @@ The second git-cliff command previews only the next release notes.
 These commands do not create a Git tag.
 Do not edit generated entries directly.
 Change `cliff.toml` when the generated format needs changes.
+
+### Write feature highlights
+
+Start the highlights file with one sentence that explains the release's main benefit.
+Add a `### Highlights` heading and three to five short bullets.
+Describe user-visible changes and their value.
+Group related commits into one feature description.
+Add setup requirements or upgrade instructions when needed.
+See [v0.4.0 highlights](releases/v0.4.0.md) for an example.
+
+Maintainers write the highlights.
+git-cliff generates the detailed changelog from commits.
+The template puts highlights before a collapsed full changelog.
+The `### Highlights` heading identifies curated tag messages.
+Older tags without that heading retain their existing format.
+
+Review both parts before merging the release preparation.
+Do not list unshipped features in the highlights.
 
 Run the completion gates:
 
@@ -75,7 +95,7 @@ Set the release version to the manifest version.
 ```sh
 version="$(python3 -c 'import tomllib; print(tomllib.load(open("herdr-plugin.toml", "rb"))["version"])')"
 python3 scripts/validate_release.py herdr-plugin.toml "v$version"
-git tag -a "v$version" -m "Release v$version"
+git tag -a "v$version" --cleanup=verbatim -F "docs/releases/v$version.md"
 git push origin "v$version"
 ```
 
@@ -87,7 +107,11 @@ The workflow creates the GitHub release only after validation succeeds.
 A failed validation does not create a GitHub release.
 
 The workflow uses git-cliff and `cliff.toml` to generate notes for the pushed tag.
-It passes those notes to `gh release create` with `--notes-file`.
+It reads the highlights from the annotated tag message.
+It passes the highlights and detailed changelog to `gh release create` with `--notes-file`.
+Use the same highlights file for changelog generation and tag creation.
+Use `--cleanup=verbatim` to preserve Markdown headings in the tag message.
+Do not replace a published tag to change release wording.
 It does not use GitHub-generated notes.
 Review the generated notes on the release page.
 The release notes contain only the tagged release.

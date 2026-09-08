@@ -49,8 +49,6 @@ jobs:
           fi
       - name: Test
         run: go test ./...
-      - name: Test release validation
-        run: python3 -B -m unittest discover -s scripts -p '*_test.py'
       - name: Validate changelog generation
         uses: orhun/git-cliff-action@3d96a18cc4ec17e9dc69ddcc424ccafaf1f78ce2 # v4
         with:
@@ -59,6 +57,11 @@ jobs:
           args: --unreleased --strip header --offline
         env:
           OUTPUT: ${{ runner.temp }}/changelog-preview.md
+      - name: Test release validation
+        run: |
+          export PATH="$RUNNER_TEMP/git-cliff/bin:$PATH"
+          command -v git-cliff
+          python3 -B -m unittest discover -s scripts -p '*_test.py'
       - name: Race test
         run: go test -race ./...
       - name: Vet
