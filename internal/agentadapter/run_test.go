@@ -244,6 +244,35 @@ func TestRunBoundsAgentStreams(t *testing.T) {
 	}
 }
 
+func TestRunPreparesIOAndCleansUpAfterEveryProcessOutcome(t *testing.T) {
+	for _, mode := range []string{"completed", "nonzero_exit", "terminal_error", "launch_failure"} {
+		t.Run(mode, func(t *testing.T) {
+			in, opts := prepareRun(t, mode)
+			cleaned := false
+			opts.PrepareIO = func(cmd *exec.Cmd, prompt string) (func(), error) {
+				if cmd.Stdin == nil || cmd.Stdout == nil || cmd.Stderr == nil || cmd.Dir == "" {
+					t.Fatal("protocol setup did not receive configured streams and checkout")
+				}
+				cmd.Stdin = strings.NewReader("adapted prompt\n" + prompt)
+				if mode == "launch_failure" {
+					cmd.Path = filepath.Join(t.TempDir(), "missing-agent")
+				}
+				return func() { cleaned = true }, nil
+			}
+			err := Run(context.Background(), in, opts)
+			if (err == nil) != (mode == "completed") || !cleaned {
+				t.Fatalf("error=%v cleaned=%v", err, cleaned)
+			}
+			if mode == "completed" {
+				data, err := os.ReadFile(os.Getenv("TEST_PROMPT"))
+				if err != nil || !strings.HasPrefix(string(data), "adapted prompt\n") {
+					t.Fatalf("protocol prompt was replaced: %s %v", data, err)
+				}
+			}
+		})
+	}
+}
+
 func prepareRun(t *testing.T, mode string) (reviewercontract.Input, Options) {
 	t.Helper()
 	// Each fixture exits after synchronous work; omit the race runtime's exit sleep.
