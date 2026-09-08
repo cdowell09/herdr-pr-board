@@ -52,7 +52,7 @@ func TestViewerReviewsPaginationAndCache(t *testing.T) {
 }
 
 func TestViewerReviewsPageFailuresPreserveMetadata(t *testing.T) {
-	for _, failure := range []string{"capacity", "transport", "partial", "cursor"} {
+	for _, failure := range []string{"capacity", "transport", "decode", "exit", "no_data", "empty_data", "partial_no_rate", "partial", "cursor"} {
 		t.Run(failure, func(t *testing.T) {
 			calls := 0
 			client := newEnrichmentTestClient(func(context.Context, ...string) ([]byte, error) {
@@ -66,6 +66,21 @@ func TestViewerReviewsPageFailuresPreserveMetadata(t *testing.T) {
 				}
 				if failure == "transport" {
 					return nil, errors.New("offline")
+				}
+				if failure == "decode" {
+					return []byte("invalid JSON"), nil
+				}
+				if failure == "exit" {
+					return []byte(`{"data":{"rateLimit":{"limit":5000,"remaining":4995,"cost":3}}}`), errors.New("page failed")
+				}
+				if failure == "no_data" {
+					return []byte(`{"errors":[{"message":"rate limit exhausted"}]}`), errors.New("GraphQL failure")
+				}
+				if failure == "empty_data" {
+					return []byte(`{"data":null}`), nil
+				}
+				if failure == "partial_no_rate" {
+					return []byte(`{"data":{"p0":{"pullRequest":{"reviews":null}}},"errors":[{"message":"reviews failed","path":["p0","pullRequest","reviews"]}]}`), errors.New("partial response")
 				}
 				if failure == "cursor" {
 					return reviewResponse(`[]`, `{"hasNextPage":true,"endCursor":"next"}`, 4996, 2), nil
@@ -82,10 +97,14 @@ func TestViewerReviewsPageFailuresPreserveMetadata(t *testing.T) {
 				if err == nil || calls != 1 || rate.Remaining != 1 {
 					t.Fatalf("budget: %#v %v calls %d", rate, err, calls)
 				}
+			} else if failure == "transport" || failure == "decode" || failure == "exit" || failure == "no_data" || failure == "empty_data" || failure == "partial_no_rate" {
+				if err == nil || !strings.Contains(err.Error(), "load viewer reviews") || calls != 2 {
+					t.Fatalf("page failure must reach discovery: %v, calls %d", err, calls)
+				}
 			} else if err != nil || len(warnings) == 0 {
 				t.Fatalf("failure: %v %v", warnings, err)
 			}
-			if failure == "partial" && (rate.Remaining != 4995 || rate.Cost != 3) {
+			if (failure == "partial" || failure == "exit") && (rate.Remaining != 4995 || rate.Cost != 3) {
 				t.Fatalf("lost failure rates: %#v", rate)
 			}
 		})
@@ -187,7 +206,7 @@ func TestViewerReviewsRetryIncompleteObservations(t *testing.T) {
 			}, config.GitHubConfig{CIBatchSize: 1})
 			prs := []PullRequest{{Repository: "acme/repo", Number: 1, URL: "one"}}
 			rate, warnings, err := client.EnrichCI(context.Background(), prs, RateResource{})
-			if err != nil || len(warnings) == 0 || prs[0].CI != CINone || (prs[0].ViewerReviews != nil && prs[0].ViewerReviews.Complete) {
+			if (first == "partial" && err == nil) || (first == "unknown" && (err != nil || len(warnings) == 0)) || prs[0].CI != CINone || (prs[0].ViewerReviews != nil && prs[0].ViewerReviews.Complete) {
 				t.Fatalf("failed retrieval: %#v %v %v", prs[0], warnings, err)
 			}
 			failedCalls := calls
@@ -200,5 +219,25 @@ func TestViewerReviewsRetryIncompleteObservations(t *testing.T) {
 				t.Fatalf("complete cache: %v %v calls %d", warnings, err, calls)
 			}
 		})
+	}
+}
+
+func TestViewerReviewsKeepsPageDataWhenRateFailureRequiresRefresh(t *testing.T) {
+	calls := 0
+	client := newEnrichmentTestClient(func(context.Context, ...string) ([]byte, error) {
+		calls++
+		if calls == 1 {
+			return reviewResponse(`[]`, `{"hasNextPage":true,"endCursor":"next"}`, 4998, 2), nil
+		}
+		return []byte(`{"data":{"p0":{"pullRequest":{"reviews":{"nodes":[{"fullDatabaseId":42,"state":"APPROVED","submittedAt":"2026-01-01T00:00:00Z","commit":{"oid":"head"}}],"pageInfo":{"hasNextPage":false}}}}},"errors":[{"message":"rate unavailable","path":["rateLimit"]}]}`), errors.New("partial response")
+	}, config.GitHubConfig{CIBatchSize: 1})
+	prs := []PullRequest{{Repository: "acme/repo", Number: 1, URL: "one"}}
+	rate, warnings, err := client.EnrichCI(context.Background(), prs, RateResource{})
+	observation := prs[0].ViewerReviews
+	if err == nil || len(warnings) != 1 || calls != 2 || rate.Remaining != 4998 || rate.Cost != 2 {
+		t.Fatalf("missing failure evidence: rate %#v warnings %v error %v calls %d", rate, warnings, err, calls)
+	}
+	if observation == nil || !observation.Complete || len(observation.Reviews) != 1 || observation.Reviews[0].ID != 42 || prs[0].CI != CINone {
+		t.Fatalf("usable page data lost: %#v", prs[0])
 	}
 }
