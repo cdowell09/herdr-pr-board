@@ -56,7 +56,8 @@ The **POSTED** column shows submitted reviews from your authenticated GitHub acc
 | `–` | No submitted reviews were found. |
 | `?` | Review history, publication origin, or a publication outcome is uncertain. |
 
-The selected detail identifies reviews on the current head and older commits for each source.
+The selected detail shows whether each source has a review on the current head.
+Otherwise, it identifies older reviews or an unknown revision.
 A newer commit does not inherit a completed local review.
 Draft reviews and ordinary PR conversation comments do not count as submitted reviews.
 Dismissed reviews still count as posts. The column does not represent approval status.
@@ -73,6 +74,10 @@ Install these tools:
 - Herdr 0.8.0 or later
 - GitHub CLI (`gh`)
 - Go 1.24 or later
+
+The plugin supports macOS and Linux.
+Local reviews also require a configured reviewer program.
+See [manual reviews](docs/reviews.md) for reviewer requirements.
 
 Authenticate GitHub CLI before you use the plugin:
 
@@ -141,6 +146,8 @@ herdr plugin install cdowell09/herdr-pr-board
 Maintainers must follow the [release guide](docs/releasing.md).
 The release workflow validates the tag against `herdr-plugin.toml`.
 The release contains source only.
+See [CHANGELOG.md](CHANGELOG.md) for release changes.
+The release workflow uses `git-cliff` to generate release notes from commit history.
 
 ## Open the board
 
@@ -189,7 +196,9 @@ bin/herdr-pr-board --json --view review --config path/to/config.toml
 Each invocation attempts a fresh scan.
 The command emits one versioned JSON document on standard output.
 Diagnostics use standard error.
-The result includes revision identity, CI, observation times, limits, rates, and structured errors.
+The result includes revision identity, CI, submitted reviews, observation times, limits, rates, and structured errors.
+Submitted reviews come from the authenticated GitHub account.
+The JSON snapshot does not include local review findings or publication records.
 Unavailable metadata uses `null`.
 Result completeness remains unknown, even when Search succeeds.
 Partial results preserve available rows and produce exit status `1`.
@@ -303,6 +312,11 @@ scope = "configured"
 enabled = true
 ttl = "15m"
 review_view = "review"
+
+[review]
+auto_views = []
+max_concurrency = 1
+timeout = "30m"
 ```
 
 Each view uses a GitHub PR search query.
@@ -322,7 +336,7 @@ The plugin combines the scoped results. The plugin removes duplicate PR URLs.
 | `github.limit_per_scope` | `100` | An integer from 1 through 1000 | The maximum number of PRs that each search query returns. |
 | `github.max_concurrency` | `4` | An integer from 1 through 8 | The maximum number of Search API requests that the plugin sends at the same time across all views and scopes during a refresh. |
 | `github.ci_batch_size` | `25` | An integer from 1 through 50 | The number of PRs in one GraphQL metadata query. |
-| `github.scopes` | `["user:@me"]` | A list that is not empty. Each entry must be `user:name`, `org:name`, or `repo:owner/name`. Each entry must be unique. | The scopes that views with `scope = "configured"` use. `@me` refers to your GitHub account. |
+| `github.scopes` | `["user:@me"]` | Each entry must be `user:name`, `org:name`, or `repo:owner/name`. Each entry must be unique. Configured views require at least one scope. | The scopes that views with `scope = "configured"` use. `@me` refers to your GitHub account. |
 | `[[views]].id` | None | Lowercase letters, digits, `-`, and `_`. The ID must start with a letter. Each ID must be unique. | The ID of the view. |
 | `[[views]].title` | None | A string that is not empty. | The name of the view in the board. |
 | `[[views]].query` | None | A GitHub PR search that is not empty. | The PRs that the view shows. |
@@ -330,6 +344,12 @@ The plugin combines the scoped results. The plugin removes duplicate PR URLs.
 | `sidebar.enabled` | `true` | `true` or `false` | Report PR counts into Herdr sidebar tokens after each full refresh. |
 | `sidebar.ttl` | `"15m"` | `"0"` or a Go duration of `1m` or more, for example `"15m"` or `"1h"` | How long the reported tokens stay visible after the last report. `"0"` keeps the tokens until the next report. |
 | `sidebar.review_view` | `"review"` | Lowercase letters, digits, `-`, and `_`. The value must start with a letter. | The view whose PR count reports as the `$prs_review` token. When no view has this ID, the plugin omits the token. |
+| `review.auto_views` | `[]` | Unique configured view IDs | The views that supply automatic review candidates. An empty list disables automatic reviews. |
+| `review.max_concurrency` | `1` | An integer from 1 through 8 | The shared limit for simultaneous manual and automatic reviews in one state directory. |
+| `review.timeout` | `"30m"` | A Go duration from `"1s"` through `"24h"` | The review timeout, including queue time and execution time. |
+
+Reviewer commands and repository permissions require separate configuration.
+See [manual reviews](docs/reviews.md) and [repository setup and publication](docs/repository-publication.md) for those settings.
 
 When the board starts, it makes sure that the configuration is correct. If the configuration has a mistake, the board does not start. The error message gives the name of the setting that is wrong.
 
@@ -402,8 +422,10 @@ The board reports these tokens:
 
 The board omits `$prs_ci` when no check failed. It omits `$prs_review` when no view has the configured ID. The board does not report after a refresh with a failed view. It keeps the previous tokens until they expire.
 
-The tokens appear under the workspace that runs the board. Each token expires after `sidebar.ttl`.
-When you close the board, the tokens expire, and the sidebar row disappears.
+The tokens appear under the workspace that runs the board.
+With a nonzero `sidebar.ttl`, tokens expire after the last report.
+Closing the board stops reports.
+With `sidebar.ttl = "0"`, closing the board does not expire tokens.
 The headless monitor does not report workspace tokens.
 The board reports tokens only when Herdr starts it. When you run the binary directly, the board does not report.
 
@@ -438,6 +460,10 @@ The reporting needs the `herdr` command on `PATH`. The board must run inside Her
 | `R` | Refresh all views. |
 | `Enter`, `o` | Open the selected PR in a browser. |
 | `q`, `Ctrl+C` | Close the board. |
+
+The board sorts PRs by update time, with the most recent first.
+The filter matches repository names, titles, authors, and PR numbers.
+The filter ignores letter case and makes no GitHub requests.
 
 Press `E` to edit the active configuration while the board runs. The board uses `$VISUAL`, `$EDITOR`, or `vi`.
 It validates the file after the editor exits. It reloads valid changes and refreshes all views.
@@ -495,6 +521,8 @@ Changing settings does not publish earlier completed reviews.
 | `q`, `Ctrl+C` | Close the board and stop its review requests. |
 
 Reviews continue when you close the panel.
+Closing the board cancels its queued and active reviews.
+The background monitor and its reviews continue.
 The board remains responsive while reviews run.
 The saved **After review** setting controls automatic posting.
 Select **Keep local** to publish findings only with the manual controls.
@@ -563,14 +591,17 @@ Run these checks from the repository root:
 ```sh
 gofmt -w cmd internal
 go test ./...
+python3 -B -m unittest discover -s scripts -p '*_test.py'
 go vet ./...
+go run honnef.co/go/tools/cmd/staticcheck@v0.6.1 ./...
 go test -race ./...
 go build -o bin/herdr-pr-board ./cmd/herdr-pr-board
 bash -n bin/open bin/run
 git diff --check
 ```
 
-The CI workflow enforces the same checks on pull requests and on `main`:
+CI checks pull requests and `main`.
+It also validates release tooling and builds each supported platform:
 
 ![CI completion gates](docs/images/ci-checks.png)
 
