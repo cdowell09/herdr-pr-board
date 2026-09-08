@@ -88,6 +88,43 @@ gh auth login
 
 The plugin does not store a GitHub token. GitHub CLI supplies the authentication. GitHub CLI reads `GH_TOKEN` and `GITHUB_TOKEN` before its stored login.
 
+## Default agent reviews
+
+Pi, Codex, and Claude Code use the same default review instructions.
+Each review must check both:
+
+- **Standards:** Check the changes against the repository's documented coding standards.
+- **Specification:** Check the changes against the PR body and linked closing issues.
+
+PR Board supplies the captured revision, PR evidence, selected skill, comparison diff, and commit log.
+The review runs in a temporary checkout at the captured revision.
+Missing required specification evidence blocks the review.
+The agent must report a blocked outcome when it cannot complete either required check.
+
+The default skill file is `~/.agents/skills/code-review/SKILL.md`.
+This file must exist and be readable before a built-in review starts.
+PR Board includes the complete skill text in the review prompt.
+Pi also receives the file through its native `--skill` option.
+
+The prompt prohibits source changes, repository setup scripts, and direct GitHub publication.
+The adapter returns structured findings.
+Separate publication settings control GitHub posts.
+
+### Current review customization
+
+Select another skill file through a named reviewer command in TOML:
+
+| Adapter | Skill option |
+| --- | --- |
+| Pi | `--pi-skill /absolute/path/to/SKILL.md` |
+| Codex | `--codex-skill /absolute/path/to/SKILL.md` |
+| Claude Code | `--claude-skill /absolute/path/to/SKILL.md` |
+
+See [Pi setup](docs/pi-adapter.md) and [Codex and Claude Code profiles](docs/agent-adapters.md#configure-a-repository) for examples.
+**A custom skill does not replace the fixed standards and specification requirements.**
+Version 0.5 does not support custom prompt files or prompt and skill selection during onboarding.
+[Issue #100](https://github.com/cdowell09/herdr-pr-board/issues/100) tracks this configuration through both board settings and TOML.
+
 ## Install from GitHub
 
 Run this command:
@@ -481,6 +518,7 @@ The footer pairs each keybinding with its action. On narrow terminals, the pairs
 Press `v` to open the selected PR's review history.
 The first review action offers repository setup when no repository settings exist.
 Choose Pi, Codex, Claude Code, or an existing custom reviewer command.
+Read the [default review instructions](#default-agent-reviews) before starting a built-in review.
 Use the arrow keys and Space to change settings.
 Select global automatic view IDs explicitly in repository settings.
 These view selections apply to all repositories that allow automatic launches.
