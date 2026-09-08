@@ -217,15 +217,19 @@ func TestTruncateUsesTerminalCellWidth(t *testing.T) {
 
 var implementedKeys = documentedKeys
 
-func TestREADMEDocumentsEveryImplementedKey(t *testing.T) {
-	readme, err := os.ReadFile("../../README.md")
-	if err != nil {
-		t.Fatal(err)
+func TestReferenceDocumentsEveryImplementedKey(t *testing.T) {
+	var reference strings.Builder
+	for _, path := range []string{"../../docs/board.md", "../../docs/reviews.md"} {
+		data, err := os.ReadFile(path)
+		if err != nil {
+			t.Fatal(err)
+		}
+		reference.Write(data)
 	}
 	for _, key := range implementedKeys {
 		literal := "`" + key + "`"
-		if !strings.Contains(string(readme), literal) {
-			t.Fatalf("README.md does not document the %q control (missing %q)", key, literal)
+		if !strings.Contains(reference.String(), literal) {
+			t.Fatalf("board and review guides do not document the %q control (missing %q)", key, literal)
 		}
 	}
 }

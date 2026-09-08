@@ -1,8 +1,20 @@
 # Contributing to PR Board
 
-This guide explains how the plugin is organized. It also explains what a change must include before review.
+Use this guide to build, test, and change PR Board.
+Read [AGENTS.md](AGENTS.md) for package ownership, invariants, and required review steps.
 
 ## Setup
+
+Install these tools:
+
+- Go 1.24 or later.
+- Python 3.11 or later.
+- `pre-commit`.
+- GitHub CLI (`gh`) for manual verification against GitHub.
+- Herdr 0.8.0 or later for macOS and Linux plugin testing.
+- Herdr 0.9.0 or later for Windows plugin testing.
+
+See [Windows setup](docs/windows.md) for Windows requirements.
 
 Clone the repository:
 
@@ -11,13 +23,7 @@ git clone https://github.com/cdowell09/herdr-pr-board.git
 cd herdr-pr-board
 ```
 
-Build the plugin:
-
-```sh
-go build -o bin/herdr-pr-board ./cmd/herdr-pr-board
-```
-
-Install the pre-commit framework. Then install the repository hooks:
+Install the repository hooks:
 
 ```sh
 pre-commit install
@@ -29,83 +35,110 @@ Run all hooks manually:
 pre-commit run --all-files
 ```
 
-You need these tools:
+## Test a local source build
 
-- Go 1.24 or later
-- Python 3.11 or later
-- `pre-commit`
-- GitHub CLI (`gh`) for manual verification against GitHub
-- Herdr 0.8.0 or later for manual plugin testing
+Use this procedure to test the current checkout instead of the GitHub version.
 
-Install the plugin as a link for local work:
+Build and link the plugin:
 
 ```sh
-herdr plugin link "$PWD"
+go build -o bin/herdr-pr-board ./cmd/herdr-pr-board
+herdr plugin link "$PWD" --enabled
+```
+
+On Windows, use PowerShell:
+
+```powershell
+go build -o bin/herdr-pr-board.exe ./cmd/herdr-pr-board
+herdr plugin link "$PWD" --enabled
+```
+
+`herdr plugin link` registers this checkout as `cdowell09.pr-board`.
+It does not copy the source files.
+The linked plugin runs the built executable from this checkout.
+Herdr preserves the existing configuration and runtime state.
+
+Verify the local link:
+
+```sh
+herdr plugin list --plugin cdowell09.pr-board --json
+```
+
+The link is ready when all these conditions are true:
+
+- `source.kind` is `local`
+- `plugin_root` points to this checkout
+- `enabled` is `true`
+
+If the board is open, press `q` first.
+The open action focuses an existing board.
+The action does not rebuild a running board.
+
+Open the source build:
+
+```sh
 herdr plugin action invoke open --plugin cdowell09.pr-board
 ```
 
-## Package ownership
+Rebuild the binary after each source change.
 
-Keep the behavior in its owning package:
+Return to the GitHub version:
 
-- `cmd/herdr-pr-board/` — process startup and dependency wiring.
-- `cmd/ci-platform-matrix/` — convert manifest platforms into CI cross-compilation targets.
-- `scripts/validate_release.py` — release tag and plugin manifest validation.
-- `internal/config/` — TOML defaults, parsing, validation, scope modes, and Search request counts.
-- `internal/github/` — `gh` execution, query tokenization, Search results, GraphQL CI enrichment, caching, and rate-limit decoding.
-- `internal/discovery/` — shared refresh orchestration, API budgeting, and discovery observations.
-- `internal/board/` — Bubble Tea state, rendering, keyboard input, and mouse input.
-- `bin/open` — focus an existing plugin pane or open one dedicated tab.
-- `bin/run` — record pane ownership, name the tab, run the board, and clean owned state.
-- `internal/plugin/` — end-to-end tests for the `bin/open` and `bin/run` entrypoints.
-- `config.example.toml` — public configuration reference.
-- `.github/workflows/ci.yml` — release gates enforced on pull requests and `main`.
-- `.github/workflows/release.yml` — run release validation and publish source releases.
+```sh
+herdr plugin unlink cdowell09.pr-board
+herdr plugin install cdowell09/herdr-pr-board
+```
 
+`herdr plugin unlink` removes the local registration. It preserves the configuration and runtime state.
+
+## Change the owning package
+
+Use the [source map](AGENTS.md#source-map) to locate the owning package.
 Keep GitHub transport in `internal/github`.
 Keep refresh policy in `internal/discovery`.
 Keep configuration rules in `internal/config`.
-Keep `bin/open` and `bin/run` in plain `bash`.
 
-## Regression tests
+`internal/plugin` owns native entrypoint behavior on every platform.
+`bin/open` and `bin/run` forward arguments to the native binary on macOS and Linux.
 
 Add a regression test at the package boundary that owns the behavior:
 
-- Configuration rules → `internal/config/config_test.go`.
-- `gh` execution, tokenization, CI enrichment, and rate limits → `internal/github/client_test.go` (and `query_test.go` for tokenization).
-- Refresh orchestration and API budgeting → `internal/discovery/service_test.go`.
-- Bubble Tea state, rendering, and input → `internal/board/model_test.go`.
-- Plugin entrypoint pane reuse and state ownership → `internal/plugin/entrypoint_test.go`.
-- Release validation → `scripts/validate_release_test.py`.
+| Behavior | Test location |
+| --- | --- |
+| Configuration defaults and validation | `internal/config/` |
+| GitHub commands, queries, caching, and rates | `internal/github/` |
+| Shared discovery and API budgeting | `internal/discovery/` |
+| Board state, rendering, and input | `internal/board/` |
+| Plugin pane reuse and state ownership | `internal/plugin/` |
+| Release validation | `scripts/validate_release_test.py` |
 
-Tests use fake `gh` runners. Tests never call GitHub. Tests never launch a real browser.
+Use fake runners for GitHub commands.
+Tests must not call GitHub or launch a real browser.
 
-## Documentation expectations
+## Update documentation
 
-Update these files when behavior, configuration, controls, or requirements change:
+Update documentation when behavior, configuration, controls, or requirements change:
 
-- `README.md` — user behavior and configuration.
-- `config.example.toml` — public configuration reference.
-- `docs/` — troubleshooting and plugin lifecycle guidance.
+- `README.md` explains the product and common tasks.
+- `config.example.toml` documents the complete configuration.
+- `docs/` contains task guides and reference contracts.
 - Keyboard and mouse documentation must match the rendered UI.
 
-## Documentation style
+Write technical documentation in ASD-STE100 Simplified Technical English (STE):
 
-Write all technical documentation in ASD-STE100 Simplified Technical English (STE):
-
-- Write one idea per sentence. Keep sentences under 20 words.
-- Use the active voice.
+- Write one idea per sentence.
+- Keep sentences under 20 words.
+- Use the active voice and present tense.
 - Write instructions in the imperative mood.
-- Use the same word for the same thing. Do not use synonyms.
-- Use the present tense.
-- Use `must` for requirements. Use `do not` for prohibitions.
+- Use the same word for the same thing.
+- Use `must` for requirements.
+- Use `do not` for prohibitions.
 
-## Release
+## Review and completion gates
 
-Follow [`docs/releasing.md`](docs/releasing.md) to change the version, create a tag, and upgrade an installation.
-The release workflow generates notes with git-cliff and `cliff.toml`.
-
-## Completion gates
+Run `thermo-nuclear-code-quality-review` on the full branch diff.
+Address all P0, P1, and P2 findings.
+Review the fixes before reporting completion.
 
 Run every gate from the repository root before you open a pull request:
 
@@ -130,40 +163,17 @@ A change is complete when these are true:
 
 Do not commit the built `bin/herdr-pr-board` file. The `.gitignore` ignores it.
 
-CI reads each build platform from `herdr-plugin.toml`. CI cross-compiles each platform on Linux.
+CI reads build platforms from `herdr-plugin.toml`.
+CI cross-compiles each platform on Linux.
+CI also runs native Windows tests and a Herdr plugin smoke test.
 
-## Invariants
+## Release
 
-### Persistent data
-
-- Store user configuration only in `HERDR_PLUGIN_CONFIG_DIR`.
-- Store runtime state only in `HERDR_PLUGIN_STATE_DIR`.
-- Treat `HERDR_PLUGIN_ROOT` as installed program files. Do not write user data there.
-- Preserve an existing configuration during install, upgrade, and pane reuse.
-
-### GitHub requests
-
-- Build `gh search prs` arguments with options first, then `--`, then tokenized query terms. This keeps negative qualifiers such as `-is:draft` from becoming CLI flags.
-- Budget Search requests across views, configured scopes, and pagination. GitHub Search pages contain at most 100 results.
-- Keep rate-limit state current after full and active-view refreshes.
-- Bind GraphQL capacity checks to the actual uncached CI batches inside `EnrichCI`. Recheck capacity between batches and propagate updated rates after failures.
-- Keep CI cache access synchronized. Run the race test after concurrency or cache changes.
-
-### Configuration
-
-- Use `ScopeMode`, `ScopeGlobal`, and `ScopeConfigured` instead of new scope string literals in production code.
-- Keep defaults single-sourced in `internal/config/config.go`; generate `DefaultFile` from those values.
-- Validate new fields and test both default creation and invalid input.
-
-### Herdr and UI
-
-- Keep the board in one reusable tab named `PR Board`.
-- Keep pane-state cleanup ownership-safe: one pane must not remove another pane's state.
-- Keep rendered tab labels and mouse hitboxes derived from the same label function.
-- When layout lines change, verify mouse row and URL coordinates against actual `View()` output.
-- Keep keyboard and mouse documentation synchronized with behavior.
-- Keep the selected PR URL visible and keep browser-open behavior generic.
+Follow [the release procedure](docs/releasing.md) to change the version, create a tag, and upgrade an installation.
+The release workflow generates notes with git-cliff and `cliff.toml`.
 
 ## Security
 
-Report security problems through GitHub private vulnerability reporting. Do not open a public issue. See [`SECURITY.md`](SECURITY.md).
+Report security problems through GitHub private vulnerability reporting.
+Do not open a public issue.
+See [SECURITY.md](SECURITY.md).

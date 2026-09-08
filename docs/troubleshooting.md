@@ -79,7 +79,10 @@ When the operating system cannot open the selected PR, the board shows a warning
 
 Copy the URL into a browser manually. Or press `Enter` again.
 
-macOS uses `open`. Linux uses `xdg-open`. If neither is available or functional, the board reports the failure. It does not fail silently.
+macOS uses `open`.
+Linux uses `xdg-open`.
+Windows uses `rundll32.exe` with the registered URL handler.
+The board reports failures from these commands.
 
 ### Where are the plugin logs?
 
