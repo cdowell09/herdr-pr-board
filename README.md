@@ -33,6 +33,39 @@ The CI column uses a symbol and a color:
 | `–` | Dim | The PR has no checks. |
 | `?` | Dim | The plugin cannot get the check status. |
 
+The **REV** column uses the same symbols for local PR Board reviews:
+
+| Symbol | Meaning |
+| --- | --- |
+| `✓` | The current revision has a completed local review. |
+| `●` | A review is running, queued, waiting for a slot, or awaiting dispatch. |
+| `✗` | The current revision has a failed, blocked, or abandoned review. |
+| `–` | No local review is active or complete for this revision. |
+| `?` | Local review status or the current revision is unavailable. |
+
+Select a PR to read its full review status below the URL.
+Local status updates each second without GitHub requests.
+
+The **POSTED** column shows submitted reviews from your authenticated GitHub account:
+
+| Label | Meaning |
+| --- | --- |
+| `GitHub` | Reviews posted outside this PR Board installation. |
+| `PR Board` | Reviews matched to this installation's publication records. |
+| `Both` | Both sources have submitted reviews. |
+| `–` | No submitted reviews were found. |
+| `?` | Review history, publication origin, or a publication outcome is uncertain. |
+
+The selected detail identifies reviews on the current head and older commits for each source.
+A newer commit does not inherit a completed local review.
+Draft reviews and ordinary PR conversation comments do not count as submitted reviews.
+Dismissed reviews still count as posts. The column does not represent approval status.
+`GitHub` identifies the publication source. It does not prove that a human wrote the review.
+A review started with `n` is still a PR Board review.
+Open `v` for local findings and publication diagnostics.
+GitHub review observations follow the normal refresh interval and cache.
+Restart a monitor from an earlier version to load GitHub review observations after this upgrade.
+
 ## Requirements
 
 Install these tools:
@@ -288,7 +321,7 @@ The plugin combines the scoped results. The plugin removes duplicate PR URLs.
 | `github.refresh_interval` | `"5m"` | `"0"` or a Go duration of `1m` or more, for example `"5m"` or `"1h"` | The time between automatic refreshes. `"0"` stops automatic refresh. |
 | `github.limit_per_scope` | `100` | An integer from 1 through 1000 | The maximum number of PRs that each search query returns. |
 | `github.max_concurrency` | `4` | An integer from 1 through 8 | The maximum number of Search API requests that the plugin sends at the same time across all views and scopes during a refresh. |
-| `github.ci_batch_size` | `25` | An integer from 1 through 50 | The number of PRs in one GraphQL CI query. |
+| `github.ci_batch_size` | `25` | An integer from 1 through 50 | The number of PRs in one GraphQL metadata query. |
 | `github.scopes` | `["user:@me"]` | A list that is not empty. Each entry must be `user:name`, `org:name`, or `repo:owner/name`. Each entry must be unique. | The scopes that views with `scope = "configured"` use. `@me` refers to your GitHub account. |
 | `[[views]].id` | None | Lowercase letters, digits, `-`, and `_`. The ID must start with a letter. Each ID must be unique. | The ID of the view. |
 | `[[views]].title` | None | A string that is not empty. | The name of the view in the board. |
@@ -478,12 +511,16 @@ The board adapts to the terminal width:
 
 | Terminal width | Layout |
 | --- | --- |
-| 100 cells or more | All columns. |
-| 80–99 cells | Compact repository and author columns. |
-| 60–79 cells | No author column. |
-| Fewer than 60 cells | No repository, author, or updated columns. |
+| 120 cells or more | All columns. |
+| 100–119 cells | All columns with compact repository and author columns. |
+| 80–99 cells | No author column. |
+| 60–79 cells | No author or updated columns. |
+| Fewer than 60 cells | PR, CI, REV, and title columns. |
 
-The selected PR URL stays visible at every width. The board truncates column text by terminal cell width. Emoji, combining characters, and wide glyphs stay aligned.
+The selected PR URL stays visible at every width.
+The full review and posted details wrap below the URL.
+The board truncates column text by terminal cell width.
+Emoji, combining characters, and wide glyphs stay aligned.
 
 ![Narrow board layout](docs/images/layout-narrow.png)
 
@@ -499,7 +536,15 @@ GitHub permits 30 authenticated Search API requests each minute. GitHub returns 
 
 The plugin runs view and scope searches at the same time. `github.max_concurrency` limits the number of Search API requests that run at the same time. The plugin removes duplicate PRs before it requests CI data.
 
-The plugin gets CI data with batched GraphQL queries. GitHub gives an authenticated user 5,000 GraphQL points each hour. The plugin keeps each CI result for two minutes. A refresh inside that time shows the kept result and sends no GraphQL query for that PR.
+The plugin gets CI data and your submitted reviews with batched GraphQL queries.
+It uses your cached GitHub login to filter review authors.
+Restart the monitor after switching GitHub accounts.
+Review histories with more than 100 entries require additional pages.
+Each page checks the available GraphQL capacity before it runs.
+GitHub gives an authenticated user 5,000 GraphQL points each hour.
+The plugin keeps complete metadata results for two minutes.
+A refresh inside that time uses the kept result without another GraphQL query for that PR.
+Failed or incomplete review observations retry on the next refresh.
 
 The board shows the remaining Search API and GraphQL capacity. The board keeps old data when a refresh fails.
 

@@ -179,6 +179,8 @@ func TestReviewPanelScrollBoundariesRemainResponsive(t *testing.T) {
 	}
 }
 
+func (*reviewFake) Snapshot() (reviewmemory.Snapshot, error) { return reviewmemory.Snapshot{}, nil }
+
 func (*reviewFake) ReviewCapacity() error { return nil }
 
 func (*reviewFake) ReviewStatus(reviewmemory.Identity) error { return nil }

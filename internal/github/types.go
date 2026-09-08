@@ -21,6 +21,20 @@ const (
 	PRMerged PRState = "MERGED"
 )
 
+type SubmittedReview struct {
+	ID          int64
+	HeadOID     string
+	State       string
+	SubmittedAt time.Time
+}
+
+type ReviewObservation struct {
+	Actor      string
+	Reviews    []SubmittedReview
+	Complete   bool
+	ObservedAt time.Time
+}
+
 type PullRequest struct {
 	Repository         string
 	Number             int
@@ -34,11 +48,18 @@ type PullRequest struct {
 	HeadOID            string
 	BaseRefName        string
 	BaseOID            string
+	ViewerReviews      *ReviewObservation
 	MetadataObservedAt time.Time
 }
 
 // CopyEnrichment copies the GraphQL observation without replacing Search data.
 func (pr *PullRequest) CopyEnrichment(from PullRequest) {
+	pr.ViewerReviews = nil
+	if from.ViewerReviews != nil {
+		observation := *from.ViewerReviews
+		observation.Reviews = append([]SubmittedReview(nil), observation.Reviews...)
+		pr.ViewerReviews = &observation
+	}
 	pr.CI = from.CI
 	pr.HeadOID = from.HeadOID
 	pr.BaseRefName = from.BaseRefName

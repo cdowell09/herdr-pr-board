@@ -57,10 +57,10 @@ func TestModelLayoutsDropColumnsIntentionally(t *testing.T) {
 		present []string
 		absent  []string
 	}{
-		{width: 40, present: []string{"TITLE", "PR", "CI"}, absent: []string{"REPOSITORY", "AUTHOR", "UPDATED"}},
-		{width: 60, present: []string{"REPOSITORY", "TITLE", "UPDATED"}, absent: []string{"AUTHOR"}},
-		{width: 80, present: []string{"REPOSITORY", "TITLE", "AUTHOR", "UPDATED"}},
-		{width: 120, present: []string{"REPOSITORY", "TITLE", "AUTHOR", "UPDATED"}},
+		{width: 40, present: []string{"TITLE", "PR", "CI", "REV"}, absent: []string{"REPOSITORY", "AUTHOR", "UPDATED"}},
+		{width: 60, present: []string{"REPOSITORY", "TITLE", "REV", "POSTED"}, absent: []string{"AUTHOR", "UPDATED"}},
+		{width: 80, present: []string{"REPOSITORY", "TITLE", "REV", "POSTED", "UPDATED"}, absent: []string{"AUTHOR"}},
+		{width: 120, present: []string{"REPOSITORY", "TITLE", "REV", "POSTED", "AUTHOR", "UPDATED"}},
 	}
 	for _, tc := range cases {
 		model := layoutModel(t, tc.width)

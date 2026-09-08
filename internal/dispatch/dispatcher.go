@@ -12,8 +12,12 @@ import (
 	"github.com/cdowell09/herdr-pr-board/internal/reviewmemory"
 )
 
-type Reviews interface {
+type StatusReader interface {
 	ReviewStatus(reviewmemory.Identity) error
+}
+
+type Reviews interface {
+	StatusReader
 	Review(context.Context, review.Request, func(string)) (reviewmemory.Run, error)
 }
 
@@ -34,7 +38,7 @@ func New(configPath string, reviews Reviews, publisher reviewflow.Publisher) *Di
 }
 
 // Decisions uses the same eligibility gate as unattended dispatch.
-func Decisions(candidates []Candidate, cfg config.Config, reviews Reviews) []Decision {
+func Decisions(candidates []Candidate, cfg config.Config, reviews StatusReader) []Decision {
 	result := make([]Decision, 0, len(candidates))
 	for _, candidate := range candidates {
 		result = append(result, decision(candidate, cfg, reviews))
@@ -42,7 +46,7 @@ func Decisions(candidates []Candidate, cfg config.Config, reviews Reviews) []Dec
 	return result
 }
 
-func decision(candidate Candidate, cfg config.Config, reviews Reviews) Decision {
+func decision(candidate Candidate, cfg config.Config, reviews StatusReader) Decision {
 	candidate.Selected = cfg.SelectsAutomaticView(candidate.Views)
 	_, permissionErr := cfg.ResolveLaunch(candidate.PR.Repository, "", true)
 	allowed := permissionErr == nil

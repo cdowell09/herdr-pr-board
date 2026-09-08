@@ -148,6 +148,11 @@ func (s *Service) History(prURL string) ([]Attempt, error) {
 	if err != nil {
 		return nil, err
 	}
+	return s.HistoryForRuns(runs)
+}
+
+// HistoryForRuns reads each supplied run's publications without reloading review history.
+func (s *Service) HistoryForRuns(runs []reviewmemory.Run) ([]Attempt, error) {
 	attempts := []Attempt{}
 	for _, run := range runs {
 		for _, action := range config.PublicationActions() {

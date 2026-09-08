@@ -8,6 +8,7 @@ import (
 
 	"github.com/cdowell09/herdr-pr-board/internal/config"
 	"github.com/cdowell09/herdr-pr-board/internal/discovery"
+	"github.com/cdowell09/herdr-pr-board/internal/dispatch"
 	gh "github.com/cdowell09/herdr-pr-board/internal/github"
 	"github.com/charmbracelet/lipgloss"
 	"github.com/muesli/termenv"
@@ -46,15 +47,25 @@ func dumpModel(t *testing.T, width, height int) Model {
 	model.views = []discovery.ViewData{
 		{View: cfg.Views[0], PRs: []gh.PullRequest{
 			{Repository: "cdowell09/herdr-pr-board", Number: 74, Title: "feat(ui): responsive layouts for narrow terminals", URL: "https://github.com/cdowell09/herdr-pr-board/pull/74", Author: "cdowell09", UpdatedAt: now.Add(-2 * time.Hour), CI: gh.CISuccess},
-			{Repository: "cdowell09/cookies", Number: 18, Title: "🎉 Add the cookie schedule export", URL: "https://github.com/cdowell09/cookies/pull/18", Author: "cdowell09", UpdatedAt: now.Add(-time.Hour), CI: gh.CIPending},
+			{Repository: "cdowell09/cookies", Number: 18, Title: "Add the cookie schedule export", URL: "https://github.com/cdowell09/cookies/pull/18", Author: "cdowell09", UpdatedAt: now.Add(-time.Hour), CI: gh.CIPending},
 			{Repository: "acme/web-ui", Number: 452, Title: "Make the onboarding flow keyboard friendly", URL: "https://github.com/acme/web-ui/pull/452", Author: "ada", UpdatedAt: now.Add(-45 * time.Minute), CI: gh.CISuccess},
-			{Repository: "acme/api-gateway", Number: 201, Title: "日本語の設定画面を追加", URL: "https://github.com/acme/api-gateway/pull/201", Author: "grace", UpdatedAt: now.Add(-30 * time.Minute), CI: gh.CIFailure, Draft: true},
+			{Repository: "acme/api-gateway", Number: 201, Title: "Add localized settings", URL: "https://github.com/acme/api-gateway/pull/201", Author: "grace", UpdatedAt: now.Add(-30 * time.Minute), CI: gh.CIFailure, Draft: true},
 		}},
 		{View: cfg.Views[1], PRs: []gh.PullRequest{
 			{Repository: "acme/monorepo", Number: 999, Title: "Migrate CI pipelines to reusable workflows", URL: "https://github.com/acme/monorepo/pull/999", Author: "lin", UpdatedAt: now.Add(-20 * time.Minute), CI: gh.CISuccess},
 			{Repository: "acme/design-system", Number: 87, Title: "Keep dark mode tokens in sync", URL: "https://github.com/acme/design-system/pull/87", Author: "sam", UpdatedAt: now.Add(-10 * time.Minute), CI: gh.CIError},
 		}},
 		{View: cfg.Views[2]},
+	}
+	model.reviewRows = map[string]reviewOverviewRow{}
+	summaries := []reviewRowSummary{
+		{state: "completed", detail: "Completed locally", posted: "Both", postedDetail: "GitHub · current revision; PR Board · older revision"},
+		{state: "running", detail: "Running", posted: "PR Board", postedDetail: "PR Board · older revision"},
+		{state: "waiting", detail: "Waiting for review slot", posted: "GitHub", postedDetail: "GitHub · current revision"},
+		{state: "blocked", detail: "blocked · explicit retry required", posted: "–", postedDetail: "No submitted reviews"},
+	}
+	for i, pr := range model.views[0].PRs {
+		model.reviewRows[pr.URL] = reviewOverviewRow{identity: dispatch.Identity(pr), summary: summaries[i]}
 	}
 	model.active = 0
 	model.loading = false

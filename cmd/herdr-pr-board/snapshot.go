@@ -39,19 +39,34 @@ type viewJSON struct {
 }
 
 type prJSON struct {
-	Repository         string     `json:"repository"`
-	Number             int        `json:"number"`
-	URL                string     `json:"url"`
-	Title              string     `json:"title"`
-	Author             string     `json:"author"`
-	State              *string    `json:"state"`
-	Draft              bool       `json:"draft"`
-	UpdatedAt          *time.Time `json:"updated_at"`
-	HeadOID            *string    `json:"head_oid"`
-	BaseRefName        *string    `json:"base_ref_name"`
-	BaseOID            *string    `json:"base_oid"`
-	CI                 *string    `json:"ci"`
-	MetadataObservedAt *time.Time `json:"metadata_observed_at"`
+	Repository         string             `json:"repository"`
+	Number             int                `json:"number"`
+	URL                string             `json:"url"`
+	Title              string             `json:"title"`
+	Author             string             `json:"author"`
+	State              *string            `json:"state"`
+	Draft              bool               `json:"draft"`
+	UpdatedAt          *time.Time         `json:"updated_at"`
+	HeadOID            *string            `json:"head_oid"`
+	BaseRefName        *string            `json:"base_ref_name"`
+	BaseOID            *string            `json:"base_oid"`
+	CI                 *string            `json:"ci"`
+	MetadataObservedAt *time.Time         `json:"metadata_observed_at"`
+	ViewerReviews      *viewerReviewsJSON `json:"viewer_reviews"`
+}
+
+type viewerReviewsJSON struct {
+	Actor      string                `json:"actor"`
+	Complete   bool                  `json:"complete"`
+	ObservedAt *time.Time            `json:"observed_at"`
+	Reviews    []submittedReviewJSON `json:"reviews"`
+}
+
+type submittedReviewJSON struct {
+	ID          int64      `json:"id"`
+	HeadOID     *string    `json:"head_oid"`
+	State       string     `json:"state"`
+	SubmittedAt *time.Time `json:"submitted_at"`
 }
 
 type ratesJSON struct {
@@ -99,7 +114,7 @@ func printSnapshot(cfg config.Config, service discovery.Loader, stdout, stderr i
 			view.PRs = append(view.PRs, prJSON{Repository: pr.Repository, Number: pr.Number, URL: pr.URL,
 				Title: pr.Title, Author: pr.Author, Draft: pr.Draft, State: wireString(string(pr.State)), UpdatedAt: wireTime(pr.UpdatedAt),
 				HeadOID: wireString(pr.HeadOID), BaseRefName: wireString(pr.BaseRefName), BaseOID: wireString(pr.BaseOID),
-				CI: wireString(ci), MetadataObservedAt: wireTime(pr.MetadataObservedAt)})
+				ViewerReviews: wireViewerReviews(pr.ViewerReviews), CI: wireString(ci), MetadataObservedAt: wireTime(pr.MetadataObservedAt)})
 		}
 		document.Views = append(document.Views, view)
 	}
@@ -138,6 +153,17 @@ func wireRate(rate gh.RateResource) *rateJSON {
 	result := &rateJSON{Limit: rate.Limit, Remaining: rate.Remaining, ResetAt: wireTime(rate.Reset)}
 	if rate.Cost > 0 {
 		result.Cost = &rate.Cost
+	}
+	return result
+}
+
+func wireViewerReviews(observation *gh.ReviewObservation) *viewerReviewsJSON {
+	if observation == nil {
+		return nil
+	}
+	result := &viewerReviewsJSON{Actor: observation.Actor, Complete: observation.Complete, ObservedAt: wireTime(observation.ObservedAt), Reviews: make([]submittedReviewJSON, 0, len(observation.Reviews))}
+	for _, review := range observation.Reviews {
+		result.Reviews = append(result.Reviews, submittedReviewJSON{ID: review.ID, HeadOID: wireString(review.HeadOID), State: review.State, SubmittedAt: wireTime(review.SubmittedAt)})
 	}
 	return result
 }

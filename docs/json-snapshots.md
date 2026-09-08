@@ -100,6 +100,7 @@ Do not infer completeness from the row count or the configured limit.
 | `base_oid` | string or null | The observed target branch commit identity. |
 | `ci` | string or null | The observed aggregate CI state. |
 | `metadata_observed_at` | timestamp or null | The local GraphQL response time for revision metadata and CI. |
+| `viewer_reviews` | object or null | Submitted reviews from the authenticated GitHub user. |
 
 A null metadata field means the value is unavailable.
 CI values are `SUCCESS`, `PENDING`, `FAILURE`, `ERROR`, and `NONE`.
@@ -110,6 +111,38 @@ Its observation time describes the available fields only.
 Metadata failures appear in `errors` and produce exit status `1`.
 Successful Search rows remain available after metadata failures.
 The shared discovery module preserves cached metadata observation times for interactive refreshes.
+
+### Viewer reviews
+
+A null `viewer_reviews` means review data is unavailable.
+The object contains submitted GitHub reviews from the authenticated user.
+It includes reviews submitted directly on GitHub and reviews submitted through PR Board.
+It does not contain local review results, claims, or publication records.
+
+| Viewer review field | Type | Meaning |
+| --- | --- | --- |
+| `actor` | string | The authenticated user's GitHub login. |
+| `complete` | boolean | Whether every review page returns available data. |
+| `observed_at` | timestamp or null | The local time when the first review page returns. |
+| `reviews` | array | Available submitted reviews from this user. |
+
+An empty `reviews` array means no submitted reviews only when `complete` is `true`.
+When `complete` is `false`, additional reviews can exist.
+Review retrieval failures appear in `errors`.
+Available revision metadata and CI remain available after review retrieval failures.
+Review pages do not establish an atomic GitHub snapshot.
+
+| Submitted review field | Type | Meaning |
+| --- | --- | --- |
+| `id` | integer | The GitHub review database ID, as a signed 64-bit JSON number. |
+| `head_oid` | string or null | The commit associated with this review, when available. |
+| `state` | string | `COMMENTED`, `APPROVED`, `CHANGES_REQUESTED`, or `DISMISSED`. |
+| `submitted_at` | timestamp or null | GitHub's review submission time. |
+
+Pending reviews do not appear in this array.
+Dismissed reviews remain submitted reviews.
+A review on another commit does not establish a review of the observed head commit.
+Consumers must preserve integer precision when they read review IDs.
 
 ### Rate resources
 

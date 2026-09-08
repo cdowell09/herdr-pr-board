@@ -77,6 +77,10 @@ type publicationFake struct {
 	runID  string
 }
 
+func (*publicationFake) HistoryForRuns([]reviewmemory.Run) ([]publication.Attempt, error) {
+	return nil, nil
+}
+
 func (f *publicationFake) Publish(_ context.Context, _ string, runID string, action config.PublicationAction) (publication.Attempt, error) {
 	f.runID, f.action = runID, action
 	return publication.Attempt{Action: action, Status: publication.Published}, nil
