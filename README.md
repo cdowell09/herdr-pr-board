@@ -441,6 +441,8 @@ The latest completed review is the manual publication target.
 The panel distinguishes current observed revisions from older revisions.
 Scroll to Details for full run IDs, revisions, publication URLs, and diagnostics paths.
 Automation status appears after review results.
+Eligible PRs show **Waiting for review slot** when the running monitor has no available review slot.
+The panel checks shared review slots each second.
 Saved After review settings apply to newly completed manual reviews, explicit reruns, and monitor reviews.
 Permission alone does not post reviews.
 Changing settings does not publish earlier completed reviews.
@@ -463,6 +465,10 @@ Reviews continue when you close the panel.
 The board remains responsive while reviews run.
 The saved **After review** setting controls automatic posting.
 Select **Keep local** to publish findings only with the manual controls.
+Set `review.max_concurrency` in `config.toml` to allow more simultaneous reviews.
+Use an integer from 1 through 8. The default is 1.
+Manual reviews and automatic reviews share this limit.
+The monitor reloads the limit after a review finishes or on the next scan.
 See [manual reviews](docs/reviews.md) to configure a reviewer.
 See [repository setup and publication](docs/repository-publication.md) for permissions, CLI configuration, and failure recovery.
 

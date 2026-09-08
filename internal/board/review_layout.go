@@ -1,6 +1,7 @@
 package board
 
 import (
+	"errors"
 	"fmt"
 	"strings"
 	"time"
@@ -97,7 +98,7 @@ func (m Model) reviewLines() []string {
 	}
 	if len(p.runs) == 0 {
 		section("Reviews")
-		add("No local review runs. Press n to run.", body)
+		add("No local review runs.", body)
 	}
 	orphanHeading := false
 	for _, a := range p.publications {
@@ -122,6 +123,12 @@ func (m Model) reviewLines() []string {
 	repo, _ := m.cfg.RepositoryFor(p.pr.Repository)
 	if reason := automaticSetupWait(repo, m.cfg.Review.AutoViews, p.monitor); reason != "" {
 		add("Waiting: "+reason, warningStyle)
+	} else if p.capacityErr != nil {
+		if errors.Is(p.capacityErr, reviewmemory.ErrCapacity) {
+			add("Waiting for review slot", warningStyle)
+		} else {
+			add("Review capacity unavailable: "+p.capacityErr.Error(), warningStyle)
+		}
 	}
 	if !repo.AutoLaunch {
 		add("Automatic launches: off", reviewSecondaryStyle)
