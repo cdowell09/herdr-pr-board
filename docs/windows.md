@@ -65,8 +65,8 @@ The monitor shares review claims and concurrency limits with board and CLI revie
 Run a foreground monitor from a source checkout:
 
 ```powershell
-$env:HERDR_PLUGIN_STATE_DIR = 'C:\PRBoard\state'
-.\bin\herdr-pr-board.exe --monitor --config 'C:\PRBoard\config.toml'
+$env:HERDR_PLUGIN_STATE_DIR = "$env:LOCALAPPDATA\PRBoard\state"
+.\bin\herdr-pr-board.exe --monitor --config "$env:LOCALAPPDATA\PRBoard\config.toml"
 ```
 
 Replace both example paths with your installation paths.
