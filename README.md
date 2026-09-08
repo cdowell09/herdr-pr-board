@@ -82,7 +82,8 @@ Use Windows 10 version 1809 or later, or Windows 11, on x64.
 Windows requires local NTFS configuration and state directories.
 See [Windows setup](docs/windows.md) for native commands and reviewer requirements.
 Local reviews also require a configured reviewer program.
-Built-in adapters support Pi, Codex, and Claude Code.
+Built-in adapters support Pi, Codex, Claude Code, Oh My Pi, Kimi, Qoder CLI, and Qwen Code.
+See [agent compatibility](docs/agent-compatibility.md) for additional CLI versions and support limits.
 See [manual reviews](docs/reviews.md) for reviewer requirements.
 
 Authenticate GitHub CLI before you use the plugin:
@@ -95,7 +96,7 @@ The plugin does not store a GitHub token. GitHub CLI supplies the authentication
 
 ## Default agent reviews
 
-Pi, Codex, and Claude Code use the same default review instructions.
+All built-in adapters use the same default review instructions.
 Each review must check both:
 
 - **Standards:** Check the changes against the repository's documented coding standards.
@@ -152,7 +153,8 @@ reviewer = "pi-security"
 ```
 
 Replace the executable path and repository name.
-Use `--codex-reviewer` or `--claude-reviewer` for the other built-in adapters.
+Use the matching [reviewer flag](docs/agent-compatibility.md#available-adapters) for another additional adapter.
+Codex and Claude Code use `--codex-reviewer` and `--claude-reviewer`.
 Profile changes affect every repository that selects that profile.
 The board preserves unrelated settings and command arguments.
 Direct TOML changes appear when you reopen repository settings.
@@ -564,7 +566,7 @@ The footer pairs each keybinding with its action. On narrow terminals, the pairs
 
 Press `v` to open the selected PR's review history.
 The first review action offers repository setup when no repository settings exist.
-Choose Pi, Codex, Claude Code, or an existing custom reviewer command.
+Choose a built-in reviewer or an existing custom reviewer command.
 Read the [default review instructions](#default-agent-reviews) before starting a built-in review.
 Use the arrow keys and Space to change settings.
 Select Prompt file and Skill file to keep defaults or choose custom instructions.

@@ -1,6 +1,7 @@
 # Review prompts and skills
 
-Pi, Codex, and Claude Code use the same instruction settings.
+All built-in adapters use the same instruction settings.
+See [agent compatibility](agent-compatibility.md) for additional adapters and required CLI versions.
 Each repository selects a named reviewer profile.
 Each profile can select one prompt file and one skill file.
 Custom reviewer programs keep their own instruction interface.

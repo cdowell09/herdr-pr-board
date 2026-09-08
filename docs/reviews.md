@@ -53,8 +53,9 @@ The default is 30 minutes.
 The timeout includes queue time and execution time.
 PR Board checks current configuration before each launch attempt.
 
-Built-in adapters support Pi, Codex, and Claude Code.
+Built-in adapters support Pi, Codex, Claude Code, Oh My Pi, Kimi, Qoder CLI, and Qwen Code.
 See the [Pi adapter guide](pi-adapter.md) and [Codex and Claude Code guide](agent-adapters.md).
+See [additional agent compatibility](agent-compatibility.md) for the other adapters and assessed limitations.
 Each adapter requires its own installed agent CLI.
 See [Windows setup](windows.md) for native executables, npm launchers, and filesystem requirements.
 Other reviewers do not require Pi.
@@ -94,7 +95,7 @@ A selected skill adds compatible requirements.
 The fixed execution and result contract still applies.
 See [review instructions](review-instructions.md) for defaults, complete file examples, and precedence.
 
-Use the same fields with `--codex-reviewer` or `--claude-reviewer`.
+Use the same fields with any built-in reviewer flag.
 Repository setup offers all missing built-in reviewers alongside existing reviewer commands.
 Saving setup adds only the selected missing reviewer.
 Saving also updates edited instruction fields on the selected existing profile.

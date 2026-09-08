@@ -160,7 +160,7 @@ func renderedRepositoryLine(t *testing.T, m Model, text string) int {
 }
 
 func TestRepositorySetupOffersMissingAdaptersAndPreservesCustomCommands(t *testing.T) {
-	for _, selected := range []string{"codex", "claude"} {
+	for _, selected := range []string{"codex", "claude", "qwen", "omp", "qodercli", "kimi"} {
 		t.Run(selected, func(t *testing.T) {
 			m := panelModel(t)
 			m.configPath = filepath.Join(t.TempDir(), "config.toml")
@@ -175,7 +175,7 @@ func TestRepositorySetupOffersMissingAdaptersAndPreservesCustomCommands(t *testi
 			}
 			m, _, _ = m.updateRepository(repositorySettingsMsg{url: m.reviewPanel.pr.URL, cfg: cfg})
 			setup := m.reviewPanel.setup
-			if setup == nil || len(setup.reviewers) != 3 || setup.selectedBuiltin() != nil {
+			if setup == nil || len(setup.reviewers) != len(config.BuiltinReviewers("")) || setup.selectedBuiltin() != nil {
 				t.Fatalf("setup=%+v", setup)
 			}
 			for i := 0; i < len(setup.reviewers) && setup.repo.Reviewer != selected; i++ {

@@ -24,8 +24,14 @@ type Options struct {
 	Name, Binary, Prompt, Skill string
 	CancelSignal                syscall.Signal
 	Command                     func(binary, skill, work, checkout string) (*exec.Cmd, error)
-	FinalText                   func([]byte) ([]byte, error)
+	// PrepareIO may adapt the prompt and bounded streams for an interactive protocol.
+	// Its cleanup runs after process exit or launch failure.
+	PrepareIO func(cmd *exec.Cmd, prompt string) (cleanup func(), err error)
+	FinalText func([]byte) ([]byte, error)
 }
+
+// MaxEventBytes bounds each agent's captured event stream.
+const MaxEventBytes = 32 * 1024 * 1024
 
 // Run prepares an isolated checkout and writes a validated local result.
 // The caller owns cancellation and the run directory containing ResultPath.
@@ -130,9 +136,16 @@ func runAgent(ctx context.Context, in reviewercontract.Input, opts Options, work
 	}
 	cmd.Dir = checkout
 	cmd.Stdin = strings.NewReader(prompt)
-	eventOutput := &cli.LimitedWriter{Writer: events, Remaining: 32 * 1024 * 1024}
+	eventOutput := &cli.LimitedWriter{Writer: events, Remaining: MaxEventBytes}
 	cmd.Stdout = eventOutput
 	cmd.Stderr = &cli.LimitedWriter{Writer: diagnostics, Remaining: 1024 * 1024}
+	if opts.PrepareIO != nil {
+		cleanup, err := opts.PrepareIO(cmd, prompt)
+		if err != nil {
+			return err
+		}
+		defer cleanup()
+	}
 	if err := cli.RunProcessWithSignal(ctx, cmd, time.Second, opts.CancelSignal); err != nil {
 		return fmt.Errorf("%s failed (see %s-stderr.log): %w", opts.Name, opts.Name, err)
 	}
@@ -142,11 +155,11 @@ func runAgent(ctx context.Context, in reviewercontract.Input, opts Options, work
 	if _, err := events.Seek(0, io.SeekStart); err != nil {
 		return err
 	}
-	data, err := io.ReadAll(io.LimitReader(events, 32*1024*1024+1))
+	data, err := io.ReadAll(io.LimitReader(events, MaxEventBytes+1))
 	if err != nil {
 		return err
 	}
-	if len(data) > 32*1024*1024 {
+	if len(data) > MaxEventBytes {
 		return fmt.Errorf("%s event stream exceeds 32 MiB", opts.Name)
 	}
 	final, err := opts.FinalText(data)

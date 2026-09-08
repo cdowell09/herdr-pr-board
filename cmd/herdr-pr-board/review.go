@@ -12,8 +12,12 @@ import (
 	"github.com/cdowell09/herdr-pr-board/internal/claudeadapter"
 	"github.com/cdowell09/herdr-pr-board/internal/codexadapter"
 	gh "github.com/cdowell09/herdr-pr-board/internal/github"
+	"github.com/cdowell09/herdr-pr-board/internal/kimiadapter"
 	"github.com/cdowell09/herdr-pr-board/internal/localstate"
+	"github.com/cdowell09/herdr-pr-board/internal/ompadapter"
 	"github.com/cdowell09/herdr-pr-board/internal/piadapter"
+	"github.com/cdowell09/herdr-pr-board/internal/qoderadapter"
+	"github.com/cdowell09/herdr-pr-board/internal/qwenadapter"
 	"github.com/cdowell09/herdr-pr-board/internal/review"
 	"github.com/cdowell09/herdr-pr-board/internal/reviewercontract"
 	"github.com/cdowell09/herdr-pr-board/internal/reviewflow"
@@ -41,6 +45,14 @@ func runAdapter(o adapterOptions, stdin io.Reader, stderr io.Writer) int {
 		err = codexadapter.Run(ctx, input, codexadapter.Options{Codex: o.executable, Prompt: o.prompt, Skill: o.skill})
 	case "claude":
 		err = claudeadapter.Run(ctx, input, claudeadapter.Options{Claude: o.executable, Prompt: o.prompt, Skill: o.skill})
+	case "kimi":
+		err = kimiadapter.Run(ctx, input, kimiadapter.Options{Kimi: o.executable, Prompt: o.prompt, Skill: o.skill})
+	case "qwen":
+		err = qwenadapter.Run(ctx, input, qwenadapter.Options{Qwen: o.executable, Prompt: o.prompt, Skill: o.skill})
+	case "omp":
+		err = ompadapter.Run(ctx, input, ompadapter.Options{OMP: o.executable, Prompt: o.prompt, Skill: o.skill})
+	case "qodercli":
+		err = qoderadapter.Run(ctx, input, qoderadapter.Options{Qoder: o.executable, Prompt: o.prompt, Skill: o.skill})
 	default:
 		err = fmt.Errorf("unknown review adapter %q", o.name)
 	}

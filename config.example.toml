@@ -80,7 +80,9 @@ timeout = "30m"
 # [[reviewers]]
 # id = "pi"
 # command = ["/absolute/path/to/herdr-pr-board", "--pi-reviewer"]
-# Other built-in adapters use --codex-reviewer or --claude-reviewer.
+# Other adapters use --codex-reviewer, --claude-reviewer, --omp-reviewer,
+# --kimi-reviewer, --qodercli-reviewer, or --qwen-reviewer.
+# See docs/agent-compatibility.md for required versions and native login requirements.
 # The default review checks standards and specification without custom files.
 # Empty fields select embedded criteria and no external skill.
 # prompt_file = ""
@@ -122,7 +124,7 @@ timeout = "30m"
 # name = "owner/security-service"
 # reviewer = "pi-security"
 #
-# Use the same fields with --codex-reviewer or --claude-reviewer.
+# Use the same fields with any built-in reviewer flag.
 # A selected skill adds its full text to the review instructions.
 # skill_file = "reviews/security-skill.md" belongs in its [[reviewers]] table.
 # Omitted fields retain legacy --AGENT-prompt and --AGENT-skill command options.

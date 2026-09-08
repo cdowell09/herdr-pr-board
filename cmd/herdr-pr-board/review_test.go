@@ -89,7 +89,7 @@ func TestReviewOptionModesRejectConflicts(t *testing.T) {
 }
 
 func TestBuiltinAdapterOptionsAreIsolated(t *testing.T) {
-	for _, name := range []string{"pi", "codex", "claude"} {
+	for _, name := range []string{"pi", "codex", "claude", "qwen", "omp", "qodercli", "kimi"} {
 		t.Run(name, func(t *testing.T) {
 			args := []string{"--" + name + "-reviewer", "--" + name + "-executable", "/agent with spaces", "--" + name + "-skill", "/review skill/SKILL.md", "--" + name + "-prompt", "/review prompt.md"}
 			o, err := parseOptions(args, &bytes.Buffer{})
@@ -108,7 +108,7 @@ func TestBuiltinAdapterOptionsAreIsolated(t *testing.T) {
 					t.Fatalf("accepted %v", invalid)
 				}
 			}
-			for _, other := range []string{"pi", "codex", "claude"} {
+			for _, other := range []string{"pi", "codex", "claude", "qwen", "omp", "qodercli", "kimi"} {
 				if other == name {
 					continue
 				}

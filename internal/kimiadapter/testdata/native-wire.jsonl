@@ -1,0 +1,6 @@
+{"jsonrpc":"2.0","method":"event","params":{"type":"TurnBegin","payload":{"user_input":"{\"version\":1}"}}}
+{"jsonrpc":"2.0","method":"event","params":{"type":"StepBegin","payload":{"n":1}}}
+{"jsonrpc":"2.0","method":"event","params":{"type":"ContentPart","payload":{"type":"text","text":"{\"version\":1}"}}}
+{"jsonrpc":"2.0","method":"event","params":{"type":"StatusUpdate","payload":{"context_usage":null,"context_tokens":null,"max_context_tokens":null,"token_usage":null,"message_id":null,"plan_mode":false,"mcp_status":null}}}
+{"jsonrpc":"2.0","method":"event","params":{"type":"TurnEnd","payload":{}}}
+{"jsonrpc":"2.0","id":"pr-board-review","result":{"status":"finished"}}

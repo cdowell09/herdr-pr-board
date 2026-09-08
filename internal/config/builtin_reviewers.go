@@ -13,6 +13,10 @@ func BuiltinReviewers(binary string) []Reviewer {
 		{ID: "pi", Command: []string{binary, "--pi-reviewer"}},
 		{ID: "codex", Command: []string{binary, "--codex-reviewer"}},
 		{ID: "claude", Command: []string{binary, "--claude-reviewer"}},
+		{ID: "qwen", Command: []string{binary, "--qwen-reviewer"}},
+		{ID: "omp", Command: []string{binary, "--omp-reviewer"}},
+		{ID: "kimi", Command: []string{binary, "--kimi-reviewer"}},
+		{ID: "qodercli", Command: []string{binary, "--qodercli-reviewer"}},
 	}
 }
 
