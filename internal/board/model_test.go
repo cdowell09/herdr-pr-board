@@ -5,6 +5,7 @@ import (
 	"errors"
 	"path/filepath"
 	"regexp"
+	"runtime"
 	"strings"
 	"testing"
 	"time"
@@ -490,12 +491,16 @@ func TestEditorCommandPrefersVisual(t *testing.T) {
 	}
 }
 
-func TestEditorCommandFallsBackToVi(t *testing.T) {
+func TestEditorCommandFallsBackToPlatformEditor(t *testing.T) {
 	t.Setenv("VISUAL", "")
 	t.Setenv("EDITOR", "")
 
 	command := editorCommand("config.toml")
-	if filepath.Base(command.Path) != "vi" || len(command.Args) != 2 || command.Args[1] != "config.toml" {
+	want := "vi"
+	if runtime.GOOS == "windows" {
+		want = "notepad.exe"
+	}
+	if filepath.Base(command.Path) != want || len(command.Args) != 2 || command.Args[1] != "config.toml" {
 		t.Fatalf("editor command = %#v, want vi config.toml", command.Args)
 	}
 }
@@ -905,6 +910,7 @@ func TestBrowserCommandUsesPlatformLauncher(t *testing.T) {
 	}{
 		{name: "macOS", goos: "darwin", want: "open"},
 		{name: "Linux", goos: "linux", want: "xdg-open"},
+		{name: "Windows", goos: "windows", want: "rundll32.exe"},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {

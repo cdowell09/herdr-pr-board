@@ -3,6 +3,8 @@ package localstate
 import (
 	"errors"
 	"os"
+	"path/filepath"
+	"unsafe"
 
 	"golang.org/x/sys/windows"
 )
@@ -24,16 +26,42 @@ func TryLock(path string) (*os.File, error) {
 	return os.NewFile(uintptr(handle), path), nil
 }
 
+// fileRenameInfo is FILE_RENAME_INFO with its variable-length UTF-16 name.
+type fileRenameInfo struct {
+	Flags          uint32
+	RootDirectory  windows.Handle
+	FileNameLength uint32
+	FileName       [1]uint16
+}
+
 func replaceFile(source, target string) error {
 	from, err := windows.UTF16PtrFromString(source)
 	if err != nil {
 		return err
 	}
-	to, err := windows.UTF16PtrFromString(target)
+	target, err = filepath.Abs(target)
 	if err != nil {
 		return err
 	}
-	return windows.MoveFileEx(from, to, windows.MOVEFILE_REPLACE_EXISTING|windows.MOVEFILE_WRITE_THROUGH)
+	name, err := windows.UTF16FromString(target)
+	if err != nil {
+		return err
+	}
+	handle, err := windows.CreateFile(from, windows.DELETE|windows.GENERIC_WRITE, windows.FILE_SHARE_READ|windows.FILE_SHARE_WRITE|windows.FILE_SHARE_DELETE, nil, windows.OPEN_EXISTING, windows.FILE_FLAG_WRITE_THROUGH, 0)
+	if err != nil {
+		return err
+	}
+	defer windows.CloseHandle(handle)
+	buffer := make([]byte, int(unsafe.Sizeof(fileRenameInfo{}))+2*len(name))
+	info := (*fileRenameInfo)(unsafe.Pointer(&buffer[0]))
+	// POSIX semantics preserve open readers of the previous complete version.
+	info.Flags = windows.FILE_RENAME_REPLACE_IF_EXISTS | windows.FILE_RENAME_POSIX_SEMANTICS
+	info.FileNameLength = uint32(2 * (len(name) - 1))
+	copy(unsafe.Slice(&info.FileName[0], len(name)), name)
+	if err := windows.SetFileInformationByHandle(handle, windows.FileRenameInfoEx, &buffer[0], uint32(len(buffer))); err != nil {
+		return err
+	}
+	return windows.FlushFileBuffers(handle)
 }
 
 func OpenRegular(path string, write bool) (*os.File, error) {
@@ -67,7 +95,7 @@ func openRead(path string) (*os.File, error) {
 	if err != nil {
 		return nil, err
 	}
-	// Delete sharing lets MoveFileEx replace this name while the reader keeps
+	// Delete sharing lets atomic replacement change this name while the reader keeps
 	// its handle to the previous complete version.
 	handle, err := windows.CreateFile(name, windows.GENERIC_READ, windows.FILE_SHARE_READ|windows.FILE_SHARE_WRITE|windows.FILE_SHARE_DELETE, nil, windows.OPEN_EXISTING, windows.FILE_ATTRIBUTE_NORMAL, 0)
 	if err != nil {

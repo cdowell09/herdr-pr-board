@@ -897,6 +897,9 @@ func editorCommand(path string) *exec.Cmd {
 	}
 	if editor == "" {
 		editor = "vi"
+		if runtime.GOOS == "windows" {
+			editor = "notepad.exe"
+		}
 	}
 	return exec.Command(editor, path)
 }
@@ -910,6 +913,9 @@ func openBrowserCmd(url string) tea.Cmd {
 func browserCommand(goos, url string) *exec.Cmd {
 	if goos == "darwin" {
 		return exec.Command("open", url)
+	}
+	if goos == "windows" {
+		return exec.Command("rundll32.exe", "url.dll,FileProtocolHandler", url)
 	}
 	return exec.Command("xdg-open", url)
 }

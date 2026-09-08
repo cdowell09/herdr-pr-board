@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"unicode"
 
@@ -82,6 +83,9 @@ func shellQuote(value string) string {
 func (command monitorInvocation) lines(width int) []string {
 	if width < 12 {
 		return []string{truncate("Widen terminal to copy command.", width)}
+	}
+	if runtime.GOOS == "windows" {
+		return command.powershellLines(width)
 	}
 	args := []string{"env", "HERDR_PLUGIN_STATE_DIR=" + command.state, command.binary, "--monitor", "--config", command.path}
 	var lines []string

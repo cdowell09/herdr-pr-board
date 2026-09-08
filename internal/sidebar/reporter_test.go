@@ -4,12 +4,22 @@ import (
 	"context"
 	"errors"
 	"os"
+	"path/filepath"
 	"reflect"
+	"strings"
 	"testing"
 	"time"
 
 	"github.com/cdowell09/herdr-pr-board/internal/config"
+	"github.com/cdowell09/herdr-pr-board/internal/testutil"
 )
+
+func TestMain(m *testing.M) {
+	if strings.TrimSuffix(filepath.Base(os.Args[0]), ".exe") == "herdr" {
+		os.Exit(0)
+	}
+	os.Exit(m.Run())
+}
 
 type fakeRunner struct {
 	calls [][]string
@@ -36,10 +46,7 @@ func TestReportRequiresWorkspaceID(t *testing.T) {
 }
 
 func TestReportUsesConfiguredBinary(t *testing.T) {
-	bin := t.TempDir() + "/herdr"
-	if err := os.WriteFile(bin, []byte("#!/bin/sh\nexit 0\n"), 0o700); err != nil {
-		t.Fatal(err)
-	}
+	bin := testutil.Executable(t, t.TempDir(), "herdr")
 
 	if err := (Reporter{Binary: bin, WorkspaceID: "w1"}).Report(context.Background(), map[string]string{TokenOpen: "1 open"}); err != nil {
 		t.Fatal(err)

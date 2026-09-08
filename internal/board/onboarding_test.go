@@ -5,22 +5,35 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
 
 	"github.com/cdowell09/herdr-pr-board/internal/config"
 	"github.com/cdowell09/herdr-pr-board/internal/localstate"
 	"github.com/cdowell09/herdr-pr-board/internal/monitor"
+	"github.com/cdowell09/herdr-pr-board/internal/testutil"
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/x/ansi"
 )
 
+func TestMain(m *testing.M) {
+	if len(os.Args) > 1 && os.Args[1] == "--monitor" && os.Getenv("PR_BOARD_MONITOR_ARGUMENTS") != "" {
+		values := append([]string{os.Getenv("HERDR_PLUGIN_STATE_DIR")}, os.Args[1:]...)
+		if err := os.WriteFile(os.Getenv("PR_BOARD_MONITOR_ARGUMENTS"), []byte(strings.Join(append(values, ""), "\x00")), 0600); err != nil {
+			os.Exit(1)
+		}
+		os.Exit(0)
+	}
+	os.Exit(m.Run())
+}
+
 func TestMonitorCommandRoundTripsHostileAndUnicodePaths(t *testing.T) {
 	dir := t.TempDir()
-	binary := filepath.Join(dir, "executable with 'quotes' $dollars `backticks` 日本語")
-	if err := os.WriteFile(binary, []byte("#!/bin/sh\nprintf '%s\\0' \"$HERDR_PLUGIN_STATE_DIR\" \"$@\"\n"), 0700); err != nil {
-		t.Fatal(err)
-	}
+	binary := testutil.Executable(t, dir, "executable with 'quotes' $dollars `backticks` 日本語")
+	result := filepath.Join(dir, "arguments")
+	t.Setenv("PR_BOARD_MONITOR_ARGUMENTS", result)
+	t.Setenv("GORACE", os.Getenv("GORACE")+" atexit_sleep_ms=0")
 	path := filepath.Join(dir, "config with 'single' \"double\" $(not-a-command) 日本語.toml")
 	state := filepath.Join(dir, "state with 'quotes' $value 日本語")
 	command, err := monitorCommand(binary, path, state)
@@ -34,9 +47,17 @@ func TestMonitorCommandRoundTripsHostileAndUnicodePaths(t *testing.T) {
 				t.Fatalf("width%d: %q", width, line)
 			}
 		}
-		output, err := exec.Command("sh", "-c", strings.Join(lines, "\n")).CombinedOutput()
+		shell := exec.Command("sh", "-c", strings.Join(lines, "\n"))
+		if runtime.GOOS == "windows" {
+			shell = exec.Command("powershell.exe", "-NoProfile", "-NonInteractive", "-Command", strings.Join(lines, "\n"))
+		}
+		output, err := shell.CombinedOutput()
 		if err != nil {
 			t.Fatalf("%v: %s\n%s", err, output, strings.Join(lines, "\n"))
+		}
+		output, err = os.ReadFile(result)
+		if err != nil {
+			t.Fatal(err)
 		}
 		want := strings.Join([]string{state, "--monitor", "--config", path, ""}, "\x00")
 		if string(output) != want {
@@ -60,7 +81,8 @@ func onboardingModel(t *testing.T, width, height, views int) Model {
 	setup.repo.PublishActions = []config.PublicationAction{config.PublishComment}
 	m.reviewPanel.setup = setup
 	m.reviewPanel.monitor = monitor.Status{State: monitor.Stopped, Message: "start the monitor in another terminal"}
-	m.reviewPanel.monitorCommand, _ = monitorCommand("/opt/PR Board/bin/herdr-pr-board", "/Users/example user/configuration with a long name/config.toml", "/Users/example user/plugin state with a long name")
+	root := filepath.VolumeName(t.TempDir()) + string(filepath.Separator)
+	m.reviewPanel.monitorCommand, _ = monitorCommand(filepath.Join(root, "opt", "PR Board", "bin", "herdr-pr-board"), filepath.Join(root, "Users", "example user", "configuration with a long name", "config.toml"), filepath.Join(root, "Users", "example user", "plugin state with a long name"))
 	return m
 }
 
@@ -112,7 +134,12 @@ func TestOnboardingManyViewsRemainSelectableAndScrollable(t *testing.T) {
 				t.Fatalf("width overflow %q", line)
 			}
 		}
-		if !strings.Contains(rendered, "config.toml") && !strings.Contains(rendered, "g.toml") {
+		commandLines := m.monitorCommandLines()
+		end := len(commandLines) - 1
+		if runtime.GOOS == "windows" {
+			end--
+		}
+		if end < 0 || !strings.Contains(rendered, commandLines[end]) {
 			t.Fatalf("command end unreachable:\n%s", rendered)
 		}
 		updated, _ = m.Update(tea.WindowSizeMsg{Width: 80, Height: 24})

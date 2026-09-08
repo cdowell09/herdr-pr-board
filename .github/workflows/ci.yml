@@ -104,7 +104,7 @@ jobs:
         with:
           go-version-file: go.mod
           cache: true
-      - name: Test native process trees, inherited claims, and atomic state
-        run: go test -race ./internal/cli ./internal/localstate ./internal/reviewmemory ./internal/agentadapter ./internal/monitor ./internal/plugin
+      - name: Test native Windows behavior
+        run: go test -race ./...
       - name: Build native command
         run: go build -o bin/herdr-pr-board.exe ./cmd/herdr-pr-board

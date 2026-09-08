@@ -7,9 +7,7 @@ import (
 	"errors"
 	"os"
 	"os/exec"
-	"os/signal"
 	"path/filepath"
-	"syscall"
 	"testing"
 	"time"
 
@@ -61,8 +59,23 @@ func TestStoppedMonitorProcess(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer reviews.Wait()
-	ctx, cancel := signal.NotifyContext(context.Background(), syscall.SIGTERM)
+	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
+	go func() {
+		ticker := time.NewTicker(10 * time.Millisecond)
+		defer ticker.Stop()
+		for {
+			select {
+			case <-ctx.Done():
+				return
+			case <-ticker.C:
+			}
+			if _, err := os.Stat(filepath.Join(dir, "shutdown")); err == nil {
+				cancel()
+				return
+			}
+		}
+	}()
 	source := monitor.New(dir, cfg, stopMonitorLoader{cfg: cfg})
 	publisher := &fakePublisher{}
 	err = New(path, reviews, publisher).Run(ctx, cfg, func(ctx context.Context, report func(discovery.Snapshot)) error {
@@ -112,7 +125,7 @@ func TestBoardStopsReviewOwnedBySeparateMonitor(t *testing.T) {
 	done := make(chan error, 1)
 	go func() { done <- cmd.Wait() }()
 	defer func() {
-		_ = cmd.Process.Signal(syscall.SIGTERM)
+		_ = os.WriteFile(filepath.Join(dir, "shutdown"), nil, 0600)
 		select {
 		case err := <-done:
 			if err != nil {
