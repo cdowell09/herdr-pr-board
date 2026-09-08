@@ -87,6 +87,16 @@ The monitor shares review claims and concurrency limits with manual reviews.
 Foreground monitors report eligibility and outcomes on standard error.
 Background monitors write these diagnostics to `monitor.log`.
 Stopping the monitor cancels its reviews and waits for subprocess cleanup.
+To stop one review, select its PR, press `v`, then press `t`.
+The panel identifies the newest active run as the stop target.
+The monitor and other reviews continue.
+The owner cancels the selected reviewer and cleans up its child processes.
+The review slot remains occupied while child processes retain the claim.
+The stopped run records a failure and does not publish findings.
+The stopped revision requires an explicit retry with `N`.
+The monitor does not automatically retry the stopped revision.
+An older or unavailable owner cannot accept stop requests.
+Restart an older monitor after its reviews finish to enable this control.
 
 ## Eligibility
 

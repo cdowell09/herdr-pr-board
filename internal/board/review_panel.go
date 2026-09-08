@@ -19,6 +19,7 @@ import (
 )
 
 type ReviewBackend interface {
+	Stop(string) error
 	Snapshot() (reviewmemory.Snapshot, error)
 	ReviewCapacity() error
 	ReviewStatus(reviewmemory.Identity) error
@@ -28,6 +29,7 @@ type ReviewBackend interface {
 }
 
 type reviewPanel struct {
+	stopping        string
 	monitor         monitor.Status
 	monitorCommand  monitorInvocation
 	pr              gh.PullRequest
@@ -99,6 +101,8 @@ func reviewTick(url string, generation uint64) tea.Cmd {
 
 func (m Model) updateReview(message tea.Msg) (Model, tea.Cmd, bool) {
 	switch msg := message.(type) {
+	case reviewStoppedMsg:
+		return m.updateReviewStopped(msg)
 	case monitorStatusMsg:
 		if m.reviewPanel != nil && m.reviewPanel.pr.URL == msg.url && m.reviewGeneration == msg.generation {
 			m.reviewPanel.monitor, m.reviewPanel.monitorCommand = msg.status, msg.command
@@ -115,6 +119,12 @@ func (m Model) updateReview(message tea.Msg) (Model, tea.Cmd, bool) {
 		m.reviewPanel.runs = msg.runs
 		m.reviewPanel.automatic = msg.automatic
 		m.reviewPanel.capacityErr = msg.capacityErr
+		for _, run := range msg.runs {
+			if run.ID == m.reviewPanel.stopping && run.Status != reviewmemory.Running {
+				m.reviewPanel.stopping = ""
+				m.reviewPanel.message = "Run " + shortRevision(run.ID) + ": " + string(run.Status) + " · " + run.Message
+			}
+		}
 		if msg.err != nil {
 			m.reviewPanel.message = msg.err.Error()
 		}
@@ -170,6 +180,8 @@ func (m Model) updateReviewKey(key tea.KeyMsg) (tea.Model, tea.Cmd) {
 	case "s":
 		m.reviewPanel.settingsLoading = true
 		return m, m.repositorySettingsCmd(true)
+	case "t":
+		return m.stopReviewCmd()
 	case "c":
 		return m.publishCmd(config.PublishComment)
 	case "a":

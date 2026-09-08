@@ -311,10 +311,11 @@ func (s *Store) activeClaims(h *history) (map[string]bool, error) {
 }
 
 type Claim struct {
-	mu    sync.Mutex
-	store *Store
-	id    string
-	file  *os.File
+	mu        sync.Mutex
+	store     *Store
+	id        string
+	file      *os.File
+	stopOwner *os.File
 }
 
 // Claim atomically reserves a revision and an installation-wide concurrency slot.
@@ -378,6 +379,7 @@ func (c *Claim) LockFile() (*os.File, error) {
 
 // Finish records an outcome only while this handle owns its active attempt.
 // The caller validates the reviewer contract before supplying completed findings.
+// An accepted stop wins over completion and returns ErrStopped after recording failure.
 func (c *Claim) Finish(outcome Outcome) error {
 	c.mu.Lock()
 	defer c.mu.Unlock()
@@ -387,6 +389,7 @@ func (c *Claim) Finish(outcome Outcome) error {
 	if !validOutcome(outcome) || outcome.Status == Abandoned {
 		return errors.New("invalid review outcome")
 	}
+	stopped := false
 	err := c.store.transaction(func(h *history) error {
 		for i := range h.Runs {
 			r := &h.Runs[i]
@@ -395,6 +398,14 @@ func (c *Claim) Finish(outcome Outcome) error {
 			}
 			if r.Status != Running {
 				return ErrOwnership
+			}
+			var err error
+			stopped, err = c.StopRequested()
+			if err != nil {
+				return err
+			}
+			if stopped {
+				outcome = Outcome{Status: Failed, Message: ErrStopped.Error()}
 			}
 			now := time.Now().UTC()
 			r.Outcome, r.FinishedAt = outcome, &now
@@ -405,20 +416,32 @@ func (c *Claim) Finish(outcome Outcome) error {
 	if err != nil {
 		return err
 	}
-	err = c.file.Close()
-	c.file = nil
-	return err
+	if err := c.close(); err != nil {
+		return err
+	}
+	if stopped {
+		return ErrStopped
+	}
+	return nil
 }
 
 // Close releases this handle. Recovery waits until every inherited descriptor closes.
 func (c *Claim) Close() error {
 	c.mu.Lock()
 	defer c.mu.Unlock()
-	if c.file == nil {
-		return nil
+	return c.close()
+}
+
+func (c *Claim) close() error {
+	var err error
+	if c.stopOwner != nil {
+		err = c.stopOwner.Close()
+		c.stopOwner = nil
 	}
-	err := c.file.Close()
-	c.file = nil
+	if c.file != nil {
+		err = errors.Join(err, c.file.Close())
+		c.file = nil
+	}
 	return err
 }
 

@@ -150,6 +150,14 @@ It writes a versioned document with a `runs` array.
 The command preserves older revision history.
 Open the board's review panel with `v` to inspect findings and diagnostics.
 Use `n` to queue a review.
+Use `t` to stop the newest active review shown for the selected PR.
+The panel names the target run and reports cleanup progress and the final outcome.
+The stop request also works for a review owned by another board or monitor in the same state directory.
+The owner cancels only that reviewer and cleans up its child processes.
+The stopped run records a failure with a cancellation reason and does not publish findings.
+Use `N` to retry the stopped revision explicitly.
+If the run finishes before the stop request, the panel reports that it is no longer running.
+An older or unavailable owner cannot accept the request.
 Use `N` to request an explicit rerun.
 Press `Esc` to return to the board while reviews continue.
 Closing the board cancels its queued and active reviews.

@@ -55,6 +55,23 @@ A recorded outcome does not release ownership that a child process still holds.
 That ownership continues to reserve the revision and concurrency slot.
 A closed claim cannot complete an attempt or overwrite a replacement attempt.
 
+## Stop requests
+
+`EnableStop` holds a separate controller lock for the owning service.
+The service does not pass this lock to reviewer processes.
+`RequestStop` accepts an exact active run ID only when its controller owns that lock.
+It writes a stop marker in the shared reviews directory.
+The owning service checks the marker and cancels the reviewer through its execution context.
+Stop requests do not send signals to stored process IDs.
+An older owner or an orphaned reviewer cannot accept stop requests.
+
+The history transaction orders stop requests against completion.
+`Finish` records an accepted stop as a failed outcome and returns `ErrStopped`.
+An accepted stop cannot become a completed review or publish findings.
+A completed run rejects a later stop request.
+Each retry receives a new run ID, so earlier stop requests do not affect it.
+Child ownership continues to reserve the slot until every inherited claim descriptor closes.
+
 The package writes history through an atomic file replacement.
 Malformed history stops claims and updates.
 The package does not replace malformed history with an empty history.

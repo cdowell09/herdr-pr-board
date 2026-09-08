@@ -68,6 +68,7 @@ auto_views = []
 # The monitor reloads this limit after a review finishes or on the next scan.
 max_concurrency = 1
 # Include queue time and reviewer execution time in this limit.
+# Press v, then t, to stop the selected PR's newest active review before the timeout.
 timeout = "30m"
 
 # Reuse each reviewer across repositories.

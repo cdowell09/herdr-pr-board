@@ -167,9 +167,11 @@ func (s *Service) Review(ctx context.Context, request Request, notify func(strin
 		}
 		timeout, _ := cfg.Review.TimeoutDuration()
 		runCtx, cancel := context.WithTimeout(ctx, timeout)
-		outcome, executionErr := s.execute(runCtx, claim, pr, reviewer, request)
+		outcome, executionErr := s.executeStoppable(runCtx, claim, pr, reviewer, request)
 		cancel()
-		if err := claim.Finish(outcome); err != nil {
+		if err := claim.Finish(outcome); errors.Is(err, reviewmemory.ErrStopped) {
+			executionErr = err
+		} else if err != nil {
 			return reviewmemory.Run{}, fmt.Errorf("record review outcome: %w", err)
 		}
 		history, err := s.store.History(identity)
