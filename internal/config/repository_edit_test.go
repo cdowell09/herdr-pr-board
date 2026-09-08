@@ -58,7 +58,7 @@ func TestFirstRepositorySetupAddsReusableReviewerAtomically(t *testing.T) {
 		t.Fatal(err)
 	}
 	reviewer := Reviewer{ID: "pi", Command: []string{"/plugin/board", "--pi-reviewer"}}
-	got, err := SaveRepository(context.Background(), path, t.TempDir(), Repository{Name: "acme/api", Reviewer: "pi"}, &reviewer, nil, nil)
+	got, err := SaveRepository(context.Background(), path, t.TempDir(), Repository{Name: "acme/api", Reviewer: "pi"}, &ReviewerEdit{Value: reviewer}, nil, nil)
 	if err != nil {
 		t.Fatal(err)
 	}

@@ -15,8 +15,10 @@ type ReviewConfig struct {
 }
 
 type Reviewer struct {
-	ID      string   `toml:"id"`
-	Command []string `toml:"command"`
+	ID         string   `toml:"id"`
+	Command    []string `toml:"command"`
+	PromptFile *string  `toml:"prompt_file"`
+	SkillFile  *string  `toml:"skill_file"`
 }
 
 type Repository struct {
@@ -70,6 +72,16 @@ func (c Config) validateReviews() error {
 		for _, arg := range reviewer.Command {
 			if strings.ContainsRune(arg, 0) {
 				return fmt.Errorf("reviewer %s command contains NUL", reviewer.ID)
+			}
+		}
+		if reviewer.PromptFile != nil || reviewer.SkillFile != nil {
+			if reviewer.Builtin() == "" {
+				return fmt.Errorf("reviewer %s instruction files require a built-in adapter", reviewer.ID)
+			}
+			for _, path := range []*string{reviewer.PromptFile, reviewer.SkillFile} {
+				if path != nil && strings.ContainsRune(*path, 0) {
+					return fmt.Errorf("reviewer %s instruction path contains NUL", reviewer.ID)
+				}
 			}
 		}
 	}

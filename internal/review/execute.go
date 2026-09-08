@@ -9,7 +9,6 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
-	"slices"
 	"strings"
 	"time"
 
@@ -18,6 +17,7 @@ import (
 	gh "github.com/cdowell09/herdr-pr-board/internal/github"
 	"github.com/cdowell09/herdr-pr-board/internal/localstate"
 	"github.com/cdowell09/herdr-pr-board/internal/reviewercontract"
+	"github.com/cdowell09/herdr-pr-board/internal/reviewinstructions"
 	"github.com/cdowell09/herdr-pr-board/internal/reviewmemory"
 )
 
@@ -77,10 +77,21 @@ func (s *Service) execute(ctx context.Context, claim *reviewmemory.Claim, pr gh.
 	if err != nil {
 		return failed(err)
 	}
-	if currentReviewer.ID != reviewer.ID || !slices.Equal(currentReviewer.Command, reviewer.Command) {
+	if !currentReviewer.Equal(reviewer) {
 		return failed(fmt.Errorf("reviewer configuration changed before launch; retry the review"))
 	}
 	cmd := exec.Command(reviewer.Command[0], reviewer.Command[1:]...)
+	if reviewer.Builtin() != "" {
+		instructions, err := reviewer.LoadInstructions(s.configPath)
+		if err != nil {
+			return failed(err)
+		}
+		selection, err := json.Marshal(instructions.Files)
+		if err != nil {
+			return failed(err)
+		}
+		cmd.Env = append(os.Environ(), reviewinstructions.Environment+"="+string(selection))
+	}
 	cmd.Stdin = bytes.NewReader(data)
 	cmd.Stdout = &cli.LimitedWriter{Writer: stdout, Remaining: 1024 * 1024}
 	cmd.Stderr = &cli.LimitedWriter{Writer: stderr, Remaining: 1024 * 1024}

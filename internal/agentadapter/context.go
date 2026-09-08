@@ -31,7 +31,7 @@ func command(ctx context.Context, dir, binary string, args ...string) ([]byte, e
 	return stdout.Bytes(), nil
 }
 
-func fetchContext(ctx context.Context, work string, in reviewercontract.Input) ([]json.RawMessage, error) {
+func fetchContext(ctx context.Context, work string, in reviewercontract.Input, requireSpec bool) ([]json.RawMessage, error) {
 	var pr struct {
 		Body                    string `json:"body"`
 		Title                   string `json:"title"`
@@ -56,27 +56,42 @@ func fetchContext(ctx context.Context, work string, in reviewercontract.Input) (
 	hasSpec := strings.TrimSpace(pr.Body) != ""
 	for _, issue := range pr.ClosingIssuesReferences {
 		// URLs come from GitHub metadata and are passed as one argument, never shell text.
-		if !strings.HasPrefix(issue.URL, "https://github.com/") {
-			return nil, errors.New("unsupported linked specification URL")
-		}
-		data, err := command(ctx, work, "gh", "issue", "view", issue.URL, "--json", "title,body,url")
+		data, err := fetchIssue(ctx, work, issue.URL)
 		if err != nil {
-			return nil, fmt.Errorf("retrieve linked specification: %w", err)
+			if requireSpec {
+				return nil, err
+			}
+			data, _ = json.Marshal(struct {
+				URL   string `json:"url"`
+				Error string `json:"error"`
+			}{issue.URL, err.Error()})
+		} else {
+			hasSpec = true
 		}
-		var spec struct {
-			Body string `json:"body"`
-		}
-		if err := json.Unmarshal(data, &spec); err != nil {
-			return nil, fmt.Errorf("decode linked specification: %w", err)
-		}
-		if strings.TrimSpace(spec.Body) == "" {
-			return nil, errors.New("linked specification has no body")
-		}
-		hasSpec = true
 		contextData = append(contextData, data)
 	}
-	if !hasSpec {
+	if requireSpec && !hasSpec {
 		return nil, errors.New("PR body and linked issues contain no specification context")
 	}
 	return contextData, nil
+}
+
+func fetchIssue(ctx context.Context, work, url string) ([]byte, error) {
+	if !strings.HasPrefix(url, "https://github.com/") {
+		return nil, errors.New("unsupported linked specification URL")
+	}
+	data, err := command(ctx, work, "gh", "issue", "view", url, "--json", "title,body,url")
+	if err != nil {
+		return nil, fmt.Errorf("retrieve linked specification: %w", err)
+	}
+	var spec struct {
+		Body string `json:"body"`
+	}
+	if err := json.Unmarshal(data, &spec); err != nil {
+		return nil, fmt.Errorf("decode linked specification: %w", err)
+	}
+	if strings.TrimSpace(spec.Body) == "" {
+		return nil, errors.New("linked specification has no body")
+	}
+	return data, nil
 }

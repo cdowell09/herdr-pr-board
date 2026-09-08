@@ -14,14 +14,18 @@ The core applies the configured review timeout.
 
 Install Pi and authenticate its model provider before launch.
 The default executable is `pi` on `PATH`.
-The default skill is `~/.agents/skills/code-review/SKILL.md`.
-Use `--pi-skill` to select another skill file.
+The default review uses embedded standards and specification criteria.
+No prompt file or skill file is required.
+Select `prompt_file` and `skill_file` in board settings or a named TOML profile.
+See [review instructions](review-instructions.md) for scope, precedence, and examples.
+Standalone adapters also accept `--pi-prompt` and `--pi-skill`.
 Use `--pi-executable` to select another Pi executable.
 These options apply only to `--pi-reviewer`.
 
 The adapter gets the PR body and linked closing issues through GitHub CLI.
-The adapter blocks when this retrieval fails or required context is empty.
-Pi must also block when available context cannot support the specification review.
+The default review blocks when specification retrieval fails or required context is empty.
+Custom prompts replace the default criteria and their specification requirement.
+Pi must block when available context cannot support its selected instructions.
 The adapter checks the current PR revision against the captured revision.
 A revision mismatch blocks the review.
 Capture the current revision before retrying.
@@ -36,9 +40,10 @@ Pi receives these arguments:
 
 ```text
 --print --mode json --no-session --no-extensions --no-skills
---no-context-files --no-approve --skill <skill-file>
+--no-context-files --no-approve
 ```
 
+Pi also receives `--skill <skill-file>` when a skill is selected.
 The adapter supplies review instructions, the selected skill, and JSON evidence through standard input.
 It also supplies the captured comparison diff and commit log.
 Each captured Git command output has a four MiB limit.

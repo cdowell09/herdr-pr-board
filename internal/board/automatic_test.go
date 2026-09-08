@@ -81,7 +81,7 @@ func TestAutomaticPublicationSelectorUsesRenderedRow(t *testing.T) {
 		t.Fatal(err)
 	}
 	m.reviewPanel.setup = setup
-	setup.row = 5
+	setup.row = repositoryPostingRow
 	m.revealRepositoryRow()
 	y := renderedRepositoryLine(t, m, "After review: Keep local")
 	next, _ := m.Update(tea.MouseMsg{Button: tea.MouseButtonLeft, Action: tea.MouseActionPress, X: 1, Y: y})

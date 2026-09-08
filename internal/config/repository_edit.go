@@ -22,7 +22,7 @@ import (
 // SaveRepository changes repository settings and optional global view selections atomically.
 // Runtime locks stay in the installation state directory, outside user configuration.
 // expected must match the current repository; nil requires that it is still absent.
-func SaveRepository(ctx context.Context, path, stateDir string, repo Repository, reviewer *Reviewer, expected *Repository, automatic *AutomaticViewsEdit) (Config, error) {
+func SaveRepository(ctx context.Context, path, stateDir string, repo Repository, reviewer *ReviewerEdit, expected *Repository, automatic *AutomaticViewsEdit) (Config, error) {
 	resolved, err := filepath.EvalSymlinks(path)
 	if err != nil {
 		return Config{}, err
@@ -61,14 +61,10 @@ func SaveRepository(ctx context.Context, path, stateDir string, repo Repository,
 	}
 	prepared := before
 	if reviewer != nil {
-		for _, defined := range currentConfig.Reviewers {
-			if defined.ID == reviewer.ID {
-				return Config{}, fmt.Errorf("reviewer %s already exists; reload repository settings", reviewer.ID)
-			}
+		prepared, err = editReviewer(before, currentConfig.Reviewers, *reviewer)
+		if err != nil {
+			return Config{}, err
 		}
-		id, _ := json.Marshal(reviewer.ID)
-		command, _ := json.Marshal(reviewer.Command)
-		prepared = append(append([]byte(nil), before...), []byte("\n\n[[reviewers]]\nid = "+string(id)+"\ncommand = "+string(command)+"\n")...)
 	}
 	updated, err := editRepository(prepared, repo)
 	if err != nil {
@@ -87,6 +83,15 @@ func SaveRepository(ctx context.Context, path, stateDir string, repo Repository,
 	applyDefaults(&cfg)
 	if err := cfg.Validate(); err != nil {
 		return Config{}, err
+	}
+	selected, err := cfg.ReviewerFor(repo.Name, repo.Reviewer)
+	if err != nil {
+		return Config{}, err
+	}
+	if selected.Builtin() != "" {
+		if _, err := selected.LoadInstructions(path); err != nil {
+			return Config{}, err
+		}
 	}
 	current, err := localstate.ReadFile(resolved)
 	if err != nil {

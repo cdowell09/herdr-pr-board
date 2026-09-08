@@ -153,7 +153,11 @@ func configureRepository(path string, p *publicationOptions, stdout, stderr io.W
 	defer stop()
 	ctx, cancel := context.WithTimeout(ctx, 15*time.Second)
 	defer cancel()
-	if _, err := config.SaveRepository(ctx, path, dir, repo, builtin, expected, nil); err != nil {
+	var reviewerEdit *config.ReviewerEdit
+	if builtin != nil {
+		reviewerEdit = &config.ReviewerEdit{Value: *builtin}
+	}
+	if _, err := config.SaveRepository(ctx, path, dir, repo, reviewerEdit, expected, nil); err != nil {
 		return fail(stderr, err)
 	}
 	if err := json.NewEncoder(stdout).Encode(repo); err != nil {

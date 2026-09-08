@@ -13,11 +13,11 @@ import (
 	"github.com/cdowell09/herdr-pr-board/internal/reviewercontract"
 )
 
-type Options struct{ Claude, Skill string }
+type Options struct{ Claude, Prompt, Skill string }
 
 func Run(ctx context.Context, in reviewercontract.Input, opts Options) error {
 	return agentadapter.Run(ctx, in, agentadapter.Options{
-		Name: "claude", Binary: opts.Claude, Skill: opts.Skill,
+		Name: "claude", Binary: opts.Claude, Prompt: opts.Prompt, Skill: opts.Skill,
 		Command: command, FinalText: finalText,
 	})
 }

@@ -36,11 +36,11 @@ func runAdapter(o adapterOptions, stdin io.Reader, stderr io.Writer) int {
 	defer cancel()
 	switch o.name {
 	case "pi":
-		err = piadapter.Run(ctx, input, piadapter.Options{Pi: o.executable, Skill: o.skill})
+		err = piadapter.Run(ctx, input, piadapter.Options{Pi: o.executable, Prompt: o.prompt, Skill: o.skill})
 	case "codex":
-		err = codexadapter.Run(ctx, input, codexadapter.Options{Codex: o.executable, Skill: o.skill})
+		err = codexadapter.Run(ctx, input, codexadapter.Options{Codex: o.executable, Prompt: o.prompt, Skill: o.skill})
 	case "claude":
-		err = claudeadapter.Run(ctx, input, claudeadapter.Options{Claude: o.executable, Skill: o.skill})
+		err = claudeadapter.Run(ctx, input, claudeadapter.Options{Claude: o.executable, Prompt: o.prompt, Skill: o.skill})
 	default:
 		err = fmt.Errorf("unknown review adapter %q", o.name)
 	}

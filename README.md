@@ -101,34 +101,62 @@ Each review must check both:
 - **Standards:** Check the changes against the repository's documented coding standards.
 - **Specification:** Check the changes against the PR body and linked closing issues.
 
-PR Board supplies the captured revision, PR evidence, selected skill, comparison diff, and commit log.
+PR Board supplies the captured revision, PR evidence, selected instructions, comparison diff, and commit log.
 The review runs in a temporary checkout at the captured revision.
 Missing required specification evidence blocks the review.
 The agent must report a blocked outcome when it cannot complete either required check.
 
-The default skill file is `~/.agents/skills/code-review/SKILL.md`.
-This file must exist and be readable before a built-in review starts.
-PR Board includes the complete skill text in the review prompt.
-Pi also receives the file through its native `--skill` option.
+The default criteria are embedded. No custom file is required.
+PR Board does not automatically load `~/.agents/skills/code-review/SKILL.md`.
+Select that file explicitly to retain its additional instructions.
 
 The prompt prohibits source changes, repository setup scripts, and direct GitHub publication.
 The adapter returns structured findings.
 Separate publication settings control GitHub posts.
 
-### Current review customization
+### Customize review instructions
 
-Select another skill file through a named reviewer command in TOML:
+During review setup, select a reviewer, then select **Prompt file** and **Skill file**.
+Press Space or click a path row to edit it.
+Press Enter to accept the path, then press Enter again to save settings.
+Press `Ctrl+U` while editing to clear a selection.
+Press `s` in the review panel to change these selections later.
 
-| Adapter | Skill option |
-| --- | --- |
-| Pi | `--pi-skill /absolute/path/to/SKILL.md` |
-| Codex | `--codex-skill /absolute/path/to/SKILL.md` |
-| Claude Code | `--claude-skill /absolute/path/to/SKILL.md` |
+A custom prompt replaces the embedded review criteria.
+A selected skill adds compatible requirements.
+The prompt takes precedence when its criteria conflict with the skill.
+A security-only prompt does not require specification review unless its selected instructions require it.
+Captured revisions, result validation, cleanup, and publication permissions still apply.
 
-See [Pi setup](docs/pi-adapter.md) and [Codex and Claude Code profiles](docs/agent-adapters.md#configure-a-repository) for examples.
-**A custom skill does not replace the fixed standards and specification requirements.**
-Version 0.5 does not support custom prompt files or prompt and skill selection during onboarding.
-[Issue #100](https://github.com/cdowell09/herdr-pr-board/issues/100) tracks this configuration through both board settings and TOML.
+For example, create `reviews/security.md` relative to the configuration directory:
+
+```markdown
+Review only security vulnerabilities in the captured changes.
+Check authentication, authorization, secret exposure, and unsafe input handling.
+Report exploitable problems with concrete evidence.
+Do not require a product specification for this review.
+```
+
+Add a named profile and select it for a repository:
+
+```toml
+[[reviewers]]
+id = "pi-security"
+command = ["/absolute/path/to/herdr-pr-board", "--pi-reviewer"]
+prompt_file = "reviews/security.md"
+skill_file = ""
+
+[[repositories]]
+name = "owner/security-service"
+reviewer = "pi-security"
+```
+
+Replace the executable path and repository name.
+Use `--codex-reviewer` or `--claude-reviewer` for the other built-in adapters.
+Profile changes affect every repository that selects that profile.
+The board preserves unrelated settings and command arguments.
+Direct TOML changes appear when you reopen repository settings.
+See [review instructions](docs/review-instructions.md) for file rules, precedence, legacy options, and complete examples.
 
 ## Install from GitHub
 
@@ -415,6 +443,7 @@ Run this command to check a configuration. The command does not start the board:
 bin/herdr-pr-board -config path/to/config.toml -validate
 ```
 
+The command also checks selected files for every built-in reviewer profile, including unused profiles.
 If the configuration is correct, the command prints `configuration is valid` and exits with code 0. If the configuration has a mistake, the command prints the problem and exits with a non-zero code. The command does not create a missing file. The command does not need GitHub CLI.
 
 ### Add a custom view
@@ -538,6 +567,8 @@ The first review action offers repository setup when no repository settings exis
 Choose Pi, Codex, Claude Code, or an existing custom reviewer command.
 Read the [default review instructions](#default-agent-reviews) before starting a built-in review.
 Use the arrow keys and Space to change settings.
+Select Prompt file and Skill file to keep defaults or choose custom instructions.
+See [instruction setup](docs/review-instructions.md#select-files-in-the-board) for path editing controls.
 Select global automatic view IDs explicitly in repository settings.
 These view selections apply to all repositories that allow automatic launches.
 The settings panel separates reviews, GitHub permissions, automatic posting, and global views.

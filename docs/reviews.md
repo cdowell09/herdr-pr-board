@@ -60,7 +60,7 @@ See [Windows setup](windows.md) for native executables, npm launchers, and files
 Other reviewers do not require Pi.
 Existing Pickr settings remain unchanged.
 
-## Select reviewers and skills per repository
+## Select reviewers and instructions per repository
 
 Each repository selects a named reviewer command.
 Different repositories can select different commands or different arguments for the same program.
@@ -68,11 +68,15 @@ Different repositories can select different commands or different arguments for 
 ```toml
 [[reviewers]]
 id = "pi-security"
-command = ["/absolute/path/to/herdr-pr-board", "--pi-reviewer", "--pi-skill", "/absolute/path/to/security/SKILL.md"]
+command = ["/absolute/path/to/herdr-pr-board", "--pi-reviewer"]
+prompt_file = "reviews/security.md"
+skill_file = ""
 
 [[reviewers]]
 id = "pi-product"
-command = ["/absolute/path/to/herdr-pr-board", "--pi-reviewer", "--pi-skill", "/absolute/path/to/product/SKILL.md"]
+command = ["/absolute/path/to/herdr-pr-board", "--pi-reviewer"]
+prompt_file = ""
+skill_file = "reviews/product/SKILL.md"
 
 [[repositories]]
 name = "owner/security-service"
@@ -83,19 +87,21 @@ name = "owner/product-app"
 reviewer = "pi-product"
 ```
 
-Replace the example paths with installed programs and skill files.
-Each built-in adapter accepts one explicit skill file per reviewer command.
-Its review prompt and result contract remain fixed.
-PR Board does not provide a prompt-template configuration field.
+Replace the example paths with installed programs and readable instruction files.
+Relative instruction paths use the active configuration file's directory.
+A custom prompt replaces embedded review criteria.
+A selected skill adds compatible requirements.
+The fixed execution and result contract still applies.
+See [review instructions](review-instructions.md) for defaults, complete file examples, and precedence.
 
-Use `--codex-reviewer` with `--codex-skill` for a Codex profile.
-Use `--claude-reviewer` with `--claude-skill` for a Claude Code profile.
+Use the same fields with `--codex-reviewer` or `--claude-reviewer`.
 Repository setup offers all missing built-in reviewers alongside existing reviewer commands.
 Saving setup adds only the selected missing reviewer.
+Saving also updates edited instruction fields on the selected existing profile.
 Existing reviewer IDs and custom commands remain unchanged.
 A bare agent CLI command does not implement the PR Board reviewer contract automatically.
 A custom adapter must read the input and write the validated result described below.
-Keep custom prompts and skill selection inside that adapter or its command arguments.
+Custom programs keep their own instruction interface.
 
 ## Start a review
 

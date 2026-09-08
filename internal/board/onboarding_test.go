@@ -98,7 +98,7 @@ func TestOnboardingManyViewsRemainSelectableAndScrollable(t *testing.T) {
 		if len(setup.automatic.Selected) != 0 || setup.repo.AutoPublish != "" {
 			t.Fatal("setup silently selected automation")
 		}
-		for row := 6; row < len(setup.rows()); row++ {
+		for row := repositoryViewsRow; row < len(setup.rows()); row++ {
 			setup.row = row
 			m.revealRepositoryRow()
 			header, content, start, visible := m.repositoryViewport()
@@ -114,7 +114,7 @@ func TestOnboardingManyViewsRemainSelectableAndScrollable(t *testing.T) {
 			}
 			updated, _ := m.Update(tea.MouseMsg{Button: tea.MouseButtonLeft, Action: tea.MouseActionPress, Y: y, X: 1})
 			m = updated.(Model)
-			if setup.automatic.Selected[len(setup.automatic.Selected)-1] != setup.views[row-6].ID {
+			if setup.automatic.Selected[len(setup.automatic.Selected)-1] != setup.views[row-repositoryViewsRow].ID {
 				t.Fatalf("wrong hitbox row%d", row)
 			}
 		}
@@ -197,7 +197,7 @@ func TestOnboardingSaveAndStatusRefresh(t *testing.T) {
 	m.reviewPanel.setup = setup
 	setup.repo.AutoLaunch = true
 	setup.repo.PublishActions = []config.PublicationAction{config.PublishComment}
-	setup.row = 7
+	setup.row = repositoryViewsRow + 1
 	setup.toggle() // The explicitly selected existing review view.
 	updated, save := m.Update(tea.KeyMsg{Type: tea.KeyEnter})
 	m = updated.(Model)
