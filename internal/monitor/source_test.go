@@ -77,7 +77,9 @@ func TestSnapshotRoundTripPreservesFailureAndRateEvidence(t *testing.T) {
 	f.snapshot.Rates.GraphQL = gh.RateResource{Limit: 5000, Remaining: 4, Reset: time.Now().UTC(), Cost: 9}
 	f.snapshot.Views[0].Err = errors.New("partial search")
 	f.snapshot.Views[0].UpdatedAt = time.Time{}
-	f.snapshot.Views[0].PRs = []gh.PullRequest{{URL: "https://github.com/a/b/pull/1", HeadOID: "abc", MetadataObservedAt: time.Now().UTC()}}
+	reviews := &gh.ReviewObservation{Actor: "alice", ObservedAt: time.Now().UTC(), Complete: false,
+		Reviews: []gh.SubmittedReview{{ID: 9007199254740993, HeadOID: "abc", State: "DISMISSED", SubmittedAt: time.Now().UTC()}}}
+	f.snapshot.Views[0].PRs = []gh.PullRequest{{URL: "https://github.com/a/b/pull/1", HeadOID: "abc", MetadataObservedAt: time.Now().UTC(), ViewerReviews: reviews}}
 	f.snapshot.CapacityErr = errors.New("capacity")
 	f.snapshot.Errors = []discovery.RetrievalError{{Stage: "search", ViewID: s.cfg.Views[0].ID, Err: errors.New("partial search")}}
 	if err := s.write(f.snapshot); err != nil {

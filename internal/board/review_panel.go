@@ -19,6 +19,7 @@ import (
 )
 
 type ReviewBackend interface {
+	Snapshot() (reviewmemory.Snapshot, error)
 	ReviewCapacity() error
 	ReviewStatus(reviewmemory.Identity) error
 	History(string) ([]reviewmemory.Run, error)

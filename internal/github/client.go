@@ -301,6 +301,14 @@ func (c *Client) EnrichCI(ctx context.Context, prs []PullRequest, budget RateRes
 	batchSize := c.cfg.CIBatchSize
 	latest := budget
 	var warnings []string
+	actor := ""
+	if len(pending) > 0 {
+		var err error
+		actor, err = c.currentLogin(ctx)
+		if err != nil {
+			warnings = append(warnings, "load viewer reviews: "+err.Error())
+		}
+	}
 	applyBatch := func(batch []PullRequest, indexes []int) {
 		for i, index := range indexes {
 			prs[index].CopyEnrichment(batch[i])
@@ -312,7 +320,7 @@ func (c *Client) EnrichCI(ctx context.Context, prs []PullRequest, budget RateRes
 			}
 		}
 		for _, pr := range batch {
-			if pr.CI != CIUnknown && pr.HeadOID != "" && pr.BaseRefName != "" && pr.BaseOID != "" && !pr.MetadataObservedAt.IsZero() {
+			if pr.ViewerReviews != nil && pr.ViewerReviews.Complete && pr.CI != CIUnknown && pr.HeadOID != "" && pr.BaseRefName != "" && pr.BaseOID != "" && !pr.MetadataObservedAt.IsZero() {
 				c.ciCache[pr.URL] = ciCacheEntry{pr: pr, expiresAt: pr.MetadataObservedAt.Add(c.ciTTL)}
 			}
 		}
@@ -329,20 +337,20 @@ func (c *Client) EnrichCI(ctx context.Context, prs []PullRequest, budget RateRes
 			)
 		}
 		end := min(start+batchSize, len(pending))
-		rate, batchWarnings, err := c.enrichBatch(ctx, pending[start:end])
+		rate, batchWarnings, err := c.enrichBatch(ctx, pending[start:end], actor, latest)
 		warnings = append(warnings, batchWarnings...)
-		if err != nil {
-			return latest, warnings, err
-		}
 		if rate.Limit > 0 {
 			latest = rate
 		}
 		applyBatch(pending[start:end], pendingIndexes[start:end])
+		if err != nil {
+			return latest, warnings, err
+		}
 	}
 	return latest, warnings, nil
 }
 
-func (c *Client) enrichBatch(ctx context.Context, prs []PullRequest) (RateResource, []string, error) {
+func (c *Client) enrichBatch(ctx context.Context, prs []PullRequest, actor string, budget RateResource) (RateResource, []string, error) {
 	var query strings.Builder
 	query.WriteString("query { rateLimit { limit remaining resetAt cost } ")
 	for i, pr := range prs {
@@ -351,7 +359,7 @@ func (c *Client) enrichBatch(ctx context.Context, prs []PullRequest) (RateResour
 			prs[i].CI = CIUnknown
 			continue
 		}
-		fmt.Fprintf(&query, "p%d: repository(owner: %s, name: %s) { pullRequest(number: %d) { headRefOid baseRefName baseRefOid commits(last: 1) { nodes { commit { statusCheckRollup { state } } } } } } ", i, strconv.Quote(owner), strconv.Quote(name), pr.Number)
+		fmt.Fprintf(&query, "p%d: repository(owner: %s, name: %s) { pullRequest(number: %d) { %s headRefOid baseRefName baseRefOid commits(last: 1) { nodes { commit { statusCheckRollup { state } } } } } } ", i, strconv.Quote(owner), strconv.Quote(name), pr.Number, reviewSelection(actor, ""))
 	}
 	query.WriteString("}")
 
@@ -404,7 +412,12 @@ func (c *Client) enrichBatch(ctx context.Context, prs []PullRequest) (RateResour
 			}
 		}
 	}
-	return rate, warnings, nil
+	if rate.Limit > 0 {
+		budget = rate
+	}
+	budget, reviewWarnings, err := c.enrichReviews(ctx, prs, actor, response, budget, observedAt)
+	warnings = append(warnings, reviewWarnings...)
+	return budget, warnings, err
 }
 
 // graphQLResponse is the envelope gh api graphql prints. A response can carry

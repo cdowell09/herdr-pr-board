@@ -57,6 +57,40 @@ See the [Pi adapter guide](pi-adapter.md) for Pi requirements and its validated 
 Other reviewers do not require Pi.
 Existing Pickr settings remain unchanged.
 
+## Select reviewers and skills per repository
+
+Each repository selects a named reviewer command.
+Different repositories can select different commands or different arguments for the same program.
+
+```toml
+[[reviewers]]
+id = "pi-security"
+command = ["/absolute/path/to/herdr-pr-board", "--pi-reviewer", "--pi-skill", "/absolute/path/to/security/SKILL.md"]
+
+[[reviewers]]
+id = "pi-product"
+command = ["/absolute/path/to/herdr-pr-board", "--pi-reviewer", "--pi-skill", "/absolute/path/to/product/SKILL.md"]
+
+[[repositories]]
+name = "owner/security-service"
+reviewer = "pi-security"
+
+[[repositories]]
+name = "owner/product-app"
+reviewer = "pi-product"
+```
+
+Replace the example paths with installed programs and skill files.
+The Pi adapter accepts one explicit skill file per reviewer command.
+Its review prompt and result contract remain fixed.
+PR Board does not provide a prompt-template configuration field.
+
+You can configure a Codex adapter as another reviewer command.
+PR Board does not include a built-in Codex adapter.
+A bare agent CLI command does not implement the PR Board reviewer contract automatically.
+A custom adapter must read the input and write the validated result described below.
+Keep custom prompts and skill selection inside that adapter or its command arguments.
+
 ## Start a review
 
 Herdr supplies `HERDR_PLUGIN_STATE_DIR` for plugin actions.

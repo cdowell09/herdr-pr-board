@@ -10,6 +10,8 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	gh "github.com/cdowell09/herdr-pr-board/internal/github"
 )
 
 // The executable exercises process arguments and stdout/stderr handling without a terminal.
@@ -20,6 +22,7 @@ func fakeSnapshotGH(t *testing.T) string {
 	script := `#!/bin/sh
 printf '%s\n' "$*" >> "$GH_TEST_LOG"
 case "$1 $2" in
+ "api user") printf 'ada\n' ;;
  "api rate_limit")
   if [ "$GH_TEST_MODE" = rates ]; then echo 'rate lookup failed' >&2; exit 1; fi
   printf '%s\n' '{"resources":{"search":{"limit":30,"remaining":30,"reset":4102444800},"graphql":{"limit":5000,"remaining":5000,"reset":4102444800}}}' ;;
@@ -36,11 +39,11 @@ case "$1 $2" in
   if [ "$GH_TEST_MODE" = failed_batch ]; then
    if [ -f "$GH_TEST_LOG.completed" ]; then echo 'second batch failed' >&2; exit 1; fi
    : > "$GH_TEST_LOG.completed"
-   printf '%s\n' '{"data":{"rateLimit":{"limit":5000,"remaining":4993,"resetAt":"2100-01-01T00:00:00Z","cost":7},"p0":{"pullRequest":{"headRefOid":"head123","baseRefName":"main","baseRefOid":"base123","commits":{"nodes":[{"commit":{"statusCheckRollup":{"state":"SUCCESS"}}}]}}}}}'; exit
+   printf '%s\n' '{"data":{"rateLimit":{"limit":5000,"remaining":4993,"resetAt":"2100-01-01T00:00:00Z","cost":7},"p0":{"pullRequest":{"reviews":{"nodes":[],"pageInfo":{"hasNextPage":false}},"headRefOid":"head123","baseRefName":"main","baseRefOid":"base123","commits":{"nodes":[{"commit":{"statusCheckRollup":{"state":"SUCCESS"}}}]}}}}}'; exit
   fi
   if [ "$GH_TEST_MODE" = enrichment ]; then echo 'GraphQL unavailable' >&2; exit 1; fi
   if [ "$GH_TEST_MODE" = missing ]; then printf '%s\n' '{"data":{"p0":null}}'; exit; fi
-  printf '%s\n' '{"data":{"rateLimit":{"limit":5000,"remaining":4999,"resetAt":"2100-01-01T00:00:00Z","cost":1},"p0":{"pullRequest":{"headRefOid":"head123","baseRefName":"main","baseRefOid":"base123","commits":{"nodes":[{"commit":{"statusCheckRollup":{"state":"SUCCESS"}}}]}}}}}' ;;
+  printf '%s\n' '{"data":{"rateLimit":{"limit":5000,"remaining":4999,"resetAt":"2100-01-01T00:00:00Z","cost":1},"p0":{"pullRequest":{"reviews":{"nodes":[],"pageInfo":{"hasNextPage":false}},"headRefOid":"head123","baseRefName":"main","baseRefOid":"base123","commits":{"nodes":[{"commit":{"statusCheckRollup":{"state":"SUCCESS"}}}]}}}}}' ;;
  *) echo "unexpected gh command: $*" >&2; exit 1 ;;
 esac
 `
@@ -121,6 +124,9 @@ func TestRunJSONAllViewsAndSelectedView(t *testing.T) {
 			pr := view.PRs[0]
 			if pr.HeadOID == nil || *pr.HeadOID != "head123" || pr.BaseRefName == nil || *pr.BaseRefName != "main" || pr.BaseOID == nil || *pr.BaseOID != "base123" || pr.CI == nil || *pr.CI != "SUCCESS" || pr.MetadataObservedAt == nil {
 				t.Fatalf("pr=%+v", pr)
+			}
+			if pr.ViewerReviews == nil || !pr.ViewerReviews.Complete || pr.ViewerReviews.Actor != "ada" || pr.ViewerReviews.ObservedAt == nil || pr.ViewerReviews.Reviews == nil {
+				t.Fatalf("viewer reviews=%+v", pr.ViewerReviews)
 			}
 			if pr.MetadataObservedAt.Before(*view.ObservedAt) || pr.MetadataObservedAt.After(doc.FinishedAt) {
 				t.Fatalf("metadata time=%s", pr.MetadataObservedAt)
@@ -241,8 +247,8 @@ func assertSnapshotWireKeys(t *testing.T, data []byte) {
 	view := doc["views"].([]any)[0].(map[string]any)
 	check(view, "id title query scope scopes observed_at search_succeeded completeness prs")
 	pr := view["prs"].([]any)[0].(map[string]any)
-	check(pr, "repository number url title author draft state updated_at head_oid base_ref_name base_oid ci metadata_observed_at")
-	for _, key := range []string{"state", "head_oid", "base_ref_name", "base_oid", "ci", "metadata_observed_at"} {
+	check(pr, "repository number url title author draft state updated_at head_oid base_ref_name base_oid ci metadata_observed_at viewer_reviews")
+	for _, key := range []string{"state", "head_oid", "base_ref_name", "base_oid", "ci", "metadata_observed_at", "viewer_reviews"} {
 		if pr[key] != nil {
 			t.Fatalf("%s=%v want null", key, pr[key])
 		}
@@ -268,5 +274,30 @@ func TestRunJSONPreservesGraphQLCostAfterFailedBatch(t *testing.T) {
 	}
 	if len(doc.Views[0].PRs) != 2 || len(doc.Errors) == 0 {
 		t.Fatalf("partial snapshot=%+v", doc)
+	}
+}
+
+func TestViewerReviewWireContract(t *testing.T) {
+	observed := time.Date(2026, 1, 2, 3, 4, 5, 0, time.FixedZone("offset", 3600))
+	observation := &gh.ReviewObservation{Actor: "alice", Complete: false, ObservedAt: observed, Reviews: []gh.SubmittedReview{{ID: 9007199254740993, State: "DISMISSED", SubmittedAt: observed}, {ID: 42, HeadOID: "head", State: "APPROVED", SubmittedAt: observed}}}
+	data, err := json.Marshal(wireViewerReviews(observation))
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := `{"actor":"alice","complete":false,"observed_at":"2026-01-02T02:04:05Z","reviews":[{"id":9007199254740993,"head_oid":null,"state":"DISMISSED","submitted_at":"2026-01-02T02:04:05Z"},{"id":42,"head_oid":"head","state":"APPROVED","submitted_at":"2026-01-02T02:04:05Z"}]}`
+	if string(data) != want {
+		t.Fatalf("wire review metadata=%s, want %s", data, want)
+	}
+	for _, test := range []struct {
+		value *gh.ReviewObservation
+		want  string
+	}{
+		{nil, "null"},
+		{&gh.ReviewObservation{Actor: "alice", Complete: true}, `{"actor":"alice","complete":true,"observed_at":null,"reviews":[]}`},
+	} {
+		data, err := json.Marshal(wireViewerReviews(test.value))
+		if err != nil || string(data) != test.want {
+			t.Fatalf("wire=%s, want %s, err=%v", data, test.want, err)
+		}
 	}
 }

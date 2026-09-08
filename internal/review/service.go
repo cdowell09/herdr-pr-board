@@ -56,6 +56,8 @@ func (s *Service) History(prURL string) ([]reviewmemory.Run, error) {
 
 func (s *Service) Wait() { s.mu.Lock(); s.closed = true; s.mu.Unlock(); s.wg.Wait() }
 
+func (s *Service) Snapshot() (reviewmemory.Snapshot, error) { return s.store.Snapshot() }
+
 func (s *Service) ReviewStatus(id reviewmemory.Identity) error { return s.store.ReviewStatus(id) }
 
 // ReviewCapacity reports current installation-wide availability without reserving a slot.

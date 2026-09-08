@@ -405,9 +405,14 @@ func TestDiscoveryOwnsSearchObservationTimes(t *testing.T) {
 func TestApplyEnrichmentPreservesSearchDataAcrossViews(t *testing.T) {
 	observed := time.Now().Add(-time.Minute)
 	views := []ViewData{{PRs: []gh.PullRequest{{URL: "url", Title: "First search"}}}, {PRs: []gh.PullRequest{{URL: "url", Title: "Second search"}}}}
-	applyCI(views, []gh.PullRequest{{URL: "url", Title: "Do not copy", CI: gh.CISuccess, HeadOID: "head", BaseRefName: "main", BaseOID: "base", MetadataObservedAt: observed}})
+	reviews := &gh.ReviewObservation{Actor: "alice", Complete: true, ObservedAt: observed,
+		Reviews: []gh.SubmittedReview{{ID: 42, HeadOID: "head", State: "APPROVED", SubmittedAt: observed}}}
+	applyCI(views, []gh.PullRequest{{URL: "url", Title: "Do not copy", CI: gh.CISuccess, HeadOID: "head", BaseRefName: "main", BaseOID: "base", MetadataObservedAt: observed, ViewerReviews: reviews}})
 	for i, view := range views {
 		pr := view.PRs[0]
+		if pr.ViewerReviews == nil || !pr.ViewerReviews.Complete || pr.ViewerReviews.Actor != "alice" || len(pr.ViewerReviews.Reviews) != 1 || pr.ViewerReviews.Reviews[0] != reviews.Reviews[0] {
+			t.Fatalf("view %d reviews=%+v", i, pr.ViewerReviews)
+		}
 		if pr.HeadOID != "head" || pr.BaseRefName != "main" || pr.BaseOID != "base" || pr.CI != gh.CISuccess || !pr.MetadataObservedAt.Equal(observed) || pr.Title == "Do not copy" {
 			t.Fatalf("view %d PR=%+v", i, pr)
 		}

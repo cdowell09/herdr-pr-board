@@ -9,7 +9,8 @@ refresh_interval = "5m"
 limit_per_scope = 100
 # Bounds simultaneous Search API calls.
 max_concurrency = 4
-# Number of PRs enriched with aggregate CI status in each GraphQL query.
+# Number of PRs enriched with CI status and your submitted reviews per GraphQL query.
+# Long review histories require additional pages. Complete metadata caches for two minutes.
 ci_batch_size = 25
 # Applied to views with scope = "configured". @me resolves through `gh api user`.
 scopes = [
@@ -88,3 +89,16 @@ timeout = "30m"
 # This includes manual reviews, explicit reruns, CLI reviews, and monitor reviews.
 # Comment permission alone does not enable automatic posting.
 # auto_publish = ""
+
+# Select a different named reviewer for each repository.
+# Pi profiles can select different skills with --pi-skill.
+# [[reviewers]]
+# id = "pi-security"
+# command = ["/absolute/path/to/herdr-pr-board", "--pi-reviewer", "--pi-skill", "/absolute/path/to/security/SKILL.md"]
+#
+# [[repositories]]
+# name = "owner/security-service"
+# reviewer = "pi-security"
+#
+# A Codex command needs an adapter that implements the documented reviewer contract.
+# A built-in Codex adapter and prompt-template settings are not available.

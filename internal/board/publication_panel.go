@@ -10,6 +10,7 @@ import (
 )
 
 type PublicationBackend interface {
+	HistoryForRuns([]reviewmemory.Run) ([]publication.Attempt, error)
 	PublishConfigured(context.Context, string, string) (publication.Attempt, error)
 	Publish(context.Context, string, string, config.PublicationAction) (publication.Attempt, error)
 	History(string) ([]publication.Attempt, error)

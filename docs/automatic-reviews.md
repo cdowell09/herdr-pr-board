@@ -133,6 +133,11 @@ Each decision includes identity, URL, view IDs, eligibility, and its reason.
 Retrieval failures preserve available decisions and return exit status `1`.
 The command does not launch a reviewer.
 
+The main board shows local progress in the REV column with the same symbols as CI.
+Select a PR to distinguish a running review from a request waiting for a slot.
+The POSTED column independently shows submitted reviews from GitHub, PR Board, or both.
+Posted reviews do not change automatic launch eligibility.
+
 Press `v` on the board to inspect the selected PR.
 The review panel shows the same eligibility reason from the latest full observation.
 Eligible PRs show **Waiting for review slot** when the running monitor has no available review slot.

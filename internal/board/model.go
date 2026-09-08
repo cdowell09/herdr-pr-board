@@ -40,7 +40,11 @@ func (m Model) boardLayout() boardLayout {
 	if stale(m.currentView()) {
 		firstPRRow++
 	}
-	visibleRows := max(1, m.height-firstPRRow-3-len(m.footerHelpLines()))
+	detailRows := 0
+	if pr, ok := m.selectedPR(); ok {
+		detailRows = len(m.selectedReviewLines(pr))
+	}
+	visibleRows := max(1, m.height-firstPRRow-3-len(m.footerHelpLines())-detailRows)
 	rows := m.filteredPRs()
 	selectedURLRow := firstPRRow
 	if len(rows) > 0 {
@@ -142,6 +146,7 @@ const (
 )
 
 type Model struct {
+	reviewRows       map[string]reviewOverviewRow
 	monitorStart     func() error
 	monitorError     string
 	autoCandidates   []dispatch.Candidate
@@ -217,7 +222,7 @@ func NewModelWithConfigPath(cfg config.Config, configPath string, loader discove
 }
 
 func (m Model) Init() tea.Cmd {
-	commands := []tea.Cmd{m.afterMonitorStart(m.observationCmd())}
+	commands := []tea.Cmd{m.afterMonitorStart(m.observationCmd()), m.reviewOverviewCmd()}
 	if m.tickInterval() > 0 {
 		commands = append(commands, m.tickCmd())
 	}
@@ -225,6 +230,9 @@ func (m Model) Init() tea.Cmd {
 }
 
 func (m Model) Update(message tea.Msg) (tea.Model, tea.Cmd) {
+	if next, cmd, handled := m.updateReviewOverview(message); handled {
+		return next, cmd
+	}
 	if next, cmd, handled := m.updateMonitor(message); handled {
 		return next, cmd
 	}
@@ -721,14 +729,6 @@ func (m Model) renderTable(lay boardLayout) string {
 	return output.String()
 }
 
-func (m Model) renderSelected() string {
-	pr, ok := m.selectedPR()
-	if !ok {
-		return dimStyle.Render("No PR selected")
-	}
-	return urlStyle.Render(truncate(pr.URL, m.width))
-}
-
 func (m Model) renderFooter() string {
 	help := m.footerHelpLines()
 
@@ -824,96 +824,6 @@ func (m Model) selectedPR() (gh.PullRequest, bool) {
 	return rows[m.cursor], true
 }
 
-// tableLayout picks column sizes for the current terminal width. A width of
-// zero hides the column. The title absorbs all remaining width.
-//
-// Tiers: wide keeps every column; medium compacts repository and author;
-// narrow drops the author; very narrow drops the repository, author, and
-// updated columns while the selected PR URL stays visible.
-type tableLayout struct {
-	repo    int
-	title   int
-	author  int
-	updated bool
-}
-
-func (m Model) tableLayout() tableLayout {
-	var layout tableLayout
-	switch {
-	case m.width >= tierWide:
-		layout.repo, layout.author, layout.updated = 24, 14, true
-	case m.width >= tierMedium:
-		layout.repo, layout.author, layout.updated = 18, 10, true
-	case m.width >= tierNarrow:
-		layout.repo, layout.updated = 16, true
-	}
-	layout.title = max(0, m.width-layout.fixedWidth())
-	return layout
-}
-
-// fixedWidth returns the cell width of every column except the title.
-func (l tableLayout) fixedWidth() int {
-	width := 6 + 2 + 3 + 2 // PR column, CI column, and their separators
-	if l.repo > 0 {
-		width += l.repo + 2
-	}
-	if l.author > 0 {
-		width += l.author + 2
-	}
-	if l.updated {
-		width += 8 + 1 // UPDATED column
-	}
-	return width
-}
-
-func (m Model) renderHeader(layout tableLayout) string {
-	var b strings.Builder
-	if layout.repo > 0 {
-		b.WriteString(padCells("REPOSITORY", layout.repo))
-		b.WriteString("  ")
-	}
-	b.WriteString("PR    ")
-	b.WriteString("  ")
-	b.WriteString("CI ")
-	b.WriteString("  ")
-	b.WriteString(padCells("TITLE", layout.title))
-	if layout.author > 0 {
-		b.WriteString("  ")
-		b.WriteString(padCells("AUTHOR", layout.author))
-	}
-	if layout.updated {
-		b.WriteString(" ")
-		b.WriteString(padCells("UPDATED", 8))
-	}
-	return headerStyle.Width(m.width).Render(truncate(b.String(), m.width))
-}
-
-func (m Model) renderPRRow(pr gh.PullRequest, layout tableLayout) string {
-	var b strings.Builder
-	if layout.repo > 0 {
-		b.WriteString(padCells(truncate(pr.Repository, layout.repo), layout.repo))
-		b.WriteString("  ")
-	}
-	b.WriteString(fmt.Sprintf("#%-5d", pr.Number))
-	b.WriteString("  ")
-	b.WriteString(renderCI(pr.CI))
-	b.WriteString("  ")
-	title := pr.Title
-	if pr.Draft {
-		title = "[draft] " + title
-	}
-	b.WriteString(padCells(truncate(title, layout.title), layout.title))
-	if layout.author > 0 {
-		b.WriteString("  ")
-		b.WriteString(padCells(truncate(pr.Author, layout.author), layout.author))
-	}
-	if layout.updated {
-		b.WriteString(" ")
-		b.WriteString(padCells(relativeTime(pr.UpdatedAt), 8))
-	}
-	return truncate(b.String(), m.width)
-}
-
 // tabLabel builds the rendered label for a tab. Render and mouse hitboxes
 // must share this function so both see the same label at every width. When a
 // full label would not fit its share of the row, the label compacts and
@@ -1002,56 +912,6 @@ func browserCommand(goos, url string) *exec.Cmd {
 		return exec.Command("open", url)
 	}
 	return exec.Command("xdg-open", url)
-}
-
-func renderCI(state gh.CIState) string {
-	var icon string
-	switch state {
-	case gh.CISuccess:
-		icon = lipgloss.NewStyle().Foreground(lipgloss.Color("42")).Render("✓")
-	case gh.CIPending:
-		icon = lipgloss.NewStyle().Foreground(lipgloss.Color("214")).Render("●")
-	case gh.CIFailure, gh.CIError:
-		icon = lipgloss.NewStyle().Foreground(lipgloss.Color("196")).Render("✗")
-	case gh.CINone:
-		icon = dimStyle.Render("–")
-	default:
-		icon = dimStyle.Render("?")
-	}
-	return " " + icon + " "
-}
-
-// truncate shortens value to at most width terminal cells, adding an
-// ellipsis when it cuts. It measures display width, so emoji, combining
-// characters, and wide glyphs stay aligned.
-func truncate(value string, width int) string {
-	if lipgloss.Width(value) <= width {
-		return value
-	}
-	if width <= 1 {
-		return "…"
-	}
-	budget := width - 1
-	used := 0
-	var keep strings.Builder
-	for _, r := range value {
-		cellWidth := lipgloss.Width(string(r))
-		if used+cellWidth > budget {
-			break
-		}
-		keep.WriteRune(r)
-		used += cellWidth
-	}
-	return keep.String() + "…"
-}
-
-// padCells right-pads value with spaces to exactly width terminal cells.
-func padCells(value string, width int) string {
-	padding := width - lipgloss.Width(value)
-	if padding <= 0 {
-		return value
-	}
-	return value + strings.Repeat(" ", padding)
 }
 
 func relativeTime(value time.Time) string {
