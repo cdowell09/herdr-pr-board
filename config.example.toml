@@ -82,6 +82,7 @@ timeout = "30m"
 # Allow each publication action separately. An empty list keeps findings local.
 # publish_actions = []
 # Valid actions: "comment", "approve", "request_changes".
-# Select one allowed action for automatic publication. Empty keeps findings local.
+# Select an allowed action after each completed review. Empty keeps findings local.
+# This includes manual reviews, explicit reruns, CLI reviews, and monitor reviews.
 # Comment permission alone does not enable automatic posting.
 # auto_publish = ""

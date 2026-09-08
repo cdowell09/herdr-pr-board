@@ -4,9 +4,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
-	"slices"
 	"strings"
-	"time"
 	"unicode"
 
 	"github.com/cdowell09/herdr-pr-board/internal/config"
@@ -66,45 +64,6 @@ func monitorCommand(binary, path, state string) (monitorInvocation, error) {
 		}
 	}
 	return monitorInvocation{binary, path, state}, nil
-}
-
-func (m Model) monitorLines(repo config.Repository, views []string) []string {
-	status := m.reviewPanel.monitor
-	if status.State == "" {
-		status.State = monitor.Unknown
-	}
-	lines := []string{"Monitor: " + string(status.State)}
-	if m.monitorError != "" {
-		lines = append(lines, m.monitorError)
-	}
-	if !status.ObservedAt.IsZero() {
-		lines = append(lines, "Latest monitor observation: "+status.ObservedAt.Format(time.RFC3339))
-	}
-	waiting := automaticSetupWait(repo, views, status)
-	if waiting != "" {
-		lines = append(lines, "Automatic reviews waiting: "+waiting+".")
-	} else {
-		lines = append(lines, "Automatic review setup is ready. PR eligibility still controls each launch.")
-	}
-	if repo.AutoLaunch {
-		if repo.AutoPublish == "" {
-			lines = append(lines, "Automatic review findings stay local.")
-			if slices.Contains(repo.PublishActions, config.PublishComment) {
-				lines = append(lines, "Comments are allowed, but automatic posting is off.")
-			}
-		} else {
-			lines = append(lines, "Automatic publication: "+string(repo.AutoPublish))
-		}
-	} else {
-		lines = append(lines, "Manual review only for this repository.")
-	}
-	if status.Message != "" {
-		lines = append(lines, status.Message)
-	}
-	if status.State == monitor.Stopped && m.reviewPanel.monitorCommand.binary != "" {
-		lines = append(lines, "Run in another terminal:")
-	}
-	return lines
 }
 
 func (m Model) monitorCommandLines() []string {

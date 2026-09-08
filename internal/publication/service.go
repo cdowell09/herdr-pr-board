@@ -10,6 +10,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/cdowell09/herdr-pr-board/internal/config"
@@ -28,6 +29,9 @@ type GitHub interface {
 }
 
 type Service struct {
+	mu              sync.Mutex
+	wg              sync.WaitGroup
+	closed          bool
 	dir, configPath string
 	store           *reviewmemory.Store
 	github          GitHub
@@ -83,12 +87,36 @@ func (s *Service) Publish(ctx context.Context, prURL, runID string, action confi
 	return s.publish(ctx, prURL, runID, action, false)
 }
 
-// PublishAutomatic additionally requires the explicit automatic action selector.
-func (s *Service) PublishAutomatic(ctx context.Context, prURL, runID string, action config.PublicationAction) (Attempt, error) {
-	return s.publish(ctx, prURL, runID, action, true)
+// PublishConfigured applies the saved posting choice to a completed review.
+// It does not depend on how the review was launched.
+func (s *Service) PublishConfigured(ctx context.Context, prURL, runID string) (Attempt, error) {
+	run, err := s.completedRun(prURL, runID)
+	if err != nil {
+		return Attempt{}, err
+	}
+	cfg, err := config.LoadExisting(s.configPath)
+	if err != nil {
+		return Attempt{}, err
+	}
+	repo, _ := cfg.RepositoryFor(run.Identity.Repository)
+	if repo.AutoPublish == "" {
+		return Attempt{}, nil
+	}
+	return s.publish(ctx, prURL, runID, repo.AutoPublish, true)
 }
 
+// Wait prevents new publication work and drains in-flight publication requests.
+func (s *Service) Wait() { s.mu.Lock(); s.closed = true; s.mu.Unlock(); s.wg.Wait() }
+
 func (s *Service) publish(ctx context.Context, prURL, runID string, action config.PublicationAction, automatic bool) (Attempt, error) {
+	s.mu.Lock()
+	if s.closed {
+		s.mu.Unlock()
+		return Attempt{}, errors.New("publication service is closed")
+	}
+	s.wg.Add(1)
+	s.mu.Unlock()
+	defer s.wg.Done()
 	ctx, cancel := context.WithTimeout(ctx, s.timeout)
 	defer cancel()
 	if !action.Valid() {

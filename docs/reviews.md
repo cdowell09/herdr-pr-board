@@ -7,6 +7,16 @@ Neither a successful process exit nor JSON event output proves completion.
 The reviewer contract prohibits GitHub publication.
 This contract does not isolate arbitrary programs from GitHub credentials.
 
+After completion, PR Board applies the repository's saved `auto_publish` choice.
+This applies to manual reviews and explicit reruns, including `--review` commands.
+An empty choice keeps findings local.
+Each nonempty choice requires its separate publication permission.
+Manual reviews do not require `auto_launch` or selected automatic views.
+A publication failure does not change the completed local review.
+The CLI preserves its completed run JSON and returns a nonzero status for publication failures.
+Reading history or changing settings does not publish historical runs.
+See [publication settings](repository-publication.md) for explicit publication and retries.
+
 ## Configure reviewers
 
 Add these settings to the active configuration:

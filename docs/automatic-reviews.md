@@ -153,7 +153,7 @@ Findings do not select an action automatically.
 
 Select an After review action under Automatic posting in repository settings.
 Keep local sends no automatic posts.
-Post comment posts a completed automatic review as a comment.
+Post comment posts each newly completed review as a comment.
 Selecting comment publication also enables comment permission.
 Other automatic actions require their separate permission first.
 Removing the selected permission clears the automatic selector.
@@ -165,7 +165,13 @@ bin/herdr-pr-board --repository-settings owner/repository \
   --publish-actions comment --auto-publish comment
 ```
 
-Only a completed automatic review can enter automatic publication.
+The saved selector applies to board reviews, explicit reruns, CLI reviews, and monitor reviews.
+Manual reviews do not require automatic launch permission or selected monitor views.
+Failed, blocked, and incomplete reviews do not publish.
+Reading history or changing settings does not publish existing runs.
+Publication failure leaves the local review completed.
+The board and CLI report the publication failure separately.
 The publication service rechecks revision, action permission, and the automatic selector before sending.
-Manual publication uses its separate action permission.
+Explicit publication controls use their separate action permission.
+Use these controls to retry publication or publish local-only findings.
 Review adapters must keep findings local.

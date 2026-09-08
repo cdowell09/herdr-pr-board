@@ -50,15 +50,16 @@ func (f *fakeReviews) Review(ctx context.Context, request review.Request, _ func
 }
 
 type fakePublisher struct {
-	mu      sync.Mutex
-	actions []config.PublicationAction
+	mu   sync.Mutex
+	runs []string
+	err  error
 }
 
-func (f *fakePublisher) PublishAutomatic(_ context.Context, _ string, _ string, action config.PublicationAction) (publication.Attempt, error) {
+func (f *fakePublisher) PublishConfigured(_ context.Context, _ string, runID string) (publication.Attempt, error) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
-	f.actions = append(f.actions, action)
-	return publication.Attempt{}, nil
+	f.runs = append(f.runs, runID)
+	return publication.Attempt{}, f.err
 }
 
 func dispatchConfig(t *testing.T, dir string, command []string, autoPublish bool) (string, config.Config) {
@@ -112,7 +113,7 @@ func snapshotWithPRs(cfg config.Config, count int) discovery.Snapshot {
 	return snapshot
 }
 
-func TestDispatchContinuesAfterFailureAndPublishesOnlyExplicitAction(t *testing.T) {
+func TestDispatchContinuesAfterFailureAndUsesConfiguredPublication(t *testing.T) {
 	for _, autoPublish := range []bool{false, true} {
 		t.Run(fmt.Sprint(autoPublish), func(t *testing.T) {
 			path, cfg := dispatchConfig(t, t.TempDir(), []string{"unused"}, autoPublish)
@@ -145,12 +146,8 @@ func TestDispatchContinuesAfterFailureAndPublishesOnlyExplicitAction(t *testing.
 			if err != nil || count != 2 || len(reviews.calls) != 2 {
 				t.Fatalf("count=%d calls=%v error=%v", count, reviews.calls, err)
 			}
-			want := 0
-			if autoPublish {
-				want = 1
-			}
-			if len(publisher.actions) != want {
-				t.Fatalf("publication actions=%v", publisher.actions)
+			if len(publisher.runs) != 1 || publisher.runs[0] != "43" {
+				t.Fatalf("completed publication runs=%v", publisher.runs)
 			}
 			for _, request := range reviews.calls {
 				if !request.Automatic || request.ExpectedRevision == nil || len(request.ObservedViews) == 0 || request.Rerun {
@@ -346,5 +343,19 @@ func TestCancellationWaitsForMaximumActiveReviewers(t *testing.T) {
 	}, nil)
 	if err != nil || len(reviews.calls) != 8 || active.Load() != 0 {
 		t.Fatalf("calls=%d active=%d error=%v", len(reviews.calls), active.Load(), err)
+	}
+}
+
+func TestPublicationFailureDoesNotChangeCompletedReviewEligibility(t *testing.T) {
+	path, cfg := dispatchConfig(t, t.TempDir(), []string{"unused"}, true)
+	snapshot := snapshotWithPRs(cfg, 1)
+	candidate := Candidates(snapshot, cfg.Views, cfg.Review.AutoViews)[0]
+	eligible := Evaluate(candidate, true, nil)
+	reviews := &fakeReviews{statuses: map[reviewmemory.Identity]error{}, run: func(context.Context, review.Request) (reviewmemory.Run, error) {
+		return reviewmemory.Run{ID: "completed", Outcome: reviewmemory.Outcome{Status: reviewmemory.Completed}}, nil
+	}}
+	event := New(path, reviews, &fakePublisher{err: errors.New("posting denied")}).launch(context.Background(), candidate, eligible, cfg)
+	if event.Run == nil || event.Run.Status != reviewmemory.Completed || !event.Decision.Eligible || event.Decision.Reason != eligible.Reason || !strings.Contains(event.Error, "publication failed") {
+		t.Fatalf("publication relabeled review: %+v", event)
 	}
 }

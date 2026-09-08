@@ -426,7 +426,7 @@ These view selections apply to all repositories that allow automatic launches.
 The settings panel separates reviews, GitHub permissions, automatic posting, and global views.
 Enable **Comments** under **GitHub permissions** to allow comments.
 Permission alone does not enable automatic posting.
-Select **After review: Post comment** under **Automatic posting** to post completed automatic reviews.
+Select **After review: Post comment** under **Automatic posting** to post each newly completed review.
 Select **After review: Keep local** to keep findings local.
 The panel shows the monitor state and any missing setup requirement.
 Use PgUp and PgDn to scroll through settings and the monitor command.
@@ -435,7 +435,15 @@ Run the displayed command in another terminal if background startup fails.
 New selections can take effect on the next monitor scan.
 Press Enter to save, or Esc to discard changes.
 Defaults keep launches manual and findings local.
-The panel shows current observed revisions and older revisions separately.
+The panel shows the latest review before previous reviews.
+Each review shows its findings and publication outcomes together.
+The latest completed review is the manual publication target.
+The panel distinguishes current observed revisions from older revisions.
+Scroll to Details for full run IDs, revisions, publication URLs, and diagnostics paths.
+Automation status appears after review results.
+Saved After review settings apply to newly completed manual reviews, explicit reruns, and monitor reviews.
+Permission alone does not post reviews.
+Changing settings does not publish earlier completed reviews.
 
 | Key | Action in the review panel |
 | --- | --- |
@@ -453,7 +461,8 @@ The panel shows current observed revisions and older revisions separately.
 
 Reviews continue when you close the panel.
 The board remains responsive while reviews run.
-Findings remain local unless you publish them.
+The saved **After review** setting controls automatic posting.
+Select **Keep local** to publish findings only with the manual controls.
 See [manual reviews](docs/reviews.md) to configure a reviewer.
 See [repository setup and publication](docs/repository-publication.md) for permissions, CLI configuration, and failure recovery.
 

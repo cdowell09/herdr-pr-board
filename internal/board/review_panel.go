@@ -2,7 +2,6 @@ package board
 
 import (
 	"context"
-	"fmt"
 	"strings"
 	"time"
 	"unicode"
@@ -13,6 +12,7 @@ import (
 	"github.com/cdowell09/herdr-pr-board/internal/monitor"
 	"github.com/cdowell09/herdr-pr-board/internal/publication"
 	"github.com/cdowell09/herdr-pr-board/internal/review"
+	"github.com/cdowell09/herdr-pr-board/internal/reviewflow"
 	"github.com/cdowell09/herdr-pr-board/internal/reviewmemory"
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/x/ansi"
@@ -187,9 +187,9 @@ func (m Model) updateReviewKey(key tea.KeyMsg) (tea.Model, tea.Cmd) {
 		m.reviewJobs[url] = "queued"
 		m.reviewPanel.message = ""
 		m.clampReviewOffset()
-		backend, ctx, rerun := m.reviews, m.reviewContext, key.String() == "N"
+		backend, publisher, ctx, rerun := m.reviews, m.publications, m.reviewContext, key.String() == "N"
 		return m, func() tea.Msg {
-			run, err := backend.Review(ctx, review.Request{URL: url, Rerun: rerun}, nil)
+			run, err := reviewflow.Run(ctx, backend, publisher, review.Request{URL: url, Rerun: rerun}, nil)
 			return reviewDoneMsg{url, run, err}
 		}
 	}
@@ -240,86 +240,4 @@ func (m Model) reviewObservation() gh.PullRequest {
 		}
 	}
 	return current
-}
-
-func (m Model) reviewLines() []string {
-	p := m.reviewPanel
-	current := m.reviewObservation()
-	lines := []string{}
-	add := func(value string) {
-		lines = append(lines, strings.Split(ansi.Wrap(reviewText(value), max(1, m.width), ""), "\n")...)
-	}
-	repo, _ := m.cfg.RepositoryFor(p.pr.Repository)
-	for _, line := range m.monitorLines(repo, m.cfg.Review.AutoViews) {
-		add(line)
-	}
-	lines = append(lines, m.monitorCommandLines()...)
-	for _, line := range m.publicationLines() {
-		add(line)
-	}
-	if p.automatic.Reason != "" {
-		add("Automatic (latest full observation): " + p.automatic.Reason)
-	}
-	if status := m.reviewJobs[p.pr.URL]; status != "" {
-		add("Request: " + status)
-	}
-	if p.message != "" {
-		add(p.message)
-	}
-	if len(p.runs) == 0 {
-		add("No local review runs.")
-	}
-	for i := len(p.runs) - 1; i >= 0; i-- {
-		run := p.runs[i]
-		comparison := "older revision"
-		if current.HeadOID == "" || current.BaseRefName == "" {
-			comparison = "current revision unknown"
-		} else if run.Identity.HeadOID == current.HeadOID && run.Identity.BaseRefName == current.BaseRefName {
-			comparison = "current observed revision"
-		}
-		add(fmt.Sprintf("%s · %s · %s", run.Status, run.Reviewer, comparison))
-		add(fmt.Sprintf("Head %s → %s · %s", run.Identity.HeadOID, run.Identity.BaseRefName, run.StartedAt.Format(time.RFC3339)))
-		if run.Message != "" {
-			add(run.Message)
-		}
-		for _, finding := range run.Findings {
-			add(finding.Severity + " " + finding.Title)
-			if finding.Path != "" {
-				add(fmt.Sprintf("%s:%d", finding.Path, finding.Line))
-			}
-			add(finding.Body)
-		}
-		if m.reviews != nil {
-			add("Diagnostics: " + m.reviews.RunDirectory(run.ID))
-		}
-		add("")
-	}
-	return lines
-}
-
-func (m Model) reviewViewport() ([]string, int) {
-	help := strings.Split(ansi.Wrap("n run · N explicit rerun · s settings · c comment · a approve · x request changes · j/k scroll · o open · Esc back · q quit", max(1, m.width), ""), "\n")
-	return help, max(1, m.height-3-len(help))
-}
-func (m *Model) clampReviewOffset() {
-	if m.reviewPanel == nil {
-		return
-	}
-	if m.reviewPanel.setup != nil {
-		m.clampRepositoryOffset()
-		return
-	}
-	_, visible := m.reviewViewport()
-	m.reviewPanel.offset = max(0, min(m.reviewPanel.offset, max(0, len(m.reviewLines())-visible)))
-}
-
-func (m Model) renderReviewPanel() string {
-	if m.reviewPanel.setup != nil {
-		return m.renderRepositoryPanel()
-	}
-	lines := m.reviewLines()
-	help, visible := m.reviewViewport()
-	offset := max(0, min(m.reviewPanel.offset, max(0, len(lines)-visible)))
-	body := append([]string{titleStyle.Render("Local reviews"), urlStyle.Render(truncate(m.reviewPanel.pr.URL, m.width)), ""}, lines[offset:min(len(lines), offset+visible)]...)
-	return strings.Join(append(body, help...), "\n")
 }

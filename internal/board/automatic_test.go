@@ -69,7 +69,7 @@ func TestActiveViewRevisionChangeInvalidatesAutomaticStatus(t *testing.T) {
 	msg := m.reviewHistoryCmd(pr.URL)()
 	next, _ = m.Update(msg)
 	m = next.(Model)
-	if !strings.Contains(stripANSI(m.View()), "Automatic (latest full observation): "+dispatch.ObservationFailed) {
+	if !strings.Contains(stripANSI(m.View()), "Latest full observation: "+dispatch.ObservationFailed) {
 		t.Fatal("panel omitted shared eligibility reason")
 	}
 }

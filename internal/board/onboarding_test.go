@@ -125,22 +125,28 @@ func TestOnboardingManyViewsRemainSelectableAndScrollable(t *testing.T) {
 }
 
 func TestSetupSummariesDoNotConfusePermissionWithScheduling(t *testing.T) {
-	m := onboardingModel(t, 80, 24, 3)
+	m := onboardingModel(t, 80, 40, 3)
 	setup := m.reviewPanel.setup
-	lines := strings.Join(m.monitorLines(setup.repo, setup.automatic.Selected), "\n")
-	for _, want := range []string{"select global views", "Comments are allowed, but automatic posting is off", "Monitor: stopped"} {
+	lines := stripANSI(m.View())
+	for _, want := range []string{"Waiting: select global views", "[x] Comments", "After review: Keep local", "Monitor: stopped"} {
 		if !strings.Contains(lines, want) {
 			t.Fatalf("missing %q: %s", want, lines)
 		}
 	}
 	setup.automatic.Selected = []string{"review"}
 	m.reviewPanel.monitor = monitor.Status{State: monitor.Running, Message: "configuration differs"}
-	if strings.Contains(strings.Join(m.monitorLines(setup.repo, setup.automatic.Selected), "\n"), "setup is ready") {
-		t.Fatal("lock alone implied readiness")
+	if lines := stripANSI(m.View()); !strings.Contains(lines, "Waiting: wait for a matching observation") || strings.Contains(lines, "Setup ready") {
+		t.Fatalf("lock alone implied readiness: %s", lines)
 	}
 	setup.repo.AutoLaunch = false
-	if !strings.Contains(strings.Join(m.monitorLines(setup.repo, setup.automatic.Selected), "\n"), "Manual review only") {
-		t.Fatal("manual mode unclear")
+	m.cfg.Repositories = []config.Repository{setup.repo}
+	m.cfg.Review.AutoViews = setup.automatic.Selected
+	m.reviewPanel.setup = nil
+	lines = stripANSI(strings.Join(m.reviewLines(), "\n"))
+	for _, want := range []string{"Automatic launches: off", "After review: keep local"} {
+		if !strings.Contains(lines, want) {
+			t.Fatalf("missing %q: %s", want, lines)
+		}
 	}
 }
 
@@ -180,7 +186,7 @@ func TestOnboardingSaveAndStatusRefresh(t *testing.T) {
 	if m.reviewPanel.monitor.State != monitor.Stopped || m.reviewPanel.monitorCommand.path != m.configPath {
 		t.Fatalf("status %+v", m.reviewPanel.monitor)
 	}
-	if !strings.Contains(strings.Join(m.reviewLines(), "\n"), "Comments are allowed, but automatic posting is off") {
+	if !strings.Contains(strings.Join(m.reviewLines(), "\n"), "After review: keep local") {
 		t.Fatal("saved local-only publication unclear")
 	}
 	owner, err := localstate.TryLock(filepath.Join(m.stateDir, "monitor.lock"))

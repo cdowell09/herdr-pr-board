@@ -7,18 +7,14 @@ import (
 
 	"github.com/cdowell09/herdr-pr-board/internal/config"
 	"github.com/cdowell09/herdr-pr-board/internal/discovery"
-	"github.com/cdowell09/herdr-pr-board/internal/publication"
 	"github.com/cdowell09/herdr-pr-board/internal/review"
+	"github.com/cdowell09/herdr-pr-board/internal/reviewflow"
 	"github.com/cdowell09/herdr-pr-board/internal/reviewmemory"
 )
 
 type Reviews interface {
 	ReviewStatus(reviewmemory.Identity) error
 	Review(context.Context, review.Request, func(string)) (reviewmemory.Run, error)
-}
-
-type Publisher interface {
-	PublishAutomatic(context.Context, string, string, config.PublicationAction) (publication.Attempt, error)
 }
 
 type Event struct {
@@ -30,10 +26,10 @@ type Event struct {
 type Dispatcher struct {
 	configPath string
 	reviews    Reviews
-	publisher  Publisher
+	publisher  reviewflow.Publisher
 }
 
-func New(configPath string, reviews Reviews, publisher Publisher) *Dispatcher {
+func New(configPath string, reviews Reviews, publisher reviewflow.Publisher) *Dispatcher {
 	return &Dispatcher{configPath: configPath, reviews: reviews, publisher: publisher}
 }
 
@@ -155,32 +151,16 @@ func (d *Dispatcher) Run(ctx context.Context, observedConfig config.Config, obse
 func (d *Dispatcher) launch(ctx context.Context, candidate Candidate, eligible Decision, observedConfig config.Config) Event {
 	event := Event{Decision: eligible}
 	id := eligible.Identity
-	run, err := d.reviews.Review(ctx, review.Request{URL: candidate.PR.URL, Automatic: true, ExpectedRevision: &id, ObservedViews: candidate.Views, ObservedConfig: observedConfig}, nil)
+	run, err := reviewflow.Run(ctx, d.reviews, d.publisher, review.Request{URL: candidate.PR.URL, Automatic: true, ExpectedRevision: &id, ObservedViews: candidate.Views, ObservedConfig: observedConfig}, nil)
 	if run.ID != "" {
 		event.Run = &run
 	}
 	if err != nil {
 		event.Error = err.Error()
-		event.Decision.Eligible = false
-		event.Decision.Reason = err.Error()
-		return event
-	}
-	if run.Status != reviewmemory.Completed || d.publisher == nil {
-		return event
-	}
-	cfg, err := config.LoadExisting(d.configPath)
-	if err != nil {
-		event.Error = err.Error()
-		return event
-	}
-	repo, _ := cfg.RepositoryFor(run.Identity.Repository)
-	if repo.AutoPublish == "" {
-		return event
-	}
-	// Publication owns fresh revision and action permission checks.
-	_, err = d.publisher.PublishAutomatic(ctx, candidate.PR.URL, run.ID, repo.AutoPublish)
-	if err != nil {
-		event.Error = err.Error()
+		if run.Status != reviewmemory.Completed {
+			event.Decision.Eligible = false
+			event.Decision.Reason = err.Error()
+		}
 	}
 	return event
 }

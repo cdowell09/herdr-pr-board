@@ -2,7 +2,6 @@ package board
 
 import (
 	"context"
-	"fmt"
 
 	"github.com/cdowell09/herdr-pr-board/internal/config"
 	"github.com/cdowell09/herdr-pr-board/internal/publication"
@@ -11,6 +10,7 @@ import (
 )
 
 type PublicationBackend interface {
+	PublishConfigured(context.Context, string, string) (publication.Attempt, error)
 	Publish(context.Context, string, string, config.PublicationAction) (publication.Attempt, error)
 	History(string) ([]publication.Attempt, error)
 }
@@ -89,22 +89,4 @@ func latestCompleted(runs []reviewmemory.Run) (reviewmemory.Run, bool) {
 		}
 	}
 	return reviewmemory.Run{}, false
-}
-
-func (m Model) publicationLines() []string {
-	lines := []string{}
-	if run, ok := latestCompleted(m.reviewPanel.runs); ok {
-		lines = append(lines, "Publication target: latest completed run "+run.ID)
-	}
-	for _, a := range m.reviewPanel.publications {
-		line := fmt.Sprintf("Publication %s: %s · run %s", a.Action, a.Status, a.RunID)
-		if a.URL != "" {
-			line += " · " + a.URL
-		}
-		lines = append(lines, line)
-		if a.Message != "" {
-			lines = append(lines, a.Message)
-		}
-	}
-	return lines
 }

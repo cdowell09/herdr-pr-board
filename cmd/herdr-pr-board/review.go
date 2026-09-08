@@ -14,6 +14,7 @@ import (
 	"github.com/cdowell09/herdr-pr-board/internal/piadapter"
 	"github.com/cdowell09/herdr-pr-board/internal/review"
 	"github.com/cdowell09/herdr-pr-board/internal/reviewercontract"
+	"github.com/cdowell09/herdr-pr-board/internal/reviewflow"
 	"github.com/cdowell09/herdr-pr-board/internal/reviewmemory"
 )
 
@@ -63,10 +64,10 @@ func printReviewHistory(prURL string, stdout, stderr io.Writer) int {
 	return 0
 }
 
-func printReview(o options, service *review.Service, stdout, stderr io.Writer) int {
+func printReview(o options, service reviewflow.Reviewer, publisher reviewflow.Publisher, stdout, stderr io.Writer) int {
 	ctx, cancel := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer cancel()
-	run, err := service.Review(ctx, review.Request{URL: o.review, Reviewer: o.reviewer, Rerun: o.rerun}, func(state string) { fmt.Fprintln(stderr, "review:", state) })
+	run, err := reviewflow.Run(ctx, service, publisher, review.Request{URL: o.review, Reviewer: o.reviewer, Rerun: o.rerun}, func(state string) { fmt.Fprintln(stderr, "review:", state) })
 	if run.ID != "" {
 		if writeErr := json.NewEncoder(stdout).Encode(struct {
 			Version int              `json:"version"`

@@ -16,8 +16,11 @@ These selections apply to all repositories that allow automatic launches.
 The panel selects no views by default.
 Enable Comments under GitHub permissions to allow comments.
 Permission allows publication but does not schedule publication.
-Select After review: Post comment under Automatic posting to post completed automatic reviews.
+Select After review: Post comment under Automatic posting to post each newly completed review.
 Select After review: Keep local to keep findings local.
+The saved posting choice applies to manual reviews, explicit reruns, CLI reviews, and monitor reviews.
+Automatic launch permission remains separate.
+Reading history or saving settings does not publish existing runs.
 Approval and change requests each require a separate selection.
 Press Enter to save.
 Press Esc to discard changes.

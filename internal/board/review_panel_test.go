@@ -48,10 +48,13 @@ func TestReviewPanelHistoryCoordinatesAndControls(t *testing.T) {
 	old.Identity.HeadOID = strings.Repeat("b", 40)
 	m.reviewPanel.runs = []reviewmemory.Run{old, current}
 	view := stripANSI(m.View())
-	for _, value := range []string{"current observed revision", "older revision", "P2 Finding", "Diagnostic details", "main.go:2", "Diagnostics:"} {
+	for _, value := range []string{"current observed revision", "older revision", "P2 Finding", "Diagnostic details", "main.go:2"} {
 		if !strings.Contains(view, value) {
 			t.Fatalf("missing %q:\n%s", value, view)
 		}
+	}
+	if !strings.Contains(stripANSI(strings.Join(m.reviewLines(), "\n")), "Diagnostics:") {
+		t.Fatal("diagnostics not reachable by scrolling")
 	}
 	lines := strings.Split(view, "\n")
 	if lines[1] != m.reviewPanel.pr.URL {
