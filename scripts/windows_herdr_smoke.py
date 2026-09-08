@@ -5,6 +5,7 @@ import json
 import os
 from pathlib import Path
 import subprocess
+import sys
 import tempfile
 import time
 import tomllib
@@ -263,6 +264,7 @@ def smoke(root, temporary):
 
 
 if __name__ == "__main__":
+    sys.stdout.reconfigure(encoding="utf-8", errors="backslashreplace")
     if os.name != "nt":
         raise SystemExit("Run this smoke test on native Windows.")
     with tempfile.TemporaryDirectory(prefix="PR Board native ") as directory:
