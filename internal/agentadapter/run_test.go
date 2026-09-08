@@ -4,15 +4,139 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
+	"io"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/cdowell09/herdr-pr-board/internal/reviewercontract"
 	"github.com/cdowell09/herdr-pr-board/internal/reviewmemory"
+	"github.com/cdowell09/herdr-pr-board/internal/testutil"
 )
+
+func TestMain(m *testing.M) {
+	name := strings.TrimSuffix(filepath.Base(os.Args[0]), ".exe")
+	if name == "claim-agent" {
+		if err := os.WriteFile(filepath.Join(os.Getenv("PR_BOARD_CLAIM_HELPER"), "pi.pid"), []byte(fmt.Sprint(os.Getpid())), 0600); err != nil {
+			fmt.Fprintln(os.Stderr, err)
+			os.Exit(1)
+		}
+		time.Sleep(30 * time.Second)
+		os.Exit(0)
+	}
+	if name == "gh" || name == "git" || name == "agent" {
+		if err := runFixtureProcess(name, os.Args[1:]); err != nil {
+			fmt.Fprintln(os.Stderr, err)
+			os.Exit(1)
+		}
+		os.Exit(0)
+	}
+	os.Exit(m.Run())
+}
+
+func runFixtureProcess(name string, args []string) error {
+	trace, err := os.OpenFile(os.Getenv("TEST_TRACE"), os.O_CREATE|os.O_APPEND|os.O_WRONLY, 0600)
+	if err != nil {
+		return err
+	}
+	_, writeErr := fmt.Fprintln(trace, name+" "+strings.Join(args, " "))
+	if err := errors.Join(writeErr, trace.Close()); err != nil {
+		return err
+	}
+	printFile := func(path string) error {
+		data, err := os.ReadFile(path)
+		if err != nil {
+			return err
+		}
+		_, err = os.Stdout.Write(data)
+		return err
+	}
+	switch name {
+	case "gh":
+		if len(args) < 2 {
+			return errors.New("missing gh arguments")
+		}
+		switch args[0] + " " + args[1] {
+		case "pr view":
+			return printFile(os.Getenv("TEST_PR"))
+		case "issue view":
+			return errors.New("unavailable")
+		case "repo clone":
+			return os.MkdirAll(args[3], 0700)
+		}
+	case "git":
+		if len(args) == 0 {
+			return errors.New("missing git arguments")
+		}
+		switch args[0] {
+		case "rev-parse":
+			_, err = fmt.Fprintln(os.Stdout, os.Getenv("TEST_HEAD"))
+		case "merge-base":
+			_, err = fmt.Fprintln(os.Stdout, os.Getenv("TEST_BASE"))
+		case "--no-pager":
+			if args[1] == "diff" {
+				if os.Getenv("TEST_MODE") == "oversized_diff" {
+					_, err = os.Stdout.Write(make([]byte, 4*1024*1024+1))
+				} else {
+					_, err = fmt.Fprint(os.Stdout, "CAPTURED_DIFF")
+				}
+			} else {
+				_, err = fmt.Fprint(os.Stdout, "CAPTURED_LOG")
+			}
+		}
+		return err
+	case "agent":
+		cwd, err := os.Getwd()
+		if err != nil {
+			return err
+		}
+		if len(args) != 1 {
+			return errors.New("missing checkout argument")
+		}
+		current, err := os.Stat(cwd)
+		if err != nil {
+			return err
+		}
+		expected, err := os.Stat(args[0])
+		if err != nil || !os.SameFile(current, expected) {
+			return fmt.Errorf("agent working directory differs from checkout: %s, %s", cwd, args[0])
+		}
+		prompt, err := io.ReadAll(os.Stdin)
+		if err != nil {
+			return err
+		}
+		if err := os.WriteFile(os.Getenv("TEST_PROMPT"), prompt, 0600); err != nil {
+			return err
+		}
+		if err := os.WriteFile(os.Getenv("TEST_CWD"), []byte(cwd), 0600); err != nil {
+			return err
+		}
+		if _, err := os.Stat("PWNED"); err == nil {
+			if err := os.WriteFile(os.Getenv("TEST_PWNED"), nil, 0600); err != nil {
+				return err
+			}
+		}
+		if os.Getenv("TEST_MODE") == "oversized_events" {
+			if _, err := os.Stderr.Write(make([]byte, 1024*1024+1)); err != nil {
+				return err
+			}
+			_, err = os.Stdout.Write(make([]byte, 32*1024*1024+1))
+			return err
+		}
+		if err := printFile(os.Getenv("TEST_RESPONSE")); err != nil {
+			return err
+		}
+		if os.Getenv("TEST_MODE") == "nonzero_exit" {
+			return errors.New("agent failed")
+		}
+		return nil
+	}
+	return fmt.Errorf("unexpected fixture command: %s %v", name, args)
+}
 
 func TestRunPreparesCapturedReview(t *testing.T) {
 	for _, mode := range []string{"completed", "oversized_diff", "empty_spec", "missing_issue", "changed_pr", "missing_skill"} {
@@ -122,43 +246,19 @@ func TestRunBoundsAgentStreams(t *testing.T) {
 
 func prepareRun(t *testing.T, mode string) (reviewercontract.Input, Options) {
 	t.Helper()
+	// Each fixture exits after synchronous work; omit the race runtime's exit sleep.
+	t.Setenv("GORACE", os.Getenv("GORACE")+" atexit_sleep_ms=0")
 	dir := t.TempDir()
 	bin := filepath.Join(dir, "bin")
 	if err := os.Mkdir(bin, 0700); err != nil {
 		t.Fatal(err)
 	}
-	script := `#!/bin/sh
-printf '%s\n' "$(basename "$0") $*" >> "$TEST_TRACE"
-case "$(basename "$0")" in
- gh)
-  case "$1 $2" in
-   'pr view') cat "$TEST_PR";;
-   'issue view') echo unavailable >&2; exit 1;;
-   'repo clone') mkdir -p "$4";;
-  esac;;
- git)
-  case "$1" in
-   rev-parse) printf '%s\n' "$TEST_HEAD";;
-   --no-pager)
-    if [ "$2" = diff ]; then
-     if [ "$TEST_MODE" = oversized_diff ]; then head -c 4194305 /dev/zero; else printf CAPTURED_DIFF; fi
-    else printf CAPTURED_LOG; fi;;
-   merge-base) printf '%s\n' "$TEST_BASE";;
-  esac;;
- agent)
-  [ "$PWD" = "$1" ] || exit 2
-  cat > "$TEST_PROMPT"
-  pwd > "$TEST_CWD"
-  if [ -e PWNED ]; then touch "$TEST_PWNED"; fi
-  if [ "$TEST_MODE" = oversized_events ]; then
-   head -c 1048577 /dev/zero >&2
-   head -c 33554433 /dev/zero
-  else cat "$TEST_RESPONSE"; fi
-  if [ "$TEST_MODE" = nonzero_exit ]; then exit 1; fi;;
-esac
-`
+	var agent string
 	for _, name := range []string{"gh", "git", "agent"} {
-		writeTestFile(t, filepath.Join(bin, name), []byte(script), 0700)
+		path := testutil.Executable(t, bin, name)
+		if name == "agent" {
+			agent = path
+		}
 	}
 	in := reviewercontract.Input{Version: 1, Identity: reviewmemory.Identity{Repository: "owner/repo", Number: 42, HeadOID: strings.Repeat("a", 40), BaseRefName: "main"}, BaseOID: strings.Repeat("b", 40), ResultPath: filepath.Join(dir, "result.json")}
 	body := "Implement the widget. $(touch PWNED) `touch PWNED`"
@@ -211,10 +311,10 @@ esac
 	if mode == "missing_skill" {
 		skill += ".missing"
 	}
-	for key, value := range map[string]string{"PATH": bin + ":" + os.Getenv("PATH"), "TEST_TRACE": filepath.Join(dir, "trace"), "TEST_PR": filepath.Join(dir, "pr.json"), "TEST_HEAD": in.Identity.HeadOID, "TEST_BASE": in.BaseOID, "TEST_MODE": mode, "TEST_PROMPT": filepath.Join(dir, "prompt"), "TEST_CWD": filepath.Join(dir, "cwd"), "TEST_PWNED": filepath.Join(dir, "PWNED"), "TEST_RESPONSE": filepath.Join(dir, "response")} {
+	for key, value := range map[string]string{"PATH": bin + string(os.PathListSeparator) + os.Getenv("PATH"), "TEST_TRACE": filepath.Join(dir, "trace"), "TEST_PR": filepath.Join(dir, "pr.json"), "TEST_HEAD": in.Identity.HeadOID, "TEST_BASE": in.BaseOID, "TEST_MODE": mode, "TEST_PROMPT": filepath.Join(dir, "prompt"), "TEST_CWD": filepath.Join(dir, "cwd"), "TEST_PWNED": filepath.Join(dir, "PWNED"), "TEST_RESPONSE": filepath.Join(dir, "response")} {
 		t.Setenv(key, value)
 	}
-	opts := Options{Name: "fake", Binary: filepath.Join(bin, "agent"), Skill: skill,
+	opts := Options{Name: "fake", Binary: agent, Skill: skill,
 		Command: func(binary, selectedSkill, work, checkout string) (*exec.Cmd, error) {
 			if selectedSkill != skill || filepath.Dir(checkout) != work {
 				t.Fatalf("incorrect command context: %s %s %s", selectedSkill, work, checkout)

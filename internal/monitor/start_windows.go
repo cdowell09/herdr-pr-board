@@ -1,6 +1,7 @@
 package monitor
 
 import (
+	"errors"
 	"golang.org/x/sys/windows"
 	"os/exec"
 	"syscall"
@@ -8,4 +9,8 @@ import (
 
 func detachMonitor(cmd *exec.Cmd) {
 	cmd.SysProcAttr = &syscall.SysProcAttr{CreationFlags: windows.DETACHED_PROCESS | windows.CREATE_NEW_PROCESS_GROUP}
+}
+
+func brokenReadyPipe(err error) bool {
+	return errors.Is(err, windows.ERROR_BROKEN_PIPE) || errors.Is(err, windows.ERROR_NO_DATA)
 }

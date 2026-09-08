@@ -216,7 +216,7 @@ func AcknowledgeReady(pipe *os.File) error {
 	}
 	_, err := pipe.Write([]byte{1})
 	closeErr := pipe.Close()
-	if errors.Is(err, syscall.EPIPE) {
+	if brokenReadyPipe(err) {
 		err = nil
 	}
 	return errors.Join(err, closeErr)

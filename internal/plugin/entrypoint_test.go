@@ -1,11 +1,16 @@
 package plugin
 
 import (
+	"context"
+	"fmt"
+	"github.com/cdowell09/herdr-pr-board/internal/testutil"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"runtime"
+	"strconv"
 	"strings"
+	"sync"
 	"testing"
 )
 
@@ -18,49 +23,70 @@ func openCmd() string {
 	return "plugin pane open --plugin " + pluginID + " --entrypoint " + entrypoint + " --placement tab --focus"
 }
 
-const fakeHerdrScript = `#!/usr/bin/env bash
-set -euo pipefail
-printf '%s\n' "$*" >>"${HERDR_FAKE_LOG:?missing HERDR_FAKE_LOG}"
-case "${1:-}" in
-  plugin)
-    case "${2:-}" in
-      pane)
-        case "${3:-}" in
-          focus) exit "${HERDR_FAKE_FOCUS_EXIT:-0}" ;;
-          open)
-            if [[ -f "${HERDR_PLUGIN_STATE_DIR:?missing HERDR_PLUGIN_STATE_DIR}/pane-id" ]]; then
-              printf 'open_saw_pane_file=yes\n' >>"$HERDR_FAKE_LOG"
-            else
-              printf 'open_saw_pane_file=no\n' >>"$HERDR_FAKE_LOG"
-            fi
-            exit 0
-            ;;
-        esac
-        ;;
-    esac
-    ;;
-  tab)
-    case "${2:-}" in
-      rename) exit 0 ;;
-    esac
-    ;;
-esac
-exit 0
-`
+func TestMain(m *testing.M) {
+	if strings.TrimSuffix(filepath.Base(os.Args[0]), ".exe") != "herdr" {
+		switch os.Getenv("PR_BOARD_PLUGIN_HELPER") {
+		case "open":
+			if err := Open(context.Background()); err != nil {
+				fmt.Fprintln(os.Stderr, err)
+				os.Exit(1)
+			}
+			os.Exit(0)
+		case "run":
+			path, cleanup, err := Prepare(context.Background())
+			if err != nil {
+				fmt.Fprintln(os.Stderr, err)
+				os.Exit(1)
+			}
+			appendLog(os.Getenv("HERDR_FAKE_BOARD_LOG"), "args=--config "+path)
+			panePath := filepath.Join(os.Getenv("HERDR_PLUGIN_STATE_DIR"), "pane-id")
+			if data, err := os.ReadFile(panePath); err == nil {
+				appendLog(os.Getenv("HERDR_FAKE_BOARD_LOG"), "owned_pane="+strings.TrimSpace(string(data)))
+			}
+			if owner := os.Getenv("HERDR_FAKE_BOARD_NEW_OWNER"); owner != "" {
+				_ = os.WriteFile(panePath, []byte(owner+"\n"), 0600)
+			}
+			if err := cleanup(); err != nil {
+				fmt.Fprintln(os.Stderr, err)
+				os.Exit(1)
+			}
+			os.Exit(0)
+		}
+	}
+	if strings.TrimSuffix(filepath.Base(os.Args[0]), ".exe") == "herdr" {
+		args := strings.Join(os.Args[1:], " ")
+		appendLog(os.Getenv("HERDR_FAKE_LOG"), args)
+		if strings.HasPrefix(args, "plugin pane focus ") {
+			code, _ := strconv.Atoi(os.Getenv("HERDR_FAKE_FOCUS_EXIT"))
+			os.Exit(code)
+		}
+		if strings.HasPrefix(args, "plugin pane open ") {
+			_, err := os.Stat(filepath.Join(os.Getenv("HERDR_PLUGIN_STATE_DIR"), "pane-id"))
+			state := "no"
+			if err == nil {
+				state = "yes"
+			}
+			appendLog(os.Getenv("HERDR_FAKE_LOG"), "open_saw_pane_file="+state)
+			fmt.Println(`{"result":{"plugin_pane":{"pane":{"pane_id":"pane-created"}}}}`)
+		}
+		os.Exit(0)
+	}
+	os.Exit(m.Run())
+}
 
-const fakeBoardScript = `#!/usr/bin/env bash
-set -euo pipefail
-log="${HERDR_FAKE_BOARD_LOG:?missing HERDR_FAKE_BOARD_LOG}"
-printf 'args=%s\n' "$*" >>"$log"
-pane_file="${HERDR_PLUGIN_STATE_DIR:?missing HERDR_PLUGIN_STATE_DIR}/pane-id"
-if [[ -f "$pane_file" ]]; then
-  printf 'owned_pane=%s\n' "$(<"$pane_file")" >>"$log"
-fi
-if [[ -n "${HERDR_FAKE_BOARD_NEW_OWNER:-}" ]]; then
-  printf '%s\n' "$HERDR_FAKE_BOARD_NEW_OWNER" >"$pane_file"
-fi
-exit 0
-`
+func appendLog(path, line string) {
+	file, err := os.OpenFile(path, os.O_CREATE|os.O_APPEND|os.O_WRONLY, 0600)
+	if err != nil {
+		fmt.Fprintln(os.Stderr, err)
+		os.Exit(1)
+	}
+	_, err = fmt.Fprintln(file, line)
+	file.Close()
+	if err != nil {
+		fmt.Fprintln(os.Stderr, err)
+		os.Exit(1)
+	}
+}
 
 type fixture struct {
 	root       string
@@ -92,9 +118,7 @@ func newFixture(t *testing.T) *fixture {
 	if err := os.MkdirAll(binDir, 0o755); err != nil {
 		t.Fatal(err)
 	}
-	herdr := filepath.Join(binDir, "herdr")
-	writeScript(t, herdr, fakeHerdrScript)
-	writeScript(t, filepath.Join(f.root, "bin", "herdr-pr-board"), fakeBoardScript)
+	herdr := testutil.Executable(t, binDir, "herdr")
 	f.env = map[string]string{
 		"HERDR_BIN_PATH":          herdr,
 		"HERDR_PLUGIN_ROOT":       f.root,
@@ -108,8 +132,8 @@ func newFixture(t *testing.T) *fixture {
 
 func (f *fixture) run(t *testing.T, script string) (string, error) {
 	t.Helper()
-	cmd := exec.Command("bash", filepath.Join(repoRoot(t), "bin", script))
-	cmd.Env = append(os.Environ(), envEntries(f.env)...)
+	cmd := exec.Command(os.Args[0])
+	cmd.Env = append(envEntries(f.env), "PR_BOARD_PLUGIN_HELPER="+script)
 	cmd.Dir = repoRoot(t)
 	out, err := cmd.CombinedOutput()
 	return string(out), err
@@ -156,8 +180,8 @@ func TestOpenReplacesStalePane(t *testing.T) {
 	if focusIdx, openIdx := lineIndex(lines, focus), lineIndex(lines, openCmd()); focusIdx >= openIdx {
 		t.Fatalf("focus must precede the replacement open: %#v", lines)
 	}
-	if paneFileExists(t, f.stateDir) {
-		t.Fatal("stale pane file was not removed")
+	if got := readPaneFile(t, f.stateDir); got != "pane-created" {
+		t.Fatalf("replacement pane not recorded: %s", got)
 	}
 }
 
@@ -256,13 +280,6 @@ func repoRoot(t *testing.T) string {
 	return filepath.Dir(filepath.Dir(filepath.Dir(file)))
 }
 
-func writeScript(t *testing.T, path, content string) {
-	t.Helper()
-	if err := os.WriteFile(path, []byte(content), 0o755); err != nil {
-		t.Fatal(err)
-	}
-}
-
 func writePaneFile(t *testing.T, stateDir, pane string) {
 	t.Helper()
 	if err := os.WriteFile(paneFile(stateDir), []byte(pane+"\n"), 0o644); err != nil {
@@ -336,4 +353,33 @@ func lineIndex(lines []string, want string) int {
 		}
 	}
 	return -1
+}
+
+func TestConcurrentOpenRecordsPaneBeforePrepare(t *testing.T) {
+	f := newFixture(t)
+	var group sync.WaitGroup
+	failures := make(chan error, 8)
+	for range 8 {
+		group.Add(1)
+		go func() { defer group.Done(); _, err := f.run(t, "open"); failures <- err }()
+	}
+	group.Wait()
+	close(failures)
+	for err := range failures {
+		if err != nil {
+			t.Fatal(err)
+		}
+	}
+	count := 0
+	for _, line := range f.herdrLines(t) {
+		if line == openCmd() {
+			count++
+		}
+	}
+	if count != 1 {
+		t.Fatalf("created %d tabs before Prepare", count)
+	}
+	if got := readPaneFile(t, f.stateDir); got != "pane-created" {
+		t.Fatalf("pane=%s", got)
+	}
 }

@@ -28,3 +28,5 @@ func (p *ownedProcess) kill() error {
 	return err
 }
 func (p *ownedProcess) close() {}
+
+func (p *ownedProcess) wait() error { return p.cmd.Wait() }

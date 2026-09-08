@@ -8,6 +8,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"time"
 
 	"github.com/cdowell09/herdr-pr-board/internal/board"
 	"github.com/cdowell09/herdr-pr-board/internal/config"
@@ -16,6 +17,7 @@ import (
 	gh "github.com/cdowell09/herdr-pr-board/internal/github"
 	"github.com/cdowell09/herdr-pr-board/internal/localstate"
 	"github.com/cdowell09/herdr-pr-board/internal/monitor"
+	"github.com/cdowell09/herdr-pr-board/internal/plugin"
 	"github.com/cdowell09/herdr-pr-board/internal/publication"
 	"github.com/cdowell09/herdr-pr-board/internal/review"
 	"github.com/cdowell09/herdr-pr-board/internal/sidebar"
@@ -31,6 +33,26 @@ func run(args []string, stdout, stderr io.Writer) int {
 	if err != nil {
 		fmt.Fprintln(stderr, "herdr-pr-board:", err)
 		return 2
+	}
+	if o.pluginAction == "open" {
+		ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+		defer cancel()
+		if err := plugin.Open(ctx); err != nil {
+			return fail(stderr, err)
+		}
+		return 0
+	}
+	if o.pluginAction == "run" {
+		path, cleanup, err := plugin.Prepare(context.Background())
+		if err != nil {
+			return fail(stderr, err)
+		}
+		defer func() {
+			if err := cleanup(); err != nil {
+				fmt.Fprintln(stderr, "herdr-pr-board pane cleanup:", err)
+			}
+		}()
+		return run([]string{"--config", path}, stdout, stderr)
 	}
 	if o.adapter.enabled {
 		return runAdapter(o.adapter, os.Stdin, stderr)

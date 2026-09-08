@@ -33,7 +33,7 @@ func RunProcessWithSignal(ctx context.Context, cmd *exec.Cmd, grace time.Duratio
 	}
 	defer owner.close()
 	done := make(chan error, 1)
-	go func() { done <- cmd.Wait() }()
+	go func() { done <- owner.wait() }()
 	select {
 	case err := <-done:
 		return errors.Join(err, owner.kill())

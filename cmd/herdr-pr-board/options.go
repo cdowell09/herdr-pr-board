@@ -9,18 +9,19 @@ import (
 )
 
 type options struct {
-	monitor     bool
-	eligibility bool
-	publication *publicationOptions
-	configPath  string
-	validate    bool
-	json        bool
-	view        string
-	review      string
-	history     string
-	reviewer    string
-	rerun       bool
-	adapter     adapterOptions
+	pluginAction string
+	monitor      bool
+	eligibility  bool
+	publication  *publicationOptions
+	configPath   string
+	validate     bool
+	json         bool
+	view         string
+	review       string
+	history      string
+	reviewer     string
+	rerun        bool
+	adapter      adapterOptions
 }
 
 type adapterOptions struct {
@@ -32,6 +33,7 @@ func parseOptions(args []string, stderr io.Writer) (options, error) {
 	var o options
 	f := flag.NewFlagSet("herdr-pr-board", flag.ContinueOnError)
 	f.SetOutput(stderr)
+	f.StringVar(&o.pluginAction, "plugin-action", "", "native Herdr entrypoint: open or run")
 	f.StringVar(&o.configPath, "config", "", "path to config.toml")
 	f.BoolVar(&o.eligibility, "review-eligibility", false, "print fresh automatic review eligibility as JSON")
 	f.BoolVar(&o.monitor, "monitor", false, "monitor PRs until interrupted (requires HERDR_PLUGIN_STATE_DIR)")
@@ -60,7 +62,7 @@ func parseOptions(args []string, stderr io.Writer) (options, error) {
 	specified := map[string]bool{}
 	f.Visit(func(flag *flag.Flag) { specified[flag.Name] = true })
 	modes := o.publication.modes()
-	for _, enabled := range []bool{o.eligibility, o.monitor, o.validate, o.json, specified["review"], specified["review-history"]} {
+	for _, enabled := range []bool{specified["plugin-action"], o.eligibility, o.monitor, o.validate, o.json, specified["review"], specified["review-history"]} {
 		if enabled {
 			modes++
 		}
@@ -73,6 +75,8 @@ func parseOptions(args []string, stderr io.Writer) (options, error) {
 		}
 		invalid = invalid || (specified[a.name+"-executable"] || specified[a.name+"-skill"]) && !a.enabled
 	}
+	invalid = invalid || specified["plugin-action"] && o.pluginAction != "open" && o.pluginAction != "run"
+	invalid = invalid || specified["plugin-action"] && specified["config"]
 	invalid = invalid || modes > 1 || f.NArg() != 0
 	invalid = invalid || specified["view"] && (!o.json || o.view == "")
 	invalid = invalid || specified["review"] && o.review == "" || specified["review-history"] && o.history == ""
