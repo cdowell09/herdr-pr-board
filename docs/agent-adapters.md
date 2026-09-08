@@ -141,10 +141,15 @@ Each run retains agent diagnostics beside its normal review artifacts:
 
 Claude's event file contains one JSON document.
 Truncated standard output fails validation.
-Cancellation first sends `SIGINT` to Codex for its graceful shutdown path.
-Cancellation first sends `SIGTERM` to Pi and Claude Code.
+On macOS and Linux, cancellation first sends `SIGINT` to Codex for its graceful shutdown path.
+On these platforms, cancellation first sends `SIGTERM` to Pi and Claude Code.
 The runner then kills any remaining processes in the owned process group.
 The review claim remains held until cleanup finishes.
 The adapter allows one second for cleanup.
 The review service allows three seconds for adapter cleanup.
-The agent inherits the claim descriptor, which preserves ownership if the adapter exits unexpectedly.
+The agent inherits the claim descriptor on macOS and Linux.
+This preserves ownership if the adapter exits unexpectedly.
+On Windows, the agent inherits a native claim handle.
+Windows terminates the owned process tree on cancellation or unexpected adapter exit.
+The runner waits for those processes before releasing its review slot.
+See [Windows setup](windows.md) for supported native executables and npm launchers.

@@ -71,11 +71,16 @@ Restart a monitor from an earlier version to load GitHub review observations aft
 
 Install these tools:
 
-- Herdr 0.8.0 or later
+- Herdr 0.8.0 or later on macOS and Linux
+- Herdr 0.9.0 or later on Windows
+- Git
 - GitHub CLI (`gh`)
 - Go 1.24 or later
 
-The plugin supports macOS and Linux.
+The plugin supports macOS, Linux, and Windows.
+Use Windows 10 version 1809 or later, or Windows 11, on x64.
+Windows requires local NTFS configuration and state directories.
+See [Windows setup](docs/windows.md) for native commands and reviewer requirements.
 Local reviews also require a configured reviewer program.
 Built-in adapters support Pi, Codex, and Claude Code.
 See [manual reviews](docs/reviews.md) for reviewer requirements.
@@ -144,7 +149,17 @@ go build -o bin/herdr-pr-board ./cmd/herdr-pr-board
 herdr plugin link "$PWD" --enabled
 ```
 
-`herdr plugin link` registers this checkout as `cdowell09.pr-board`. It does not copy the source files. The linked plugin runs `bin/herdr-pr-board` from this checkout. Herdr preserves the existing configuration and runtime state.
+On Windows, use PowerShell:
+
+```powershell
+go build -o bin/herdr-pr-board.exe ./cmd/herdr-pr-board
+herdr plugin link "$PWD" --enabled
+```
+
+`herdr plugin link` registers this checkout as `cdowell09.pr-board`.
+It does not copy the source files.
+The linked plugin runs the built executable from this checkout.
+Herdr preserves the existing configuration and runtime state.
 
 Verify the local link:
 
@@ -261,7 +276,8 @@ bin/herdr-pr-board --monitor
 ```
 
 The state directory must use an absolute path.
-The monitor runs until you send `Ctrl+C` or `SIGTERM`.
+The monitor runs until you send `Ctrl+C`.
+On macOS and Linux, `SIGTERM` also stops the monitor.
 Closing the board does not stop the monitor.
 Only one monitor can use a state directory.
 A crashed monitor releases ownership automatically.
@@ -503,7 +519,9 @@ The board sorts PRs by update time, with the most recent first.
 The filter matches repository names, titles, authors, and PR numbers.
 The filter ignores letter case and makes no GitHub requests.
 
-Press `E` to edit the active configuration while the board runs. The board uses `$VISUAL`, `$EDITOR`, or `vi`.
+Press `E` to edit the active configuration while the board runs.
+The board uses `$VISUAL`, then `$EDITOR`.
+The fallback editor is Notepad on Windows and `vi` on macOS and Linux.
 It validates the file after the editor exits. It reloads valid changes and refreshes all views.
 It keeps the previous configuration when the editor or validation fails.
 

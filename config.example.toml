@@ -73,6 +73,10 @@ timeout = "30m"
 
 # Reuse each reviewer across repositories.
 # Use an absolute program path or a program on PATH.
+# On Windows, use a native executable, such as 'C:\Tools\herdr-pr-board.exe'.
+# Use local NTFS directories for Windows configuration and runtime state.
+# Built-in adapters also accept standard npm Node.js launchers.
+# Other batch wrappers are not supported.
 # [[reviewers]]
 # id = "pi"
 # command = ["/absolute/path/to/herdr-pr-board", "--pi-reviewer"]

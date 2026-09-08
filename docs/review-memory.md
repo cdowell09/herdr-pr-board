@@ -46,7 +46,9 @@ Publication records belong to the separate publication workflow.
 ## Process ownership
 
 Keep the claim open until the reviewer stops.
-Use `LockFile` with `exec.Cmd.ExtraFiles` when a reviewer can outlive its parent.
+Use `LockFile` to duplicate ownership for a reviewer process.
+Pass this file with `cli.PassFile` and `HERDR_REVIEW_CLAIM_FD`.
+This preserves Unix descriptor and Windows handle semantics.
 Close the returned descriptor after the child starts.
 The child must keep its inherited descriptor open throughout execution.
 `Close` releases only the calling process's descriptor.

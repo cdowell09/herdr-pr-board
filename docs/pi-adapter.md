@@ -51,16 +51,21 @@ The adapter retains `pi-events.jsonl` and `pi-stderr.log` in the run directory.
 The event log retains at most 32 MiB.
 The diagnostic log retains at most 1 MiB.
 A truncated event log fails review validation.
-Cancellation sends SIGTERM to the process group before SIGKILL.
+On macOS and Linux, cancellation sends SIGTERM to the process group before SIGKILL.
 The adapter allows one second for child cleanup.
 The core allows three seconds for adapter cleanup.
 Custom wrappers must forward termination and preserve the inherited claim descriptor.
-The core supplies descriptor 3 and sets `HERDR_REVIEW_CLAIM_FD=3`.
+On macOS and Linux, the core supplies descriptor 3 and sets `HERDR_REVIEW_CLAIM_FD=3`.
 The adapter forwards this descriptor to Pi as descriptor 3.
-Pi retains the claim if the adapter exits unexpectedly.
+Pi retains the claim if the adapter exits unexpectedly on these platforms.
+On Windows, the environment variable contains a native handle value.
+The adapter forwards that handle to Pi.
+Windows stops the owned process tree if the adapter exits.
 The adapter rejects invalid supplied descriptors.
 Standalone invocations can omit this environment variable.
-Pi uses SIGTERM to stop its tracked detached children.
+On macOS and Linux, Pi uses SIGTERM to stop its tracked detached children.
+On Windows, cancellation terminates the owned Job Object and waits for its processes.
+See [Windows setup](windows.md) for native installation requirements.
 
 ## Result validation
 
