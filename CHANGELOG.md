@@ -2,6 +2,45 @@
 
 This file lists notable changes to PR Board.
 
+## 0.6.0 - 2026-09-08
+
+PR Board adds native Windows support and more ways to configure agent reviews.
+
+### Highlights
+
+- Run PR Board on Windows with native pane reuse, process cleanup, and shared review state.
+- Select prompt and skill files in repository setup or TOML. Custom prompts replace the default review criteria.
+- Choose Oh My Pi, Kimi, Qoder CLI, or Qwen Code alongside Pi, Codex, and Claude Code.
+- Start with a concise README. Find detailed controls, configuration, and operations in focused guides.
+
+Windows requires Herdr 0.9.0 or later and local NTFS configuration and state directories.
+See [Windows setup](https://github.com/cdowell09/herdr-pr-board/blob/v0.6.0/docs/windows.md) for platform requirements.
+See [agent compatibility](https://github.com/cdowell09/herdr-pr-board/blob/v0.6.0/docs/agent-compatibility.md) for CLI versions, authentication, and assessed limitations.
+
+### Upgrade
+
+```sh
+herdr plugin install cdowell09/herdr-pr-board --ref v0.6.0
+```
+
+Reopen the board to load the new binary.
+Restart an older monitor after its active reviews finish.
+
+<details>
+<summary>Full changelog</summary>
+
+### Documentation
+
+- Make README a concise landing page (#105)
+
+### Features
+
+- Support native Windows installation and runtime (#102)
+- Configure review prompts and skills (#103)
+- Add four native review adapters (#104)
+
+</details>
+
 ## 0.5.0 - 2026-09-08
 
 PR Board adds Codex and Claude Code reviews, plus a control to stop active reviews.
