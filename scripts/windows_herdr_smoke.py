@@ -38,12 +38,17 @@ def wait_for(description, probe, seconds=30):
 MONITOR_GUARD = r"""
 $ErrorActionPreference = 'Stop'
 $monitor = $null
+$candidates = @()
 try {
     $deadline = [DateTime]::UtcNow.AddSeconds(30)
     while ([DateTime]::UtcNow -lt $deadline) {
-        $matches = @(Get-CimInstance Win32_Process -Filter "Name = 'herdr-pr-board.exe'" |
+        $candidates = @(Get-CimInstance Win32_Process -Filter "Name = 'herdr-pr-board.exe'" |
+            Where-Object { $_.CommandLine -and $_.CommandLine.Contains($env:PR_BOARD_SMOKE_SCOPE) })
+        $matches = @($candidates |
             Where-Object {
-                $_.ExecutablePath -eq $env:PR_BOARD_SMOKE_EXE -and
+                $executable = $_.ExecutablePath
+                if ($executable -and $executable.StartsWith('\\?\')) { $executable = $executable.Substring(4) }
+                $executable -eq $env:PR_BOARD_SMOKE_EXE -and
                 $_.CommandLine -and $_.CommandLine.Contains('--monitor') -and
                 $_.CommandLine.Contains($env:PR_BOARD_SMOKE_CONFIG)
             })
@@ -55,7 +60,12 @@ try {
         }
         Start-Sleep -Milliseconds 100
     }
-    if ($null -eq $monitor) { throw 'The test monitor did not start' }
+    if ($null -eq $monitor) {
+        Write-Output "Expected executable: $env:PR_BOARD_SMOKE_EXE"
+        Write-Output "Expected configuration: $env:PR_BOARD_SMOKE_CONFIG"
+        $candidates | Select-Object -First 10 ProcessId, ExecutablePath, CommandLine | ConvertTo-Json -Compress
+        throw 'The test monitor did not start'
+    }
     [IO.File]::WriteAllText($env:PR_BOARD_SMOKE_READY, [string]$monitor.Id)
     while (-not [IO.File]::Exists($env:PR_BOARD_SMOKE_STOP)) {
         if ($monitor.HasExited) { throw 'The monitor exited before test cleanup' }
@@ -213,7 +223,7 @@ def smoke(root, temporary):
             monitor_ready = temporary / "monitor-ready"
             guard_env = dict(env, PR_BOARD_SMOKE_EXE=str(root / "bin" / "herdr-pr-board.exe"),
                              PR_BOARD_SMOKE_CONFIG=str(config), PR_BOARD_SMOKE_READY=str(monitor_ready),
-                             PR_BOARD_SMOKE_STOP=str(monitor_stop))
+                             PR_BOARD_SMOKE_STOP=str(monitor_stop), PR_BOARD_SMOKE_SCOPE=temporary.name)
             monitor_guard = subprocess.Popen(
                 ["powershell.exe", "-NoProfile", "-NonInteractive", "-Command", MONITOR_GUARD],
                 env=guard_env, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True,
@@ -283,4 +293,4 @@ if __name__ == "__main__":
     if os.name != "nt":
         raise SystemExit("Run this smoke test on native Windows.")
     with tempfile.TemporaryDirectory(prefix="PR Board native ") as directory:
-        smoke(Path.cwd(), Path(directory))
+        smoke(Path.cwd(), Path(directory).resolve())
