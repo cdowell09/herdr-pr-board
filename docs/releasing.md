@@ -136,7 +136,7 @@ Update the release workflow and this guide if Herdr starts using release assets.
 Reinstall the plugin to replace the managed source checkout.
 
 ```sh
-herdr plugin install cdowell09/herdr-pr-board --ref v0.5.0
+herdr plugin install cdowell09/herdr-pr-board --ref v0.6.0
 ```
 
 Use the new tag for an exact release.
