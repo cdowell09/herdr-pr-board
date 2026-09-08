@@ -76,6 +76,7 @@ func TestWindowsCancellationOwnsOnlySelectedTree(t *testing.T) {
 	done := make(chan error, 1)
 	go func() { done <- RunProcess(ctx, cmd, 50*time.Millisecond) }()
 	pids := windowsPIDs(t, path)
+	identities := windowsIdentities(t, pids)
 	cancel()
 	select {
 	case err := <-done:
@@ -85,9 +86,12 @@ func TestWindowsCancellationOwnsOnlySelectedTree(t *testing.T) {
 	case <-time.After(10 * time.Second):
 		t.Fatal("tree cleanup did not complete")
 	}
-	for _, pid := range pids {
-		if windowsProcessAlive(pid) {
-			t.Fatalf("selected descendant %d remains", pid)
+	for i, identity := range identities {
+		state, waitErr := windows.WaitForSingleObject(identity.handle, 0)
+		var exitCode uint32
+		exitErr := windows.GetExitCodeProcess(identity.handle, &exitCode)
+		if waitErr != nil || state != windows.WAIT_OBJECT_0 {
+			t.Fatalf("selected process index=%d pid=%d remains: wait=%d error=%v exit=%d exit_error=%v", i, identity.pid, state, waitErr, exitCode, exitErr)
 		}
 	}
 	if !windowsProcessAlive(sibling.Process.Pid) {
@@ -113,6 +117,7 @@ func TestWindowsOwnerDeathCleansTreeAndRetainsClaim(t *testing.T) {
 	}
 	defer func() { owner.Process.Kill(); owner.Wait() }()
 	pids := windowsPIDs(t, path)
+	identities := windowsIdentities(t, pids)
 	claim.Close()
 	if file, err := localstate.TryLock(claimPath); !errors.Is(err, localstate.ErrLocked) {
 		if file != nil {
@@ -128,8 +133,9 @@ func TestWindowsOwnerDeathCleansTreeAndRetainsClaim(t *testing.T) {
 	for {
 		file, err := localstate.TryLock(claimPath)
 		alive := false
-		for _, pid := range pids {
-			alive = alive || windowsProcessAlive(pid)
+		for _, identity := range identities {
+			state, _ := windows.WaitForSingleObject(identity.handle, 0)
+			alive = alive || state != windows.WAIT_OBJECT_0
 		}
 		if err == nil {
 			file.Close()
@@ -171,4 +177,23 @@ func windowsProcessAlive(pid int) bool {
 	defer windows.CloseHandle(handle)
 	result, err := windows.WaitForSingleObject(handle, 0)
 	return err == nil && result == uint32(windows.WAIT_TIMEOUT)
+}
+
+type windowsIdentity struct {
+	pid    int
+	handle windows.Handle
+}
+
+func windowsIdentities(t *testing.T, pids []int) []windowsIdentity {
+	t.Helper()
+	var identities []windowsIdentity
+	for _, pid := range pids {
+		handle, err := windows.OpenProcess(windows.SYNCHRONIZE|windows.PROCESS_QUERY_LIMITED_INFORMATION, false, uint32(pid))
+		if err != nil {
+			t.Fatalf("open live process %d: %v", pid, err)
+		}
+		t.Cleanup(func() { windows.CloseHandle(handle) })
+		identities = append(identities, windowsIdentity{pid, handle})
+	}
+	return identities
 }
