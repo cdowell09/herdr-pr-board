@@ -72,13 +72,13 @@ func Run(ctx context.Context, in reviewercontract.Input, opts Options) error {
 		return blocked(err.Error())
 	}
 	checkout := filepath.Join(work, "checkout")
-	if _, err := command(ctx, work, "gh", "repo", "clone", in.Identity.Repository, checkout, "--", "--no-checkout", "--config", "core.hooksPath=/dev/null", "--template="); err != nil {
+	if _, err := command(ctx, work, "gh", "repo", "clone", in.Identity.Repository, checkout, "--", "--no-checkout", "--config", "core.hooksPath="+os.DevNull, "--template="); err != nil {
 		return err
 	}
 	if _, err := command(ctx, checkout, "git", "fetch", "--no-tags", "origin", in.Identity.HeadOID, in.BaseOID); err != nil {
 		return err
 	}
-	if _, err := command(ctx, checkout, "git", "-c", "core.hooksPath=/dev/null", "checkout", "--detach", in.Identity.HeadOID); err != nil {
+	if _, err := command(ctx, checkout, "git", "-c", "core.hooksPath="+os.DevNull, "checkout", "--detach", in.Identity.HeadOID); err != nil {
 		return err
 	}
 	head, err := command(ctx, checkout, "git", "rev-parse", "HEAD")
@@ -138,7 +138,9 @@ func runAgent(ctx context.Context, in reviewercontract.Input, opts Options, work
 	}
 	if claim != nil {
 		defer claim.Close()
-		cmd.ExtraFiles = []*os.File{claim}
+		if err := cli.PassFile(cmd, claim, "HERDR_REVIEW_CLAIM_FD"); err != nil {
+			return err
+		}
 	}
 	cmd.Dir = checkout
 	cmd.Stdin = strings.NewReader(prompt)

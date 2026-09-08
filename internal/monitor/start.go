@@ -12,6 +12,7 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/cdowell09/herdr-pr-board/internal/cli"
 	"github.com/cdowell09/herdr-pr-board/internal/config"
 	"github.com/cdowell09/herdr-pr-board/internal/localstate"
 )
@@ -79,21 +80,11 @@ func hasOwner(dir string) (bool, error) {
 }
 
 func launch(ctx context.Context, binary, path, dir, logPath string) error {
-	log, err := os.OpenFile(logPath, os.O_CREATE|os.O_WRONLY|os.O_TRUNC|syscall.O_NOFOLLOW|syscall.O_NONBLOCK, 0600)
+	log, err := localstate.OpenRegular(logPath, true)
 	if err != nil {
 		return err
 	}
 	defer log.Close()
-	info, err := log.Stat()
-	if err != nil {
-		return err
-	}
-	if !info.Mode().IsRegular() {
-		return errors.New("monitor log must be a regular file")
-	}
-	if err := log.Chmod(0600); err != nil {
-		return err
-	}
 	input, err := os.Open(os.DevNull)
 	if err != nil {
 		return err
@@ -106,10 +97,12 @@ func launch(ctx context.Context, binary, path, dir, logPath string) error {
 	defer reader.Close()
 	defer writer.Close()
 	cmd := exec.Command(binary, "--monitor", "--config", path)
-	cmd.SysProcAttr = &syscall.SysProcAttr{Setsid: true}
+	detachMonitor(cmd)
 	cmd.Stdin, cmd.Stdout, cmd.Stderr = input, log, log
 	cmd.Env = monitorEnvironment(dir)
-	cmd.ExtraFiles = []*os.File{writer}
+	if err := cli.PassFile(cmd, writer, readyEnvironment); err != nil {
+		return err
+	}
 	if err := ctx.Err(); err != nil {
 		return err
 	}
@@ -159,7 +152,7 @@ func monitorEnvironment(dir string) []string {
 			env = append(env, entry)
 		}
 	}
-	return append(env, readyEnvironment+"=3", "HERDR_PLUGIN_STATE_DIR="+dir)
+	return append(env, "HERDR_PLUGIN_STATE_DIR="+dir)
 }
 
 func stopStartup(cmd *exec.Cmd, done <-chan error) {
@@ -177,18 +170,16 @@ func stopStartup(cmd *exec.Cmd, done <-chan error) {
 // ReadyPipe consumes the private launcher handshake before subprocesses start.
 // A foreground monitor has no readiness pipe.
 func ReadyPipe() (*os.File, error) {
-	value := os.Getenv(readyEnvironment)
-	if err := os.Unsetenv(readyEnvironment); err != nil {
-		return nil, err
+	pipe, err := cli.TakeInheritedFile(readyEnvironment)
+	if unsetErr := os.Unsetenv(readyEnvironment); unsetErr != nil {
+		if pipe != nil {
+			pipe.Close()
+		}
+		return nil, unsetErr
 	}
-	if value == "" {
-		return nil, nil
+	if err != nil || pipe == nil {
+		return pipe, err
 	}
-	if value != "3" {
-		return nil, errors.New("invalid monitor readiness descriptor")
-	}
-	pipe := os.NewFile(3, "monitor-ready")
-	syscall.CloseOnExec(3)
 	info, err := pipe.Stat()
 	if err != nil {
 		pipe.Close()

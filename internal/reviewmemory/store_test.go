@@ -4,6 +4,7 @@ import (
 	"bufio"
 	"errors"
 	"fmt"
+	"github.com/cdowell09/herdr-pr-board/internal/cli"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -174,7 +175,10 @@ func TestInheritedClaimProcess(t *testing.T) {
 	if os.Getenv("REVIEW_MEMORY_INHERITED") != "1" {
 		return
 	}
-	owner := os.NewFile(3, "claim")
+	owner, err := cli.TakeInheritedFile("HERDR_REVIEW_CLAIM_FD")
+	if err != nil || owner == nil {
+		t.Fatalf("inherited claim: %v", err)
+	}
 	defer owner.Close()
 	fmt.Println("ready")
 	bufio.NewReader(os.Stdin).ReadString('\n')
@@ -194,7 +198,9 @@ func TestChildRetainsClaimAfterParentCloses(t *testing.T) {
 	defer fd.Close()
 	cmd := exec.Command(os.Args[0], "-test.run=^TestInheritedClaimProcess$")
 	cmd.Env = append(os.Environ(), "REVIEW_MEMORY_INHERITED=1")
-	cmd.ExtraFiles = []*os.File{fd}
+	if err := cli.PassFile(cmd, fd, "HERDR_REVIEW_CLAIM_FD"); err != nil {
+		t.Fatal(err)
+	}
 	out, err := cmd.StdoutPipe()
 	if err != nil {
 		t.Fatal(err)
@@ -240,7 +246,9 @@ func TestFailedOutcomeRetainsChildClaimUntilExit(t *testing.T) {
 	defer fd.Close()
 	cmd := exec.Command(os.Args[0], "-test.run=^TestInheritedClaimProcess$")
 	cmd.Env = append(os.Environ(), "REVIEW_MEMORY_INHERITED=1")
-	cmd.ExtraFiles = []*os.File{fd}
+	if err := cli.PassFile(cmd, fd, "HERDR_REVIEW_CLAIM_FD"); err != nil {
+		t.Fatal(err)
+	}
 	out, err := cmd.StdoutPipe()
 	if err != nil {
 		t.Fatal(err)

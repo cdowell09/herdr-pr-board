@@ -15,6 +15,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/cdowell09/herdr-pr-board/internal/cli"
 	"github.com/cdowell09/herdr-pr-board/internal/config"
 	"github.com/cdowell09/herdr-pr-board/internal/discovery"
 	"github.com/cdowell09/herdr-pr-board/internal/localstate"
@@ -296,7 +297,9 @@ func TestClosedLauncherPipeDoesNotStopMonitor(t *testing.T) {
 	}
 	child := exec.Command(binary, "--monitor", "--config", path)
 	child.Env = monitorEnvironment(dir)
-	child.ExtraFiles = []*os.File{writer}
+	if err := cli.PassFile(child, writer, readyEnvironment); err != nil {
+		t.Fatal(err)
+	}
 	child.Stdout, child.Stderr = os.Stdout, os.Stderr
 	if err := child.Start(); err != nil {
 		t.Fatal(err)

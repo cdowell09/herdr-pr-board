@@ -8,8 +8,6 @@ import (
 	"path/filepath"
 	"strings"
 	"time"
-
-	"golang.org/x/sys/unix"
 )
 
 var ErrLocked = errors.New("state lock is held")
@@ -20,23 +18,6 @@ func Dir() (string, error) {
 		return "", errors.New("HERDR_PLUGIN_STATE_DIR must be an absolute path")
 	}
 	return dir, nil
-}
-
-// TryLock returns an ownership descriptor. Close it to release ownership.
-// Do not unlock explicitly: an inherited descriptor can still own the lock.
-func TryLock(path string) (*os.File, error) {
-	f, err := os.OpenFile(path, os.O_CREATE|os.O_RDWR, 0600)
-	if err != nil {
-		return nil, err
-	}
-	if err := unix.Flock(int(f.Fd()), unix.LOCK_EX|unix.LOCK_NB); err != nil {
-		f.Close()
-		if errors.Is(err, unix.EWOULDBLOCK) {
-			return nil, ErrLocked
-		}
-		return nil, err
-	}
-	return f, nil
 }
 
 func Lock(ctx context.Context, path string) (*os.File, error) {
@@ -74,13 +55,23 @@ func AtomicWrite(path string, data []byte) error {
 	if closeErr != nil {
 		return closeErr
 	}
-	if err := os.Rename(f.Name(), path); err != nil {
-		return err
+	return replaceFile(f.Name(), path)
+}
+
+func regularFile(file *os.File, write bool) (*os.File, error) {
+	info, err := file.Stat()
+	if err == nil && !info.Mode().IsRegular() {
+		err = errors.New("state file must be a regular file")
 	}
-	dir, err := os.Open(filepath.Dir(path))
+	if err == nil && write {
+		err = file.Truncate(0)
+	}
+	if err == nil && write {
+		err = file.Chmod(0600)
+	}
 	if err != nil {
-		return err
+		file.Close()
+		return nil, err
 	}
-	defer dir.Close()
-	return dir.Sync()
+	return file, nil
 }

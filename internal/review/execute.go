@@ -19,7 +19,6 @@ import (
 	"github.com/cdowell09/herdr-pr-board/internal/localstate"
 	"github.com/cdowell09/herdr-pr-board/internal/reviewercontract"
 	"github.com/cdowell09/herdr-pr-board/internal/reviewmemory"
-	"golang.org/x/sys/unix"
 )
 
 const maxResultBytes = 4 * 1024 * 1024
@@ -85,8 +84,9 @@ func (s *Service) execute(ctx context.Context, claim *reviewmemory.Claim, pr gh.
 	cmd.Stdin = bytes.NewReader(data)
 	cmd.Stdout = &cli.LimitedWriter{Writer: stdout, Remaining: 1024 * 1024}
 	cmd.Stderr = &cli.LimitedWriter{Writer: stderr, Remaining: 1024 * 1024}
-	cmd.ExtraFiles = []*os.File{fd}
-	cmd.Env = append(os.Environ(), "HERDR_REVIEW_CLAIM_FD=3")
+	if err := cli.PassFile(cmd, fd, "HERDR_REVIEW_CLAIM_FD"); err != nil {
+		return failed(err)
+	}
 	if err := cli.RunProcess(ctx, cmd, 3*time.Second); err != nil {
 		return failed(fmt.Errorf("reviewer execution: %w", err))
 	}
@@ -105,11 +105,10 @@ func (s *Service) execute(ctx context.Context, claim *reviewmemory.Claim, pr gh.
 }
 
 func readResult(path string) ([]byte, error) {
-	fd, err := unix.Open(path, unix.O_RDONLY|unix.O_NONBLOCK|unix.O_NOFOLLOW|unix.O_CLOEXEC, 0)
+	f, err := localstate.OpenRegular(path, false)
 	if err != nil {
 		return nil, fmt.Errorf("read reviewer result: %w", err)
 	}
-	f := os.NewFile(uintptr(fd), path)
 	defer f.Close()
 	info, err := f.Stat()
 	if err != nil {

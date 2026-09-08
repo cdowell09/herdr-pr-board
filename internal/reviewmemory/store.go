@@ -16,8 +16,8 @@ import (
 	"sync"
 	"time"
 
+	"github.com/cdowell09/herdr-pr-board/internal/cli"
 	"github.com/cdowell09/herdr-pr-board/internal/localstate"
-	"golang.org/x/sys/unix"
 )
 
 var (
@@ -362,19 +362,15 @@ func (s *Store) Claim(req Request) (*Claim, error) {
 
 func (c *Claim) ID() string { return c.id }
 
-// LockFile duplicates the ownership descriptor for a reviewer's exec.Cmd.ExtraFiles.
-// Close the returned descriptor after Start. The child must retain its inherited descriptor.
+// LockFile duplicates the ownership file for inheritance by the reviewer.
+// Close the returned file after Start. The child must retain its inherited file.
 func (c *Claim) LockFile() (*os.File, error) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 	if c.file == nil {
 		return nil, ErrOwnership
 	}
-	fd, err := unix.FcntlInt(c.file.Fd(), unix.F_DUPFD_CLOEXEC, 0)
-	if err != nil {
-		return nil, err
-	}
-	return os.NewFile(uintptr(fd), c.file.Name()), nil
+	return cli.DuplicateFile(c.file)
 }
 
 // Finish records an outcome only while this handle owns its active attempt.
