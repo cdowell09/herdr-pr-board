@@ -13,7 +13,8 @@ import (
 
 func TestCodexCommandIsolationAndSchema(t *testing.T) {
 	work := t.TempDir()
-	cmd, err := command("/configured/codex", "/selected/skill", work)
+	checkout := filepath.Join(t.TempDir(), "captured source")
+	cmd, err := command("/configured/codex", "/selected/skill", work, checkout)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -28,7 +29,7 @@ func TestCodexCommandIsolationAndSchema(t *testing.T) {
 	pairs := [][2]string{
 		{"--sandbox", "read-only"}, {"--color", "never"}, {"--output-schema", filepath.Join(work, "result-schema.json")},
 		{"-c", `approval_policy="never"`}, {"-c", `project_doc_max_bytes=0`},
-		{"-c", "projects." + strconv.Quote(filepath.Join(work, "checkout")) + `.trust_level="untrusted"`},
+		{"-c", "projects." + strconv.Quote(checkout) + `.trust_level="untrusted"`},
 		{"-c", `allow_login_shell=false`}, {"-c", `web_search="disabled"`},
 		{"--enable", "skip_host_skill_discovery"}, {"--enable", "multi_agent"},
 	}

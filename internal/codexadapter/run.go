@@ -22,7 +22,7 @@ func Run(ctx context.Context, in reviewercontract.Input, opts Options) error {
 }
 
 // These switches target Codex CLI 0.153.4. An unsupported switch fails closed.
-func command(binary, _, work string) (*exec.Cmd, error) {
+func command(binary, _, work, checkout string) (*exec.Cmd, error) {
 	schema := filepath.Join(work, "result-schema.json")
 	if err := os.WriteFile(schema, []byte(agentadapter.ResultSchema), 0600); err != nil {
 		return nil, err
@@ -30,7 +30,7 @@ func command(binary, _, work string) (*exec.Cmd, error) {
 	args := []string{"exec", "--json", "--ephemeral", "--ignore-user-config", "--ignore-rules", "--sandbox", "read-only", "--color", "never", "--output-schema", schema,
 		"-c", `approval_policy="never"`,
 		"-c", `project_doc_max_bytes=0`,
-		"-c", "projects." + strconv.Quote(filepath.Join(work, "checkout")) + `.trust_level="untrusted"`,
+		"-c", "projects." + strconv.Quote(checkout) + `.trust_level="untrusted"`,
 		"-c", `allow_login_shell=false`,
 		"-c", `web_search="disabled"`,
 		"--enable", "skip_host_skill_discovery",

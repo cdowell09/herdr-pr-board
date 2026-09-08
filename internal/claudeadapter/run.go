@@ -22,7 +22,7 @@ func Run(ctx context.Context, in reviewercontract.Input, opts Options) error {
 	})
 }
 
-func command(binary, _, _ string) (*exec.Cmd, error) {
+func command(binary, _, _, _ string) (*exec.Cmd, error) {
 	// Safe mode preserves the user's authentication while disabling automatically
 	// loaded instructions and customizations. Restricted mode confines file reads
 	// to the checkout; the shared runner supplies diff and log evidence without Bash.

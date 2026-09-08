@@ -20,7 +20,7 @@ import (
 func TestAgentRetainsClaimAfterAdapterIsKilled(t *testing.T) {
 	if dir := os.Getenv("PR_BOARD_CLAIM_HELPER"); dir != "" {
 		in := reviewercontract.Input{Version: 1, Identity: reviewmemory.Identity{Repository: "owner/repo", Number: 42, HeadOID: strings.Repeat("a", 40), BaseRefName: "main"}, BaseOID: strings.Repeat("b", 40), ResultPath: filepath.Join(dir, "result.json")}
-		if err := runAgent(context.Background(), in, Options{Name: "pi", Binary: filepath.Join(dir, "pi"), Command: func(binary, skill, work string) (*exec.Cmd, error) { return exec.Command(binary), nil }}, dir, dir, ""); err != nil {
+		if err := runAgent(context.Background(), in, Options{Name: "pi", Binary: filepath.Join(dir, "pi"), Command: func(binary, skill, work, checkout string) (*exec.Cmd, error) { return exec.Command(binary), nil }}, dir, dir, ""); err != nil {
 			t.Fatal(err)
 		}
 		return

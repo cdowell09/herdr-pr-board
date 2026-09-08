@@ -12,7 +12,7 @@ import (
 // CLI flags: https://code.claude.com/docs/en/cli-reference
 // Child tool inheritance: https://code.claude.com/docs/en/sub-agents#available-tools
 func TestCommandRestrictsToolsAndPreservesAuthentication(t *testing.T) {
-	cmd, err := command("/selected/claude", "/selected/SKILL.md", t.TempDir())
+	cmd, err := command("/selected/claude", "/selected/SKILL.md", t.TempDir(), t.TempDir())
 	if err != nil {
 		t.Fatal(err)
 	}

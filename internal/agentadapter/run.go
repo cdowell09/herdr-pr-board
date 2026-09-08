@@ -22,7 +22,7 @@ import (
 type Options struct {
 	Name, Binary, Skill string
 	CancelSignal        syscall.Signal
-	Command             func(binary, skill, work string) (*exec.Cmd, error)
+	Command             func(binary, skill, work, checkout string) (*exec.Cmd, error)
 	FinalText           func([]byte) ([]byte, error)
 }
 
@@ -128,7 +128,7 @@ func runAgent(ctx context.Context, in reviewercontract.Input, opts Options, work
 		return err
 	}
 	defer diagnostics.Close()
-	cmd, err := opts.Command(opts.Binary, opts.Skill, work)
+	cmd, err := opts.Command(opts.Binary, opts.Skill, work, checkout)
 	if err != nil {
 		return err
 	}
