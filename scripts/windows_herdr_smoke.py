@@ -139,6 +139,7 @@ def smoke(root, temporary):
     state_dir = Path(env["XDG_STATE_HOME"]) / "herdr" / "plugins" / PLUGIN
     record = state_dir / "pane-id"
     config = config_dir / "config.toml"
+    workspace_id = None
     monitor_guard = None
     monitor_stop = temporary / "stop-monitor"
     with (temporary / "server.log").open("w", encoding="utf-8") as log:
@@ -165,14 +166,14 @@ def smoke(root, temporary):
             assert open_board() == pane, "The action created a second board pane"
             assert {tab["tab_id"] for tab in host("tab", "list", "--workspace", workspace_id)["tabs"]} == before
             assert config.read_bytes() == original, "Pane reuse changed configuration"
-            host("pane", "send-keys", pane, "ctrl+c")
+            host("pane", "send-keys", pane, "ctrl+c", json_result=False)
             wait_for("ownership-safe pane cleanup", lambda: not record.exists())
             assert config.read_bytes() == original, "Pane cleanup changed configuration"
             reopened = open_board()
             assert reopened != pane, "The action reused a closed pane"
             wait_for("reopened board UI", lambda: "acme/api" in host("pane", "read", reopened, "--source", "visible", json_result=False))
             assert config.read_bytes() == original, "Reopening changed configuration"
-            host("pane", "send-keys", reopened, "ctrl+c")
+            host("pane", "send-keys", reopened, "ctrl+c", json_result=False)
             wait_for("reopened pane cleanup", lambda: not record.exists())
             wait_for("closed board process", lambda: reopened not in {
                 item["pane_id"] for item in host("pane", "list", "--workspace", workspace_id)["panes"]
@@ -185,7 +186,7 @@ def smoke(root, temporary):
             # The CI build supplies this local linked executable.
             linked_pane = open_board()
             wait_for("linked board UI", lambda: "acme/api" in host("pane", "read", linked_pane, "--source", "visible", json_result=False))
-            host("pane", "send-keys", linked_pane, "ctrl+c")
+            host("pane", "send-keys", linked_pane, "ctrl+c", json_result=False)
             wait_for("linked pane cleanup", lambda: not record.exists())
             automatic = original.decode("utf-8").replace('auto_views = []', 'auto_views = ["review"]', 1)
             assert automatic != original.decode("utf-8"), "The automatic-view fixture did not apply"
@@ -210,24 +211,41 @@ def smoke(root, temporary):
 
             wait_for("native background monitor", monitor_is_ready)
             wait_for("monitoring board UI", lambda: "acme/api" in host("pane", "read", monitoring_pane, "--source", "visible", json_result=False))
-            host("pane", "send-keys", monitoring_pane, "v")
+            host("pane", "send-keys", monitoring_pane, "v", json_result=False)
             wait_for("monitor ownership in board", lambda: "Monitor: running" in host("pane", "read", monitoring_pane, "--source", "visible", json_result=False))
             snapshot_path = state_dir / "monitor-snapshot.json"
             observed = wait_for("monitor observation", lambda: json.loads(snapshot_path.read_text()))
             assert observed["Version"] == 1 and observed["Views"] and not observed["Errors"], observed
-            host("pane", "send-keys", monitoring_pane, "ctrl+c")
+            host("pane", "send-keys", monitoring_pane, "ctrl+c", json_result=False)
             wait_for("monitoring board cleanup", lambda: not record.exists())
             retained = wait_for("retained monitor observation", lambda: json.loads(snapshot_path.read_text()))
             assert retained["Config"] == observed["Config"], retained
             assert monitor_guard.poll() is None, "The background monitor stopped with its board"
             monitoring_pane = open_board()
             wait_for("monitor reuse board UI", lambda: "acme/api" in host("pane", "read", monitoring_pane, "--source", "visible", json_result=False))
-            host("pane", "send-keys", monitoring_pane, "ctrl+c")
+            host("pane", "send-keys", monitoring_pane, "ctrl+c", json_result=False)
             wait_for("monitor reuse board cleanup", lambda: not record.exists())
             print("Native Herdr install, reinstall, link, pane reuse, refresh, and monitor survival passed.")
         except BaseException:
-            print((temporary / "server.log").read_text(encoding="utf-8", errors="replace"))
+            for label, path in {
+                "Server output": temporary / "server.log",
+                "Server log": config_root / "sessions" / env["HERDR_SESSION"] / "herdr-server.log",
+                "GitHub fixture calls": Path(env["GH_TEST_LOG"]),
+                "Monitor log": state_dir / "monitor.log",
+            }.items():
+                try:
+                    print(f"{label}:\n{path.read_text(encoding='utf-8', errors='replace')[-65536:]}")
+                except OSError as error:
+                    print(f"{label}: {error}")
             print(host("plugin", "log", "list", "--plugin", PLUGIN, check=False).stdout)
+            if workspace_id is not None:
+                panes = host("pane", "list", "--workspace", workspace_id, check=False)
+                print(f"Pane list: {panes.stdout} {panes.stderr}")
+                if panes.returncode == 0:
+                    for pane in json.loads(panes.stdout)["result"]["panes"]:
+                        for source in ["visible", "recent-unwrapped"]:
+                            capture = host("pane", "read", pane["pane_id"], "--source", source, "--lines", "120", check=False)
+                            print(f"Pane {pane['pane_id']} {source}:\n{capture.stdout}\n{capture.stderr}")
             raise
         finally:
             try:
