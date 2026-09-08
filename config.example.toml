@@ -63,6 +63,8 @@ scope = "configured"
 # New selections can wait until the next monitor scan.
 auto_views = []
 # Share this concurrency limit across processes that use the same state directory.
+# Use 1 through 8. Set 3 to allow three simultaneous manual or automatic reviews.
+# The monitor reloads this limit after a review finishes or on the next scan.
 max_concurrency = 1
 # Include queue time and reviewer execution time in this limit.
 timeout = "30m"

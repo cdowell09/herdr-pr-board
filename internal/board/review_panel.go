@@ -19,6 +19,7 @@ import (
 )
 
 type ReviewBackend interface {
+	ReviewCapacity() error
 	ReviewStatus(reviewmemory.Identity) error
 	History(string) ([]reviewmemory.Run, error)
 	Review(context.Context, review.Request, func(string)) (reviewmemory.Run, error)
@@ -29,6 +30,7 @@ type reviewPanel struct {
 	monitor         monitor.Status
 	monitorCommand  monitorInvocation
 	pr              gh.PullRequest
+	capacityErr     error
 	automatic       dispatch.Decision
 	runs            []reviewmemory.Run
 	message         string
@@ -40,10 +42,11 @@ type reviewPanel struct {
 }
 
 type reviewHistoryMsg struct {
-	automatic dispatch.Decision
-	url       string
-	runs      []reviewmemory.Run
-	err       error
+	capacityErr error
+	automatic   dispatch.Decision
+	url         string
+	runs        []reviewmemory.Run
+	err         error
 }
 type reviewDoneMsg struct {
 	url string
@@ -81,7 +84,11 @@ func (m Model) reviewHistoryCmd(url string) tea.Cmd {
 	backend := m.reviews
 	return func() tea.Msg {
 		runs, err := backend.History(url)
-		return reviewHistoryMsg{url: url, runs: runs, err: err, automatic: m.automaticDecision(url)}
+		msg := reviewHistoryMsg{url: url, runs: runs, err: err, automatic: m.automaticDecision(url)}
+		if msg.automatic.Eligible {
+			msg.capacityErr = backend.ReviewCapacity()
+		}
+		return msg
 	}
 }
 
@@ -106,6 +113,7 @@ func (m Model) updateReview(message tea.Msg) (Model, tea.Cmd, bool) {
 		}
 		m.reviewPanel.runs = msg.runs
 		m.reviewPanel.automatic = msg.automatic
+		m.reviewPanel.capacityErr = msg.capacityErr
 		if msg.err != nil {
 			m.reviewPanel.message = msg.err.Error()
 		}

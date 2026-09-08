@@ -24,6 +24,12 @@ max_concurrency = 1
 timeout = "30m"
 ```
 
+Set `max_concurrency` to an integer from 1 through 8. The default is 1.
+For example, set `max_concurrency = 3` to allow three simultaneous reviews.
+Manual reviews and automatic reviews share this limit across processes in the same state directory.
+The monitor reloads the limit after a review finishes or on the next scan.
+A restart is not required for this change.
+
 An empty `auto_views` list disables automatic reviews.
 Each selected ID must identify one configured view.
 Duplicate IDs are invalid.
@@ -129,6 +135,10 @@ The command does not launch a reviewer.
 
 Press `v` on the board to inspect the selected PR.
 The review panel shows the same eligibility reason from the latest full observation.
+Eligible PRs show **Waiting for review slot** when the running monitor has no available review slot.
+The panel checks shared review slots each second.
+The message clears when a slot becomes available.
+A review capacity read failure appears as a separate error.
 A newer active-view revision invalidates that earlier eligibility evidence.
 Run history records completed, failed, blocked, and abandoned outcomes separately.
 

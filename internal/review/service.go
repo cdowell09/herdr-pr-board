@@ -58,6 +58,22 @@ func (s *Service) Wait() { s.mu.Lock(); s.closed = true; s.mu.Unlock(); s.wg.Wai
 
 func (s *Service) ReviewStatus(id reviewmemory.Identity) error { return s.store.ReviewStatus(id) }
 
+// ReviewCapacity reports current installation-wide availability without reserving a slot.
+func (s *Service) ReviewCapacity() error {
+	cfg, err := config.LoadExisting(s.configPath)
+	if err != nil {
+		return err
+	}
+	available, err := s.store.HasCapacity(cfg.Review.MaxConcurrency)
+	if err != nil {
+		return err
+	}
+	if !available {
+		return reviewmemory.ErrCapacity
+	}
+	return nil
+}
+
 func (s *Service) RunDirectory(id string) string { return filepath.Join(s.stateDir, "reviews", id) }
 
 // Review queues only for capacity. Each launch rechecks configuration and revision.
