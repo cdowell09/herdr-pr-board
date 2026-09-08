@@ -2,6 +2,44 @@
 
 This file lists notable changes to PR Board.
 
+## 0.5.0 - 2026-09-08
+
+PR Board adds Codex and Claude Code reviews, plus a control to stop active reviews.
+
+### Highlights
+
+- **Choose Codex or Claude Code.** Both now have built-in adapters alongside Pi. Select the agent in repository settings, or define reviewer profiles with different review skills.
+- **Stop one review without stopping your monitor.** Press `v`, then `t`. The panel identifies the run and shows cleanup progress. Stopped reviews keep their history, do not publish, and require an explicit retry.
+- **Read the feature summary first.** Release notes now lead with curated highlights. The full git-cliff changelog remains available below.
+
+The new adapters require Codex CLI 0.153.4+ or Claude Code 2.1.259+.
+Install and authenticate the selected CLI and install your review skill before starting reviews.
+Existing reviewer commands and repository permissions remain unchanged.
+See [agent setup](https://github.com/cdowell09/herdr-pr-board/blob/v0.5.0/docs/agent-adapters.md).
+
+### Upgrade
+
+```sh
+herdr plugin install cdowell09/herdr-pr-board --ref v0.5.0
+```
+
+Reopen the board to load the new binary.
+Restart an older monitor after its active reviews finish to enable the stop control.
+
+<details>
+<summary>Full changelog</summary>
+
+### Documentation
+
+- Lead release notes with feature highlights (#96)
+
+### Features
+
+- Stop active reviews from the board (#97)
+- Add built-in Codex and Claude Code adapters (#98)
+
+</details>
+
 ## 0.4.0 - 2026-09-08
 
 ### Bug Fixes
