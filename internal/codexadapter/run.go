@@ -13,11 +13,11 @@ import (
 	"github.com/cdowell09/herdr-pr-board/internal/reviewercontract"
 )
 
-type Options struct{ Codex, Skill string }
+type Options struct{ Codex, Prompt, Skill string }
 
 // Run uses Codex's existing authentication without reading or copying credentials.
 func Run(ctx context.Context, in reviewercontract.Input, opts Options) error {
-	return agentadapter.Run(ctx, in, agentadapter.Options{Name: "codex", Binary: opts.Codex, Skill: opts.Skill,
+	return agentadapter.Run(ctx, in, agentadapter.Options{Name: "codex", Binary: opts.Codex, Prompt: opts.Prompt, Skill: opts.Skill,
 		Command: command, FinalText: finalText, CancelSignal: syscall.SIGINT})
 }
 

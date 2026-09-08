@@ -62,7 +62,7 @@ func TestRepositoryGroupsPreserveRowsAndMouseTargets(t *testing.T) {
 func TestPostingLabelsDistinguishPermissionFromAutomaticAction(t *testing.T) {
 	m := onboardingModel(t, 80, 24, 3)
 	s := m.reviewPanel.setup
-	s.row = 5
+	s.row = repositoryPostingRow
 	m.revealRepositoryRow()
 	for _, tc := range []struct {
 		action config.PublicationAction

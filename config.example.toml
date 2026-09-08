@@ -81,7 +81,10 @@ timeout = "30m"
 # id = "pi"
 # command = ["/absolute/path/to/herdr-pr-board", "--pi-reviewer"]
 # Other built-in adapters use --codex-reviewer or --claude-reviewer.
-# Use --codex-skill or --claude-skill for an explicit review skill file.
+# The default review checks standards and specification without custom files.
+# Empty fields select embedded criteria and no external skill.
+# prompt_file = ""
+# skill_file = ""
 # Each adapter requires its installed and authenticated agent CLI.
 # See docs/agent-adapters.md for requirements.
 #
@@ -100,15 +103,30 @@ timeout = "30m"
 # auto_publish = ""
 
 # Select a different named reviewer for each repository.
-# Pi profiles can select different skills with --pi-skill.
+# Profile edits affect every repository that selects the profile.
+# Prompt files replace embedded criteria. Skill files add compatible requirements.
+# The prompt takes precedence when its criteria conflict with the skill.
+# Relative paths use this configuration file's directory.
+# Create reviews/security.md with the following text:
+#   Review only security vulnerabilities in the captured changes.
+#   Check authentication, authorization, secret exposure, and unsafe input handling.
+#   Report exploitable problems with concrete evidence.
+#   Do not require a product specification for this review.
 # [[reviewers]]
 # id = "pi-security"
-# command = ["/absolute/path/to/herdr-pr-board", "--pi-reviewer", "--pi-skill", "/absolute/path/to/security/SKILL.md"]
+# command = ["/absolute/path/to/herdr-pr-board", "--pi-reviewer"]
+# prompt_file = "reviews/security.md"
+# skill_file = ""
 #
 # [[repositories]]
 # name = "owner/security-service"
 # reviewer = "pi-security"
 #
-# A Codex command needs an adapter that implements the documented reviewer contract.
-# Built-in adapters support Pi, Codex, and Claude Code.
-# Prompt-template settings are not available.
+# Use the same fields with --codex-reviewer or --claude-reviewer.
+# A selected skill adds its full text to the review instructions.
+# skill_file = "reviews/security-skill.md" belongs in its [[reviewers]] table.
+# Omitted fields retain legacy --AGENT-prompt and --AGENT-skill command options.
+# Explicit empty fields clear legacy selections without changing command arguments.
+# Settings preserve unrelated custom reviewer commands.
+# Custom programs retain their own instruction interface.
+# See docs/review-instructions.md for complete examples and validation rules.

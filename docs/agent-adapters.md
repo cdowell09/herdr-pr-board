@@ -23,12 +23,15 @@ An unsupported flag fails the review instead of weakening the command's restrict
 See the [Codex CLI documentation](https://learn.chatgpt.com/docs/non-interactive-mode).
 See the [Claude Code CLI reference](https://code.claude.com/docs/en/cli-reference).
 
-Install a readable review skill at `~/.agents/skills/code-review/SKILL.md`.
-Use `--codex-skill` or `--claude-skill` to select another skill file.
+The default review uses embedded standards and specification criteria.
+No prompt file or skill file is required.
+Select `prompt_file` and `skill_file` in board settings or named TOML profiles.
+Standalone adapters also accept `--codex-prompt`, `--claude-prompt`, `--codex-skill`, and `--claude-skill`.
 Use `--codex-executable` or `--claude-executable` to select another executable.
 Each option requires its matching reviewer flag.
-The built-in prompt requires both standards and specification review.
-The agent must report a blocked outcome when it cannot complete either required review.
+Custom prompts replace the embedded review criteria.
+The agent must report a blocked outcome when it cannot complete its selected requirements.
+See [review instructions](review-instructions.md) for scope, precedence, and file rules.
 
 ## Configure a repository
 
@@ -50,16 +53,20 @@ Choose only one reviewer setup flag per command.
 These commands do not enable automatic reviews or publication.
 See [repository publication](repository-publication.md) for those settings.
 
-For different skills, define named reviewer profiles:
+For different review criteria, define named reviewer profiles:
 
 ```toml
 [[reviewers]]
 id = "codex-security"
-command = ["/absolute/path/to/herdr-pr-board", "--codex-reviewer", "--codex-skill", "/absolute/path/to/security/SKILL.md"]
+command = ["/absolute/path/to/herdr-pr-board", "--codex-reviewer"]
+prompt_file = "reviews/security.md"
+skill_file = ""
 
 [[reviewers]]
 id = "claude-product"
-command = ["/absolute/path/to/herdr-pr-board", "--claude-reviewer", "--claude-skill", "/absolute/path/to/product/SKILL.md"]
+command = ["/absolute/path/to/herdr-pr-board", "--claude-reviewer"]
+prompt_file = ""
+skill_file = "reviews/product/SKILL.md"
 
 [[repositories]]
 name = "owner/security-service"
@@ -71,6 +78,8 @@ reviewer = "claude-product"
 ```
 
 Replace the example paths and repository names.
+Create the selected files before saving these profiles.
+See [complete instruction examples](review-instructions.md#configure-named-profiles) for file contents.
 PR Board passes arguments directly without shell interpretation.
 Start reviews with `n` in the panel or the existing `--review` command.
 See [manual reviews](reviews.md) for launch, retry, timeout, and history behavior.
@@ -78,7 +87,8 @@ See [manual reviews](reviews.md) for launch, retry, timeout, and history behavio
 ## Review preparation
 
 The adapter retrieves the PR body and linked closing issues through GitHub CLI.
-Missing or inaccessible specification evidence produces a blocked result.
+Missing or inaccessible specification evidence blocks the default review.
+Custom reviews require only evidence demanded by their selected instructions.
 The adapter verifies the captured head, target branch, and base before preparing the checkout.
 A changed revision produces a blocked result.
 

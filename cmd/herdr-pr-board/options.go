@@ -25,8 +25,8 @@ type options struct {
 }
 
 type adapterOptions struct {
-	name, executable, skill string
-	enabled                 bool
+	name, executable, prompt, skill string
+	enabled                         bool
 }
 
 func parseOptions(args []string, stderr io.Writer) (options, error) {
@@ -50,6 +50,7 @@ func parseOptions(args []string, stderr io.Writer) (options, error) {
 		f.BoolVar(&a.enabled, a.name+"-reviewer", false, "run the "+a.name+" adapter with JSON input on stdin")
 		f.StringVar(&a.executable, a.name+"-executable", "", "agent executable (requires --"+a.name+"-reviewer)")
 		f.StringVar(&a.skill, a.name+"-skill", "", "review skill path (requires --"+a.name+"-reviewer)")
+		f.StringVar(&a.prompt, a.name+"-prompt", "", "review prompt path (requires --"+a.name+"-reviewer)")
 		adapters = append(adapters, a)
 	}
 	o.publication = addPublicationFlags(f)
@@ -73,7 +74,7 @@ func parseOptions(args []string, stderr io.Writer) (options, error) {
 			modes++
 			o.adapter = *a
 		}
-		invalid = invalid || (specified[a.name+"-executable"] || specified[a.name+"-skill"]) && !a.enabled
+		invalid = invalid || (specified[a.name+"-executable"] || specified[a.name+"-skill"] || specified[a.name+"-prompt"]) && !a.enabled
 	}
 	invalid = invalid || specified["plugin-action"] && o.pluginAction != "open" && o.pluginAction != "run"
 	invalid = invalid || specified["plugin-action"] && specified["config"]

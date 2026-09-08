@@ -3,8 +3,10 @@ package board
 import (
 	"bytes"
 	"context"
+	"encoding/json"
 	"os"
 	"path/filepath"
+	"reflect"
 	"strings"
 	"testing"
 
@@ -126,7 +128,7 @@ func TestNarrowSetupKeepsEveryPermissionIndicatorVisible(t *testing.T) {
 			setup.repo.PublishActions = config.PublicationActions()
 			want = "[x]"
 		}
-		for row := 1; row <= 4; row++ {
+		for row := repositoryAutomaticRow; row <= repositoryChangesRow; row++ {
 			setup.row = row
 			m.revealRepositoryRow()
 			header, content, start, size := m.repositoryViewport()
@@ -209,5 +211,147 @@ func TestRepositorySetupOffersMissingAdaptersAndPreservesCustomCommands(t *testi
 				t.Fatal("changed existing configuration")
 			}
 		})
+	}
+}
+
+func TestInstructionFilesRoundTripThroughBoardAndTOML(t *testing.T) {
+	for _, builtin := range config.BuiltinReviewers("board") {
+		t.Run(builtin.ID, func(t *testing.T) {
+			m := panelModel(t)
+			m.configPath = filepath.Join(t.TempDir(), "config.toml")
+			m.stateDir = t.TempDir()
+			builtin.Command = append(builtin.Command, "--"+builtin.ID+"-skill", "old-skill.md")
+			builtin.ID = "security"
+			command, _ := json.Marshal(builtin.Command)
+			before := config.DefaultFile + "\n# Preserve this profile and its command.\n[[reviewers]]\nid = \"security\"\ncommand = " + string(command) + "\nprompt_file = \"initial.md\"\n\n[[repositories]]\nname = \"acme/repo\"\nreviewer = \"security\"\n[[repositories]]\nname = \"acme/other\"\nreviewer = \"security\"\n"
+			if err := os.WriteFile(m.configPath, []byte(before), 0600); err != nil {
+				t.Fatal(err)
+			}
+			prompt := "q jk security 日本語.md"
+			for _, name := range []string{"initial.md", "old-skill.md", prompt, "direct.md"} {
+				if err := os.WriteFile(filepath.Join(filepath.Dir(m.configPath), name), []byte("Review security issues."), 0600); err != nil {
+					t.Fatal(err)
+				}
+			}
+			load := func() config.Config {
+				cfg, err := config.LoadExisting(m.configPath)
+				if err != nil {
+					t.Fatal(err)
+				}
+				return cfg
+			}
+			m, _, _ = m.updateRepository(repositorySettingsMsg{url: m.reviewPanel.pr.URL, cfg: load(), force: true})
+			s := m.reviewPanel.setup
+			if rows := strings.Join(s.rows(), "\n"); !strings.Contains(rows, "initial.md") || !strings.Contains(rows, "old-skill.md") {
+				t.Fatalf("TOML and legacy selections missing: %s", rows)
+			}
+			if !strings.Contains(stripANSI(m.View()), "All repositories using security share these files.") {
+				t.Fatal("shared profile impact is hidden")
+			}
+			key := func(kind tea.KeyType, value string) {
+				next, _ := m.Update(tea.KeyMsg{Type: kind, Runes: []rune(value)})
+				m = next.(Model)
+			}
+			s.row = repositoryPromptRow
+			key(tea.KeySpace, "")
+			key(tea.KeyCtrlU, "")
+			key(tea.KeyRunes, prompt)
+			key(tea.KeyEnter, "")
+			if s.editing != nil || s.selectedReviewer().PromptFile == nil || *s.selectedReviewer().PromptFile != prompt {
+				t.Fatal("path entry changed characters or failed to update the draft")
+			}
+			if data, err := os.ReadFile(m.configPath); err != nil || string(data) != before {
+				t.Fatal("accepting a path saved settings before Enter save")
+			}
+			s.row = repositorySkillRow
+			m.revealRepositoryRow()
+			next, _ := m.Update(tea.MouseMsg{Button: tea.MouseButtonLeft, Action: tea.MouseActionPress, X: 1, Y: renderedRepositoryLine(t, m, "Skill file:")})
+			m = next.(Model)
+			if s.editing == nil {
+				t.Fatal("click did not edit the rendered skill row")
+			}
+			key(tea.KeyCtrlU, "")
+			key(tea.KeyEnter, "")
+			next, save := m.Update(tea.KeyMsg{Type: tea.KeyEnter})
+			m = next.(Model)
+			next, _ = m.Update(save())
+			m = next.(Model)
+			if m.reviewPanel.setup != nil {
+				t.Fatalf("save failed: %s", m.reviewPanel.message)
+			}
+			cfg := load()
+			profile := cfg.Reviewers[0]
+			if profile.PromptFile == nil || *profile.PromptFile != prompt || profile.SkillFile == nil || *profile.SkillFile != "" || !reflect.DeepEqual(profile.Command, builtin.Command) {
+				t.Fatalf("saved profile differs: %+v", profile)
+			}
+			if len(cfg.Repositories) != 2 || cfg.Repositories[1].Reviewer != "security" {
+				t.Fatal("changed the other repository")
+			}
+			data, err := os.ReadFile(m.configPath)
+			if err != nil || !strings.Contains(string(data), "# Preserve this profile and its command.") || !strings.Contains(string(data), "command = "+string(command)) {
+				t.Fatalf("changed unrelated TOML: %s %v", data, err)
+			}
+			if err := os.WriteFile(m.configPath, []byte(strings.Replace(string(data), prompt, "direct.md", 1)), 0600); err != nil {
+				t.Fatal(err)
+			}
+			m, _, _ = m.updateRepository(repositorySettingsMsg{url: m.reviewPanel.pr.URL, cfg: load(), force: true})
+			if rows := strings.Join(m.reviewPanel.setup.rows(), "\n"); !strings.Contains(rows, "Prompt file: direct.md") || !strings.Contains(rows, "Skill file: None") {
+				t.Fatalf("direct TOML edits not reflected: %s", rows)
+			}
+		})
+	}
+}
+
+func TestInstructionEditorKeepsCursorVisibleAndCancelsDraft(t *testing.T) {
+	m := onboardingModel(t, 30, 10, 3)
+	s := m.reviewPanel.setup
+	s.repo.Reviewer = "pi"
+	s.row = repositoryPromptRow
+	s.toggle()
+	path := strings.Repeat("日本語/", 30) + "left"
+	for _, key := range []tea.KeyMsg{{Type: tea.KeyRunes, Runes: []rune(path)}, {Type: tea.KeyRunes, Runes: []rune("q")}, {Type: tea.KeySpace}} {
+		next, _ := m.Update(key)
+		m = next.(Model)
+	}
+	if string(s.editing.value) != path+"q " {
+		t.Fatal("path text triggered a command")
+	}
+	view := stripANSI(m.View())
+	if !strings.Contains(view, "leftq ▏") || len(strings.Split(view, "\n")) > m.height {
+		t.Fatalf("cursor hidden or height exceeded: %s", view)
+	}
+	for _, line := range strings.Split(view, "\n") {
+		if lipgloss.Width(line) > m.width {
+			t.Fatalf("wide path overflow: %q", line)
+		}
+	}
+	next, _ := m.Update(tea.KeyMsg{Type: tea.KeyEsc})
+	m = next.(Model)
+	if s.editing != nil || s.selectedReviewer().PromptFile != nil || m.reviewPanel.setup == nil {
+		t.Fatal("Escape did not discard only the path draft")
+	}
+}
+
+func TestMissingInstructionFileKeepsSetupOpenForRepair(t *testing.T) {
+	m := panelModel(t)
+	m.configPath = filepath.Join(t.TempDir(), "config.toml")
+	m.stateDir = t.TempDir()
+	cfg, err := config.Load(m.configPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	m, _, _ = m.updateRepository(repositorySettingsMsg{url: m.reviewPanel.pr.URL, cfg: cfg, force: true})
+	missing := "missing-security.md"
+	m.reviewPanel.setup.selectedReviewer().PromptFile = &missing
+	next, save := m.Update(tea.KeyMsg{Type: tea.KeyEnter})
+	m = next.(Model)
+	next, _ = m.Update(save())
+	m = next.(Model)
+	if m.reviewPanel.setup == nil || m.reviewPanel.setup.saving || !strings.Contains(m.reviewPanel.message, missing) {
+		t.Fatalf("missing file not repairable: %+v", m.reviewPanel)
+	}
+	data, err := os.ReadFile(m.configPath)
+	if err != nil || string(data) != config.DefaultFile {
+		t.Fatal("invalid path changed saved configuration")
 	}
 }

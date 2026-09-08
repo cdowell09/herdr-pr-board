@@ -31,7 +31,7 @@ func TestSetupSavesGlobalViewsAndRepositoryTogether(t *testing.T) {
 				t.Fatal(err)
 			}
 			edit := AutomaticViewsEdit{Selected: []string{"review"}, Expected: cfg}
-			saved, err := SaveRepository(context.Background(), path, t.TempDir(), Repository{Name: "acme/api", Reviewer: "pi", AutoLaunch: true}, &Reviewer{ID: "pi", Command: []string{"pi"}}, nil, &edit)
+			saved, err := SaveRepository(context.Background(), path, t.TempDir(), Repository{Name: "acme/api", Reviewer: "pi", AutoLaunch: true}, &ReviewerEdit{Value: Reviewer{ID: "pi", Command: []string{"pi"}}}, nil, &edit)
 			after, _ := os.ReadFile(path)
 			if style == "inline" {
 				if err == nil || !strings.Contains(err.Error(), "explicit review") || string(after) != text {
@@ -78,7 +78,7 @@ func TestSetupRejectsChangedGlobalMeaningWithoutPartialWrite(t *testing.T) {
 			if err := os.WriteFile(path, []byte(text), 0600); err != nil {
 				t.Fatal(err)
 			}
-			_, err = SaveRepository(context.Background(), path, t.TempDir(), Repository{Name: "acme/api", Reviewer: "pi"}, &Reviewer{ID: "pi", Command: []string{"pi"}}, nil, &edit)
+			_, err = SaveRepository(context.Background(), path, t.TempDir(), Repository{Name: "acme/api", Reviewer: "pi"}, &ReviewerEdit{Value: Reviewer{ID: "pi", Command: []string{"pi"}}}, nil, &edit)
 			after, _ := os.ReadFile(path)
 			if err == nil || string(after) != text {
 				t.Fatalf("stale/invalid write: %v\n%s", err, after)
@@ -98,7 +98,7 @@ func TestSetupUsesDefaultsForExpectedDiscovery(t *testing.T) {
 		t.Fatal(err)
 	}
 	edit := AutomaticViewsEdit{Selected: []string{"review"}, Expected: cfg}
-	_, err = SaveRepository(context.Background(), path, t.TempDir(), Repository{Name: "acme/api", Reviewer: "pi"}, &Reviewer{ID: "pi", Command: []string{"pi"}}, nil, &edit)
+	_, err = SaveRepository(context.Background(), path, t.TempDir(), Repository{Name: "acme/api", Reviewer: "pi"}, &ReviewerEdit{Value: Reviewer{ID: "pi", Command: []string{"pi"}}}, nil, &edit)
 	if err != nil {
 		t.Fatal(err)
 	}

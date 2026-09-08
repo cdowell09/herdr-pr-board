@@ -91,14 +91,15 @@ func TestReviewOptionModesRejectConflicts(t *testing.T) {
 func TestBuiltinAdapterOptionsAreIsolated(t *testing.T) {
 	for _, name := range []string{"pi", "codex", "claude"} {
 		t.Run(name, func(t *testing.T) {
-			args := []string{"--" + name + "-reviewer", "--" + name + "-executable", "/agent with spaces", "--" + name + "-skill", "/review skill/SKILL.md"}
+			args := []string{"--" + name + "-reviewer", "--" + name + "-executable", "/agent with spaces", "--" + name + "-skill", "/review skill/SKILL.md", "--" + name + "-prompt", "/review prompt.md"}
 			o, err := parseOptions(args, &bytes.Buffer{})
-			if err != nil || o.adapter.name != name || o.adapter.executable != "/agent with spaces" || o.adapter.skill != "/review skill/SKILL.md" {
+			if err != nil || o.adapter.name != name || o.adapter.executable != "/agent with spaces" || o.adapter.skill != "/review skill/SKILL.md" || o.adapter.prompt != "/review prompt.md" {
 				t.Fatalf("options=%+v err=%v", o.adapter, err)
 			}
 			for _, invalid := range [][]string{
 				{"--" + name + "-executable", "agent"},
 				{"--" + name + "-skill", "skill"},
+				{"--" + name + "-prompt", "prompt"},
 				{"--" + name + "-reviewer", "--config", "config.toml"},
 				{"--" + name + "-reviewer", "--json"},
 				{"--" + name + "-reviewer", "--repository-settings", "acme/repo"},
@@ -114,6 +115,7 @@ func TestBuiltinAdapterOptionsAreIsolated(t *testing.T) {
 				for _, invalid := range [][]string{
 					{"--" + name + "-reviewer", "--" + other + "-reviewer"},
 					{"--" + name + "-reviewer", "--" + other + "-skill", "skill"},
+					{"--" + name + "-reviewer", "--" + other + "-prompt", "prompt"},
 				} {
 					if _, err := parseOptions(invalid, &bytes.Buffer{}); err == nil {
 						t.Fatalf("accepted %v", invalid)

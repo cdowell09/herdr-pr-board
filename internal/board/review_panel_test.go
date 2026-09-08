@@ -33,6 +33,7 @@ func panelModel(t *testing.T) Model {
 		t.Fatal(err)
 	}
 	m = m.WithReviews(context.Background(), &reviewFake{})
+	m.cfg.Reviewers = []config.Reviewer{{ID: "agent", Command: []string{"fake-reviewer"}}}
 	m.cfg.Repositories = []config.Repository{{Name: "acme/repo", Reviewer: "agent"}}
 	m.width, m.height = 100, 35
 	m.loading = false

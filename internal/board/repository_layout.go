@@ -36,14 +36,22 @@ func (m Model) repositoryContent() []repositoryLine {
 	}
 	for i, row := range s.rows() {
 		switch i {
-		case 0:
+		case repositoryReviewerRow:
 			section("Reviews")
-		case 2:
+		case repositoryPromptRow:
+			if s.selectedReviewer().Builtin() != "" {
+				add("Default review checks repository standards and specification.", -1)
+				add("Choose prompt and skill files, or keep defaults.", -1)
+				add("All repositories using "+s.repo.Reviewer+" share these files.", -1)
+			} else {
+				add("This custom command manages its own instructions.", -1)
+			}
+		case repositoryPermissionsRow:
 			section("GitHub permissions")
 			add("Allowed actions, not automatic posts.", -1)
-		case 5:
+		case repositoryPostingRow:
 			section("Automatic posting")
-		case 6:
+		case repositoryViewsRow:
 			section("Global views")
 			add("Shared by all opted-in repositories.", -1)
 		}
@@ -51,8 +59,24 @@ func (m Model) repositoryContent() []repositoryLine {
 		if i == s.row {
 			prefix = "› "
 		}
+		if i == s.row && s.editing != nil {
+			label := "Prompt file: "
+			if i == repositorySkillRow {
+				label = "Skill file: "
+			}
+			e := s.editing
+			width := max(1, m.width-ansi.StringWidth(prefix+label))
+			left := reviewText(string(e.value[:e.cursor]))
+			left = ansi.TruncateLeft(left, max(0, ansi.StringWidth(left)-width+1), "")
+			right := ansi.Truncate(reviewText(string(e.value[e.cursor:])), max(0, width-ansi.StringWidth(left)-1), "")
+			row = label + left + "▏" + right
+		}
 		add(prefix+row, i)
-		if i == 5 {
+		if i == repositorySkillRow && s.selectedReviewer().Builtin() != "" {
+			add("A custom prompt replaces default criteria. A skill adds requirements.", -1)
+			add("New relative paths start in the configuration directory.", -1)
+		}
+		if i == repositoryPostingRow {
 			add("For every completed review.", -1)
 		}
 	}
@@ -62,7 +86,7 @@ func (m Model) repositoryContent() []repositoryLine {
 	}
 	if builtin := s.selectedBuiltin(); builtin != nil {
 		section("New reviewer: " + builtin.ID)
-		add("Install the agent CLI and review skill before running a review.", -1)
+		add("Install and authenticate the agent CLI before running a review.", -1)
 	}
 	section("Monitor")
 	if observed := m.reviewPanel.monitor.ObservedAt; !observed.IsZero() {
@@ -156,7 +180,7 @@ func (m Model) renderRepositoryPanel() string {
 
 func (m Model) updateRepositoryMouse(message tea.MouseMsg) (tea.Model, tea.Cmd) {
 	s := m.reviewPanel.setup
-	if s.saving {
+	if s.saving || s.editing != nil {
 		return m, nil
 	}
 	event := tea.MouseEvent(message)
@@ -185,6 +209,9 @@ func (m Model) updateRepositoryMouse(message tea.MouseMsg) (tea.Model, tea.Cmd) 
 
 func (m Model) repositoryHelp() []string {
 	text := "↑↓ select · Space change · Enter save · PgUp/Dn scroll · Esc cancel"
+	if m.reviewPanel.setup.editing != nil {
+		text = "Type or paste path · Enter use · Ctrl+U clear · Esc discard"
+	}
 	lines := strings.Split(ansi.Wrap(text, max(1, m.width), ""), "\n")
 	if len(lines) > max(1, m.height-2) {
 		return []string{truncate("Enlarge panel for controls.", m.width)}

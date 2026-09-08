@@ -193,8 +193,18 @@ func LoadExisting(path string) (Config, error) {
 
 // Check parses and validates an existing configuration without creating it.
 func Check(path string) error {
-	_, err := LoadExisting(path)
-	return err
+	cfg, err := LoadExisting(path)
+	if err != nil {
+		return err
+	}
+	for _, reviewer := range cfg.Reviewers {
+		if reviewer.Builtin() != "" {
+			if _, err := reviewer.LoadInstructions(path); err != nil {
+				return err
+			}
+		}
+	}
+	return nil
 }
 
 func parseFile(path string) (Config, error) {

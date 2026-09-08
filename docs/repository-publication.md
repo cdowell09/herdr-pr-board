@@ -10,6 +10,11 @@ Select a PR and press `v`.
 The first review action opens repository settings when the repository has no saved settings.
 The panel groups settings under Reviews, GitHub permissions, Automatic posting, and Global views.
 Select a reviewer under Reviews with the arrow keys or Space.
+Select Prompt file and Skill file to choose instructions or keep the defaults.
+Press Space or click a path row to edit it.
+Press Enter to accept the path before saving settings.
+Press Esc to discard only the active path edit.
+See [instruction setup](review-instructions.md#select-files-in-the-board) for file rules and editing controls.
 Enable automatic launches only when you want unattended reviews.
 Select existing global automatic views for unattended reviews.
 These selections apply to all repositories that allow automatic launches.
@@ -31,10 +36,11 @@ The board reuses an existing monitor in the same state directory.
 Run the displayed monitor command in another terminal if background startup fails.
 New selections can take effect on the next monitor scan.
 
-When no reviewer exists, the panel offers the built-in Pi reviewer.
-Saving creates a reusable Pi reviewer definition.
-Install Pi and its code-review skill before running this reviewer.
-The panel reports missing requirements after a launch attempt.
+The panel offers missing Pi, Codex, and Claude Code reviewers alongside existing profiles.
+Saving creates only the selected missing reviewer definition.
+Install and authenticate the selected agent CLI before running a review.
+The defaults require no custom instruction files.
+Saving validates selected files and reports missing requirements.
 
 Press `s` in the review panel to edit saved settings.
 Saving does not change unrelated settings or comments.
@@ -46,6 +52,8 @@ Convert inline repository arrays to tables before using setup.
 A rejected save preserves the existing configuration file.
 The panel saves repository settings and global view selections in one operation.
 Concurrent changes to the same repository reject a stale save.
+Concurrent changes to an edited reviewer profile also reject a stale save.
+Instruction edits affect every repository that selects that profile.
 Changed global selections, view definitions, or GitHub settings also reject a stale panel save.
 The global view editor requires an explicit `[review]` table.
 Convert inline or dotted review settings before changing global selections through the panel.
