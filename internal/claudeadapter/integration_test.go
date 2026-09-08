@@ -3,6 +3,8 @@ package claudeadapter
 import (
 	"context"
 	"encoding/json"
+	"fmt"
+	"io"
 	"os"
 	"path/filepath"
 	"strings"
@@ -10,28 +12,64 @@ import (
 
 	"github.com/cdowell09/herdr-pr-board/internal/reviewercontract"
 	"github.com/cdowell09/herdr-pr-board/internal/reviewmemory"
+	"github.com/cdowell09/herdr-pr-board/internal/testutil"
 )
+
+func TestMain(m *testing.M) {
+	tool := strings.TrimSuffix(filepath.Base(os.Args[0]), ".exe")
+	if tool == "gh" || tool == "git" || tool == "claude" {
+		if err := runFixtureTool(tool, os.Getenv("CLAUDE_TEST_DIR"), os.Args[1:]); err != nil {
+			fmt.Fprintln(os.Stderr, err)
+			os.Exit(1)
+		}
+		os.Exit(0)
+	}
+	os.Exit(m.Run())
+}
+
+func runFixtureTool(tool, dir string, args []string) error {
+	output := ""
+	switch tool {
+	case "gh":
+		switch args[0] + " " + args[1] {
+		case "pr view":
+			output = "pr.json"
+		case "repo clone":
+			return os.MkdirAll(args[3], 0700)
+		default:
+			return fmt.Errorf("unexpected gh command: %v", args)
+		}
+	case "git":
+		if args[0] == "rev-parse" {
+			_, err := fmt.Fprint(os.Stdout, strings.Repeat("a", 40))
+			return err
+		}
+		return nil
+	case "claude":
+		prompt, err := io.ReadAll(os.Stdin)
+		if err != nil {
+			return err
+		}
+		if err := os.WriteFile(filepath.Join(dir, "prompt"), prompt, 0600); err != nil {
+			return err
+		}
+		output = "response"
+	}
+	data, err := os.ReadFile(filepath.Join(dir, output))
+	if err != nil {
+		return err
+	}
+	_, err = os.Stdout.Write(data)
+	return err
+}
 
 func TestRunWiresClaudeStructuredOutput(t *testing.T) {
 	dir := t.TempDir()
-	script := `#!/bin/sh
-case "$(basename "$0")" in
- gh) case "$1 $2" in
-  'pr view') cat "$CLAUDE_TEST_DIR/pr.json";;
-  'repo clone') mkdir -p "$4";;
- esac;;
- git) if [ "$1" = rev-parse ]; then printf '%s' aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa; fi;;
- claude)
-  cat > "$CLAUDE_TEST_DIR/prompt"
-  cat "$CLAUDE_TEST_DIR/response";;
-esac
-`
 	for _, name := range []string{"gh", "git", "claude"} {
-		if err := os.WriteFile(filepath.Join(dir, name), []byte(script), 0700); err != nil {
-			t.Fatal(err)
-		}
+		testutil.Executable(t, dir, name)
 	}
-	t.Setenv("PATH", dir+":"+os.Getenv("PATH"))
+	t.Setenv("GORACE", os.Getenv("GORACE")+" atexit_sleep_ms=0")
+	t.Setenv("PATH", dir+string(os.PathListSeparator)+os.Getenv("PATH"))
 	t.Setenv("CLAUDE_TEST_DIR", dir)
 	in := reviewercontract.Input{Version: 1, Identity: reviewmemory.Identity{Repository: "owner/repo", Number: 42, HeadOID: strings.Repeat("a", 40), BaseRefName: "main"}, BaseOID: strings.Repeat("b", 40), ResultPath: filepath.Join(dir, "result.json")}
 	result := reviewercontract.Result{Version: 1, Identity: in.Identity, BaseOID: in.BaseOID, Outcome: reviewmemory.Outcome{Status: reviewmemory.Completed, Message: "Both axes reviewed", Findings: []reviewmemory.Finding{}}}

@@ -7,13 +7,13 @@ import (
 )
 
 func TestRunWritesBuildMatrixFromManifestPlatforms(t *testing.T) {
-	manifest := strings.NewReader(`platforms = ["macos", "linux"]`)
+	manifest := strings.NewReader(`platforms = ["macos", "linux", "windows"]`)
 	var stdout, stderr bytes.Buffer
 
 	if exitCode := run(manifest, &stdout, &stderr); exitCode != 0 {
 		t.Fatalf("run exit code = %d, stderr = %q", exitCode, stderr.String())
 	}
-	want := "{\"include\":[{\"platform\":\"macos\",\"goos\":\"darwin\"},{\"platform\":\"linux\",\"goos\":\"linux\"}]}\n"
+	want := `{"include":[{"platform":"macos","goos":"darwin"},{"platform":"linux","goos":"linux"},{"platform":"windows","goos":"windows"}]}` + "\n"
 	if stdout.String() != want {
 		t.Fatalf("matrix = %q, want %q", stdout.String(), want)
 	}

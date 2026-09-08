@@ -3,6 +3,8 @@ package main
 import (
 	"bytes"
 	"encoding/json"
+	"errors"
+	"fmt"
 	"io"
 	"os"
 	"path/filepath"
@@ -12,44 +14,92 @@ import (
 	"time"
 
 	gh "github.com/cdowell09/herdr-pr-board/internal/github"
+	"github.com/cdowell09/herdr-pr-board/internal/testutil"
 )
+
+func TestMain(m *testing.M) {
+	if strings.TrimSuffix(filepath.Base(os.Args[0]), ".exe") == "gh" {
+		response, err := snapshotGHResponse(os.Args[1:])
+		if err != nil {
+			fmt.Fprintln(os.Stderr, err)
+			os.Exit(1)
+		}
+		if os.Getenv("GH_TEST_ELIGIBLE") == "1" {
+			response = strings.NewReplacer("head123", strings.Repeat("a", 40), "base123", strings.Repeat("b", 40), `"isDraft":false`, `"isDraft":false,"state":"open"`).Replace(response)
+		}
+		fmt.Fprintln(os.Stdout, response)
+		os.Exit(0)
+	}
+	os.Exit(m.Run())
+}
+
+func snapshotGHResponse(args []string) (string, error) {
+	if metadata := os.Getenv("GH_REVIEW_METADATA"); metadata != "" {
+		return metadata, nil
+	}
+	log, err := os.OpenFile(os.Getenv("GH_TEST_LOG"), os.O_CREATE|os.O_APPEND|os.O_WRONLY, 0600)
+	if err != nil {
+		return "", err
+	}
+	_, err = fmt.Fprintln(log, strings.Join(args, " "))
+	if err := errors.Join(err, log.Close()); err != nil {
+		return "", err
+	}
+	if len(args) < 2 {
+		return "", errors.New("missing gh command")
+	}
+	mode := os.Getenv("GH_TEST_MODE")
+	switch args[0] + " " + args[1] {
+	case "api user":
+		return "ada", nil
+	case "api rate_limit":
+		if mode == "rates" {
+			return "", errors.New("rate lookup failed")
+		}
+		return `{"resources":{"search":{"limit":30,"remaining":30,"reset":4102444800},"graphql":{"limit":5000,"remaining":5000,"reset":4102444800}}}`, nil
+	case "search prs":
+		if slices.Contains(args, "label:broken") {
+			return "", errors.New("search unavailable")
+		}
+		if mode == "failed_batch" {
+			return `[{"number":7,"url":"https://github.com/acme/api/pull/7","repository":{"nameWithOwner":"acme/api"}},{"number":8,"url":"https://github.com/acme/api/pull/8","repository":{"nameWithOwner":"acme/api"}}]`, nil
+		}
+		if mode == "empty" {
+			return "[]", nil
+		}
+		return `[{"number":7,"title":"A change","url":"https://github.com/acme/api/pull/7","isDraft":false,"updatedAt":"2026-01-01T00:00:00Z","author":{"login":"ada"},"repository":{"nameWithOwner":"acme/api"}}]`, nil
+	case "api graphql":
+		if mode == "enrichment" {
+			return "", errors.New("GraphQL unavailable")
+		}
+		if mode == "missing" {
+			return `{"data":{"p0":null}}`, nil
+		}
+		cost := 1
+		if mode == "failed_batch" {
+			marker := os.Getenv("GH_TEST_LOG") + ".completed"
+			if _, err := os.Stat(marker); err == nil {
+				return "", errors.New("second batch failed")
+			}
+			if err := os.WriteFile(marker, nil, 0600); err != nil {
+				return "", err
+			}
+			cost = 7
+		}
+		return fmt.Sprintf(`{"data":{"rateLimit":{"limit":5000,"remaining":%d,"resetAt":"2100-01-01T00:00:00Z","cost":%d},"p0":{"pullRequest":{"reviews":{"nodes":[],"pageInfo":{"hasNextPage":false}},"headRefOid":"head123","baseRefName":"main","baseRefOid":"base123","commits":{"nodes":[{"commit":{"statusCheckRollup":{"state":"SUCCESS"}}}]}}}}}`, 5000-cost, cost), nil
+	}
+	return "", fmt.Errorf("unexpected gh command: %v", args)
+}
 
 // The executable exercises process arguments and stdout/stderr handling without a terminal.
 func fakeSnapshotGH(t *testing.T) string {
 	t.Helper()
 	dir := t.TempDir()
 	log := filepath.Join(dir, "calls")
-	script := `#!/bin/sh
-printf '%s\n' "$*" >> "$GH_TEST_LOG"
-case "$1 $2" in
- "api user") printf 'ada\n' ;;
- "api rate_limit")
-  if [ "$GH_TEST_MODE" = rates ]; then echo 'rate lookup failed' >&2; exit 1; fi
-  printf '%s\n' '{"resources":{"search":{"limit":30,"remaining":30,"reset":4102444800},"graphql":{"limit":5000,"remaining":5000,"reset":4102444800}}}' ;;
- "search prs")
-  case "$*" in
-   *label:broken*) echo 'search unavailable' >&2; exit 1 ;;
-  esac
-  if [ "$GH_TEST_MODE" = failed_batch ]; then
-   printf '%s\n' '[{"number":7,"url":"https://github.com/acme/api/pull/7","repository":{"nameWithOwner":"acme/api"}},{"number":8,"url":"https://github.com/acme/api/pull/8","repository":{"nameWithOwner":"acme/api"}}]'; exit
-  fi
-  if [ "$GH_TEST_MODE" = empty ]; then printf '[]\n'; exit; fi
-  printf '%s\n' '[{"number":7,"title":"A change","url":"https://github.com/acme/api/pull/7","isDraft":false,"updatedAt":"2026-01-01T00:00:00Z","author":{"login":"ada"},"repository":{"nameWithOwner":"acme/api"}}]' ;;
- "api graphql")
-  if [ "$GH_TEST_MODE" = failed_batch ]; then
-   if [ -f "$GH_TEST_LOG.completed" ]; then echo 'second batch failed' >&2; exit 1; fi
-   : > "$GH_TEST_LOG.completed"
-   printf '%s\n' '{"data":{"rateLimit":{"limit":5000,"remaining":4993,"resetAt":"2100-01-01T00:00:00Z","cost":7},"p0":{"pullRequest":{"reviews":{"nodes":[],"pageInfo":{"hasNextPage":false}},"headRefOid":"head123","baseRefName":"main","baseRefOid":"base123","commits":{"nodes":[{"commit":{"statusCheckRollup":{"state":"SUCCESS"}}}]}}}}}'; exit
-  fi
-  if [ "$GH_TEST_MODE" = enrichment ]; then echo 'GraphQL unavailable' >&2; exit 1; fi
-  if [ "$GH_TEST_MODE" = missing ]; then printf '%s\n' '{"data":{"p0":null}}'; exit; fi
-  printf '%s\n' '{"data":{"rateLimit":{"limit":5000,"remaining":4999,"resetAt":"2100-01-01T00:00:00Z","cost":1},"p0":{"pullRequest":{"reviews":{"nodes":[],"pageInfo":{"hasNextPage":false}},"headRefOid":"head123","baseRefName":"main","baseRefOid":"base123","commits":{"nodes":[{"commit":{"statusCheckRollup":{"state":"SUCCESS"}}}]}}}}}' ;;
- *) echo "unexpected gh command: $*" >&2; exit 1 ;;
-esac
-`
-	if err := os.WriteFile(filepath.Join(dir, "gh"), []byte(script), 0o755); err != nil {
-		t.Fatal(err)
-	}
+	testutil.Executable(t, dir, "gh")
+	t.Setenv("GORACE", os.Getenv("GORACE")+" atexit_sleep_ms=0")
+	t.Setenv("GH_REVIEW_METADATA", "")
+	t.Setenv("GH_TEST_ELIGIBLE", "")
 	t.Setenv("PATH", dir)
 	t.Setenv("GH_TEST_LOG", log)
 	t.Setenv("GH_TEST_MODE", "")

@@ -11,6 +11,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/cdowell09/herdr-pr-board/internal/localstate"
 	"github.com/pelletier/go-toml/v2"
 )
 
@@ -197,7 +198,7 @@ func Check(path string) error {
 }
 
 func parseFile(path string) (Config, error) {
-	data, err := os.ReadFile(path)
+	data, err := localstate.ReadFile(path)
 	if err != nil {
 		return Config{}, fmt.Errorf("read config: %w", err)
 	}

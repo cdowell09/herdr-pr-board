@@ -730,6 +730,11 @@ func TestEnrichmentMetadataCacheAcrossSearchRefreshes(t *testing.T) {
 	if pr.HeadOID != "head1" || pr.BaseRefName != "main" || pr.BaseOID != "base1" || pr.CI != CISuccess || pr.MetadataObservedAt.Before(before) || pr.MetadataObservedAt.After(time.Now()) {
 		t.Fatalf("first observation = %#v", pr)
 	}
+	// Seed an older observation so a refresh cannot share one Windows clock tick.
+	pr.MetadataObservedAt = before.Add(-time.Minute)
+	entry := client.ciCache[pr.URL]
+	entry.pr.MetadataObservedAt = pr.MetadataObservedAt
+	client.ciCache[pr.URL] = entry
 	second := []PullRequest{{URL: pr.URL, Repository: pr.Repository, Number: 1, Title: "new", UpdatedAt: time.Now()}}
 	if _, _, err := client.EnrichCI(context.Background(), second, RateResource{}); err != nil {
 		t.Fatal(err)
@@ -737,7 +742,7 @@ func TestEnrichmentMetadataCacheAcrossSearchRefreshes(t *testing.T) {
 	if calls != 1 || second[0].MetadataObservedAt != pr.MetadataObservedAt || second[0].HeadOID != pr.HeadOID || second[0].BaseOID != pr.BaseOID || second[0].BaseRefName != pr.BaseRefName || second[0].Title != "new" || second[0].UpdatedAt.IsZero() {
 		t.Fatalf("cached observation replaced Search data or freshness: %#v (calls %d)", second[0], calls)
 	}
-	entry := client.ciCache[pr.URL]
+	entry = client.ciCache[pr.URL]
 	entry.expiresAt = time.Now().Add(-time.Second)
 	client.ciCache[pr.URL] = entry
 	if _, _, err := client.EnrichCI(context.Background(), second, RateResource{}); err != nil {

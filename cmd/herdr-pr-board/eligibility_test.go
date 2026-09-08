@@ -4,26 +4,14 @@ import (
 	"bytes"
 	"encoding/json"
 	"os"
-	"path/filepath"
-	"strings"
 	"testing"
 
 	"github.com/cdowell09/herdr-pr-board/internal/dispatch"
 )
 
 func TestEligibilityCommandUsesFreshSnapshotAndSharedReasons(t *testing.T) {
-	log := fakeSnapshotGH(t)
-	scriptPath := filepath.Join(filepath.Dir(log), "gh")
-	data, err := os.ReadFile(scriptPath)
-	if err != nil {
-		t.Fatal(err)
-	}
-	script := strings.ReplaceAll(string(data), "head123", strings.Repeat("a", 40))
-	script = strings.ReplaceAll(script, "base123", strings.Repeat("b", 40))
-	script = strings.ReplaceAll(script, `"isDraft":false`, `"isDraft":false,"state":"open"`)
-	if err := os.WriteFile(scriptPath, []byte(script), 0700); err != nil {
-		t.Fatal(err)
-	}
+	fakeSnapshotGH(t)
+	t.Setenv("GH_TEST_ELIGIBLE", "1")
 	t.Setenv("HERDR_PLUGIN_STATE_DIR", t.TempDir())
 	path := writeConfig(t, validConfigTOML+`\n`)
 	if err := os.WriteFile(path, []byte(validConfigTOML+`

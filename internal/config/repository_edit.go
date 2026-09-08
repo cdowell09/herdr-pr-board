@@ -43,7 +43,7 @@ func SaveRepository(ctx context.Context, path, stateDir string, repo Repository,
 		return Config{}, err
 	}
 	defer lock.Close()
-	before, err := os.ReadFile(resolved)
+	before, err := localstate.ReadFile(resolved)
 	if err != nil {
 		return Config{}, err
 	}
@@ -88,7 +88,7 @@ func SaveRepository(ctx context.Context, path, stateDir string, repo Repository,
 	if err := cfg.Validate(); err != nil {
 		return Config{}, err
 	}
-	current, err := os.ReadFile(resolved)
+	current, err := localstate.ReadFile(resolved)
 	if err != nil {
 		return Config{}, err
 	}

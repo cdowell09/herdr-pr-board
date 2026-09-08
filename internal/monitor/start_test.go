@@ -15,14 +15,22 @@ import (
 	"testing"
 	"time"
 
+	"github.com/cdowell09/herdr-pr-board/internal/cli"
 	"github.com/cdowell09/herdr-pr-board/internal/config"
 	"github.com/cdowell09/herdr-pr-board/internal/discovery"
 	"github.com/cdowell09/herdr-pr-board/internal/localstate"
-	"golang.org/x/sys/unix"
+	"github.com/cdowell09/herdr-pr-board/internal/testutil"
 )
 
 // The helper uses real process/session/pipe boundaries and no GitHub transport.
-func TestMonitorStartupProcess(t *testing.T) {
+func TestMain(m *testing.M) {
+	if os.Getenv("PR_BOARD_START_ROLE") != "" {
+		monitorStartupProcess()
+	}
+	os.Exit(m.Run())
+}
+
+func monitorStartupProcess() {
 	role := os.Getenv("PR_BOARD_START_ROLE")
 	if role == "" {
 		return
@@ -125,12 +133,13 @@ func TestMonitorStartupProcess(t *testing.T) {
 type startupLoader struct{ dir string }
 
 func (l startupLoader) RefreshAll(ctx context.Context) discovery.Snapshot {
-	session, _ := unix.Getsid(0)
+	detached := monitorDetached()
 	data, _ := json.Marshal(struct {
-		Args         []string
-		Ready        string
-		Session, PID int
-	}{os.Args, os.Getenv(readyEnvironment), session, os.Getpid()})
+		Args     []string
+		Ready    string
+		Detached bool
+		PID      int
+	}{os.Args, os.Getenv(readyEnvironment), detached, os.Getpid()})
 	os.WriteFile(filepath.Join(l.dir, "scan-started"), data, 0600)
 	<-ctx.Done()
 	return discovery.Snapshot{}
@@ -148,16 +157,7 @@ func startupFixture(t *testing.T) (binary, path, dir string) {
 	if err := os.WriteFile(path, []byte(text), 0600); err != nil {
 		t.Fatal(err)
 	}
-	executable, err := os.Executable()
-	if err != nil {
-		t.Fatal(err)
-	}
-	quote := func(s string) string { return "'" + strings.ReplaceAll(s, "'", "'\"'\"'") + "'" }
-	binary = filepath.Join(t.TempDir(), "fake monitor 'executable'")
-	script := "#!/bin/sh\nexec " + quote(executable) + " -test.run '^TestMonitorStartupProcess$' -- \"$@\"\n"
-	if err := os.WriteFile(binary, []byte(script), 0700); err != nil {
-		t.Fatal(err)
-	}
+	binary = testutil.Executable(t, t.TempDir(), "fake monitor 'executable'")
 	t.Setenv("PR_BOARD_START_ROLE", "child")
 	t.Setenv("PR_BOARD_START_CONFIG", path)
 	t.Setenv("PR_BOARD_START_BINARY", binary)
@@ -207,22 +207,23 @@ func TestConcurrentStartupReusesOneOwnerBeforeSlowScan(t *testing.T) {
 	}
 	waitStartup(t, func() bool { _, err := os.Stat(filepath.Join(dir, "scan-started")); return err == nil })
 	var record struct {
-		Args         []string
-		Ready        string
-		Session, PID int
+		Args     []string
+		Ready    string
+		Detached bool
+		PID      int
 	}
 	data, _ := os.ReadFile(filepath.Join(dir, "scan-started"))
 	if err := json.Unmarshal(data, &record); err != nil {
 		t.Fatal(err)
 	}
-	if record.Session != record.PID {
+	if !record.Detached {
 		t.Fatalf("monitor did not detach session: %+v", record)
 	}
 	if record.Ready != "" || strings.Join(record.Args[len(record.Args)-3:], "\x00") != strings.Join([]string{"--monitor", "--config", path}, "\x00") {
 		t.Fatalf("argument/env drift: %+v", record)
 	}
 	info, err := os.Stat(filepath.Join(dir, "monitor.log"))
-	if err != nil || info.Mode().Perm() != 0600 {
+	if err != nil || !privateLogMode(info.Mode()) {
 		t.Fatalf("private log: %v %v", info, err)
 	}
 	if _, err := os.Stat(filepath.Join(dir, "monitor-snapshot.json")); !os.IsNotExist(err) {
@@ -267,7 +268,7 @@ func TestStartupFailureAndTimeoutCleanOwnedProcess(t *testing.T) {
 			starts, _ := os.ReadFile(filepath.Join(dir, "starts"))
 			for _, value := range strings.Fields(string(starts)) {
 				pid, _ := strconv.Atoi(value)
-				if err := syscall.Kill(pid, 0); err == nil {
+				if monitorProcessAlive(pid) {
 					t.Fatalf("startup process %d remains", pid)
 				}
 			}
@@ -296,7 +297,9 @@ func TestClosedLauncherPipeDoesNotStopMonitor(t *testing.T) {
 	}
 	child := exec.Command(binary, "--monitor", "--config", path)
 	child.Env = monitorEnvironment(dir)
-	child.ExtraFiles = []*os.File{writer}
+	if err := cli.PassFile(child, writer, readyEnvironment); err != nil {
+		t.Fatal(err)
+	}
 	child.Stdout, child.Stderr = os.Stdout, os.Stderr
 	if err := child.Start(); err != nil {
 		t.Fatal(err)

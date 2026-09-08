@@ -92,3 +92,23 @@ jobs:
           GOARCH: amd64
           GOOS: ${{ matrix.goos }}
         run: go build -o "bin/herdr-pr-board-${{ matrix.platform }}" ./cmd/herdr-pr-board
+
+  windows-native:
+    name: Windows native behavior
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version-file: go.mod
+          cache: true
+      - name: Test native Windows behavior
+        run: go test -race ./...
+      - name: Build native command
+        if: ${{ !cancelled() }}
+        run: go build -o bin/herdr-pr-board.exe ./cmd/herdr-pr-board
+      - name: Exercise native Herdr installation and panes
+        if: ${{ !cancelled() }}
+        run: python -B scripts/windows_herdr_smoke.py

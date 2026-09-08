@@ -3,14 +3,15 @@ package main
 import (
 	"bytes"
 	"encoding/json"
+	"fmt"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"strings"
-	"syscall"
 	"testing"
 	"time"
 
+	"github.com/cdowell09/herdr-pr-board/internal/cli"
 	"github.com/cdowell09/herdr-pr-board/internal/localstate"
 )
 
@@ -41,7 +42,7 @@ func waitForSnapshot(t *testing.T, path string) []byte {
 	t.Helper()
 	deadline := time.Now().Add(10 * time.Second)
 	for time.Now().Before(deadline) {
-		data, err := os.ReadFile(path)
+		data, err := localstate.ReadFile(path)
 		if err == nil && json.Valid(data) {
 			return data
 		}
@@ -122,12 +123,14 @@ func TestMonitorCommandOwnershipCrashRecoveryAndFreshJSON(t *testing.T) {
 	}
 	restarted := start()
 	waitForSnapshot(t, path)
-	if err := restarted.Process.Signal(syscall.SIGTERM); err != nil {
-		t.Fatal(err)
+	if err := stopCommandProcess(restarted); err != nil {
+		t.Fatalf("monitor stop: %v", err)
 	}
-	if err := restarted.Wait(); err != nil {
-		t.Fatalf("graceful stop: %v", err)
+	owner, err := localstate.TryLock(filepath.Join(state, "monitor.lock"))
+	if err != nil {
+		t.Fatalf("stopped monitor retained ownership: %v", err)
 	}
+	owner.Close()
 }
 
 func TestMonitorCommandUsage(t *testing.T) {
@@ -161,19 +164,32 @@ func TestBackgroundReadinessPrecedesFirstGitHubScan(t *testing.T) {
 	}
 	defer reader.Close()
 	child := commandProcess(t, "--monitor", "--config", path)
-	child.Env = append(child.Env, "HERDR_MONITOR_READY_FD=3")
-	child.ExtraFiles = []*os.File{writer}
+	defer writer.Close()
+	if err := cli.PassFile(child, writer, "HERDR_MONITOR_READY_FD"); err != nil {
+		t.Fatal(err)
+	}
 	if err := child.Start(); err != nil {
 		t.Fatal(err)
 	}
 	writer.Close()
-	t.Cleanup(func() { child.Process.Signal(syscall.SIGTERM); child.Wait() })
-	if err := reader.SetReadDeadline(time.Now().Add(5 * time.Second)); err != nil {
-		t.Fatal(err)
-	}
-	var ack [1]byte
-	if n, err := reader.Read(ack[:]); err != nil || n != 1 || ack[0] != 1 {
-		t.Fatalf("readiness: %d %v %v", n, ack, err)
+	t.Cleanup(func() { child.Process.Kill(); child.Wait() })
+	ready := make(chan error, 1)
+	go func() {
+		var ack [1]byte
+		n, err := reader.Read(ack[:])
+		if err != nil || n != 1 || ack[0] != 1 {
+			ready <- fmt.Errorf("readiness: %d %v %v", n, ack, err)
+			return
+		}
+		ready <- nil
+	}()
+	select {
+	case err := <-ready:
+		if err != nil {
+			t.Fatal(err)
+		}
+	case <-time.After(5 * time.Second):
+		t.Fatal("monitor readiness timed out")
 	}
 	if calls, _ := os.ReadFile(log); len(calls) != 0 {
 		t.Fatalf("GitHub request before scan release: %s", calls)

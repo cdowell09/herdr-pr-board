@@ -145,3 +145,20 @@ func TestRunUnknownFlagExitsWithUsageError(t *testing.T) {
 		t.Fatalf("run() = %d, want 2", code)
 	}
 }
+
+func TestNativePluginModesValidateBeforeConfig(t *testing.T) {
+	for _, args := range [][]string{{"--plugin-action", "missing"}, {"--plugin-action", "open", "--json"}, {"--plugin-action", "run", "--config", "elsewhere"}} {
+		var stdout, stderr bytes.Buffer
+		if code := run(args, &stdout, &stderr); code != 2 {
+			t.Fatalf("args=%v code=%d stderr=%s", args, code, &stderr)
+		}
+	}
+	for _, mode := range []string{"open", "run"} {
+		t.Setenv("HERDR_PLUGIN_STATE_DIR", "")
+		t.Setenv("HERDR_PLUGIN_CONFIG_DIR", "")
+		var stdout, stderr bytes.Buffer
+		if code := run([]string{"--plugin-action", mode}, &stdout, &stderr); code != 1 || !strings.Contains(stderr.String(), "HERDR_PLUGIN_") {
+			t.Fatalf("mode=%s code=%d stderr=%s", mode, code, &stderr)
+		}
+	}
+}

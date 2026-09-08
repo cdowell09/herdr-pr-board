@@ -104,6 +104,8 @@ func TestSnapshotRoundTripPreservesFailureAndRateEvidence(t *testing.T) {
 
 func TestMissingOrInvalidSnapshotNeverScansUnderOwner(t *testing.T) {
 	s, f := testSource(t)
+	seen := time.Date(2026, time.January, 1, 0, 0, 0, 0, time.UTC)
+	s.seen = seen
 	owner, err := localstate.TryLock(filepath.Join(s.dir, "monitor.lock"))
 	if err != nil {
 		t.Fatal(err)
@@ -119,6 +121,16 @@ func TestMissingOrInvalidSnapshotNeverScansUnderOwner(t *testing.T) {
 		if got == nil || len(got.Errors) == 0 || f.calls != 0 {
 			t.Fatalf("got=%+v calls=%d", got, f.calls)
 		}
+		if !s.seen.IsZero() {
+			t.Fatal("read failure retained an observation marker")
+		}
+	}
+	f.snapshot.FinishedAt = seen
+	if err := s.write(f.snapshot); err != nil {
+		t.Fatal(err)
+	}
+	if got := s.Observe(context.Background()); got == nil || !got.FinishedAt.Equal(seen) || f.calls != 0 {
+		t.Fatalf("restored observation did not clear the read failure: got=%+v calls=%d", got, f.calls)
 	}
 }
 

@@ -12,10 +12,10 @@ import (
 	"testing"
 	"time"
 
+	"github.com/cdowell09/herdr-pr-board/internal/cli"
 	gh "github.com/cdowell09/herdr-pr-board/internal/github"
 	"github.com/cdowell09/herdr-pr-board/internal/reviewercontract"
 	"github.com/cdowell09/herdr-pr-board/internal/reviewmemory"
-	"golang.org/x/sys/unix"
 )
 
 func TestReviewerProcess(t *testing.T) {
@@ -30,10 +30,12 @@ func TestReviewerProcess(t *testing.T) {
 	if os.Args[len(os.Args)-1] != "argument with spaces; $(no shell)" {
 		t.Fatal("reviewer arguments changed")
 	}
-	if os.Getenv("HERDR_REVIEW_CLAIM_FD") != "3" {
-		t.Fatal("claim descriptor is missing")
+	claim, err := cli.InheritedFile("HERDR_REVIEW_CLAIM_FD")
+	if err != nil || claim == nil {
+		t.Fatalf("missing claim: %v", err)
 	}
-	if _, err := os.NewFile(3, "claim").Stat(); err != nil {
+	defer claim.Close()
+	if _, err := claim.Stat(); err != nil {
 		t.Fatal(err)
 	}
 	if mode == "timeout" {
@@ -41,7 +43,7 @@ func TestReviewerProcess(t *testing.T) {
 		return
 	}
 	if mode == "fifo" {
-		if err := unix.Mkfifo(in.ResultPath, 0600); err != nil {
+		if err := makeNonregularResult(in.ResultPath); err != nil {
 			t.Fatal(err)
 		}
 		return

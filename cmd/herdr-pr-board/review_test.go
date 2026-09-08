@@ -11,6 +11,7 @@ import (
 
 	"github.com/cdowell09/herdr-pr-board/internal/reviewercontract"
 	"github.com/cdowell09/herdr-pr-board/internal/reviewmemory"
+	"github.com/cdowell09/herdr-pr-board/internal/testutil"
 )
 
 func TestCommandReviewerProcess(t *testing.T) {
@@ -42,9 +43,9 @@ func TestReviewCommandAndLocalHistory(t *testing.T) {
 			t.Setenv("HERDR_PLUGIN_STATE_DIR", filepath.Join(dir, "state"))
 			t.Setenv("COMMAND_REVIEW_MODE", mode)
 			metadata := fmt.Sprintf(`{"number":7,"title":"Review $(title) as data","url":"https://github.com/acme/repo/pull/7","state":"OPEN","headRefOid":%q,"baseRefOid":%q,"baseRefName":"main"}`, strings.Repeat("a", 40), strings.Repeat("b", 40))
-			if err := os.WriteFile(filepath.Join(dir, "gh"), []byte("#!/bin/sh\nprintf '%s\\n' '"+metadata+"'\n"), 0755); err != nil {
-				t.Fatal(err)
-			}
+			testutil.Executable(t, dir, "gh")
+			t.Setenv("GH_REVIEW_METADATA", metadata)
+			t.Setenv("GORACE", os.Getenv("GORACE")+" atexit_sleep_ms=0")
 			t.Setenv("PATH", dir)
 			command, _ := json.Marshal([]string{os.Args[0], "-test.run=^TestCommandReviewerProcess$", "--", "argument with spaces"})
 			path := writeConfig(t, validConfigTOML+fmt.Sprintf("\n[[reviewers]]\nid = \"fake\"\ncommand = %s\n[[repositories]]\nname = \"acme/repo\"\nreviewer = \"fake\"\n", command))

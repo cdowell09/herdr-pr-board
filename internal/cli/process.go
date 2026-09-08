@@ -2,6 +2,7 @@ package cli
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"os/exec"
 	"syscall"
@@ -25,28 +26,28 @@ func RunProcessWithSignal(ctx context.Context, cmd *exec.Cmd, grace time.Duratio
 	if err := ctx.Err(); err != nil {
 		return err
 	}
-	cmd.SysProcAttr = &syscall.SysProcAttr{Setpgid: true}
 	cmd.WaitDelay = time.Second
-	if err := cmd.Start(); err != nil {
+	owner, err := startOwned(cmd)
+	if err != nil {
 		return err
 	}
+	defer owner.close()
 	done := make(chan error, 1)
-	go func() { done <- cmd.Wait() }()
+	go func() { done <- owner.wait() }()
 	select {
 	case err := <-done:
-		_ = syscall.Kill(-cmd.Process.Pid, syscall.SIGKILL)
-		return err
+		return errors.Join(err, owner.kill())
 	case <-ctx.Done():
-		_ = syscall.Kill(-cmd.Process.Pid, cancelSignal)
+		_ = owner.interrupt(cancelSignal)
 		timer := time.NewTimer(grace)
 		defer timer.Stop()
 		select {
 		case <-done:
 		case <-timer.C:
-			_ = syscall.Kill(-cmd.Process.Pid, syscall.SIGKILL)
+			cleanupErr := owner.kill()
 			<-done
+			return errors.Join(fmt.Errorf("process canceled: %w", ctx.Err()), cleanupErr)
 		}
-		_ = syscall.Kill(-cmd.Process.Pid, syscall.SIGKILL)
-		return fmt.Errorf("process canceled: %w", ctx.Err())
+		return errors.Join(fmt.Errorf("process canceled: %w", ctx.Err()), owner.kill())
 	}
 }

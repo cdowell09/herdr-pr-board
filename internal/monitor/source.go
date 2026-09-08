@@ -93,16 +93,19 @@ func (s *Source) Observe(ctx context.Context) *discovery.Snapshot {
 }
 
 func (s *Source) observedSnapshot() *discovery.Snapshot {
+	// Allow an immediate fallback scan when the owner stops.
+	s.initialized = false
 	snapshot, err := s.read()
 	if err != nil {
-		snapshot = s.failure(err)
+		// Replay the stored observation after a read failure clears.
+		s.seen = time.Time{}
+		failed := s.failure(err)
+		return &failed
 	}
 	if snapshot.FinishedAt.Equal(s.seen) {
 		return nil
 	}
 	s.seen = snapshot.FinishedAt
-	// Allow an immediate fallback scan when the owner stops.
-	s.initialized = false
 	return &snapshot
 }
 

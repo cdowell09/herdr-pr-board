@@ -56,6 +56,7 @@ PR Board checks current configuration before each launch attempt.
 Built-in adapters support Pi, Codex, and Claude Code.
 See the [Pi adapter guide](pi-adapter.md) and [Codex and Claude Code guide](agent-adapters.md).
 Each adapter requires its own installed agent CLI.
+See [Windows setup](windows.md) for native executables, npm launchers, and filesystem requirements.
 Other reviewers do not require Pi.
 Existing Pickr settings remain unchanged.
 
@@ -139,8 +140,9 @@ Failures before a claim do not produce a run record.
 Completed runs exit with status zero.
 Blocked runs, failed runs, and launch failures exit with status one.
 Invalid option combinations exit with status two.
-Cancellation terminates the owned reviewer process group.
-Wrappers must stop separate child process groups when they receive termination.
+Cancellation terminates the owned reviewer processes.
+On macOS and Linux, wrappers must stop separate child process groups when they receive termination.
+On Windows, the runner terminates the owned Job Object and waits for its processes.
 
 ## Inspect local results
 
@@ -218,8 +220,10 @@ Optional `line` supplies a positive line number and requires a path.
 The core validates these fields and the exact captured revision.
 Malformed results become failed runs.
 
-The program inherits its claim descriptor as file descriptor three.
+On macOS and Linux, the program inherits file descriptor three.
 `HERDR_REVIEW_CLAIM_FD=3` identifies that descriptor.
+On Windows, `HERDR_REVIEW_CLAIM_FD` contains the inherited native handle value.
+Windows reviewers must use that value instead of assuming descriptor three.
 The program must retain that descriptor until its review work stops.
 It must forward ownership to child processes that can outlive it.
 The built-in adapters forward ownership to their agent processes.

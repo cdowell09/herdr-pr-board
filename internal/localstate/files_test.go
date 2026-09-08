@@ -3,6 +3,7 @@ package localstate
 import (
 	"context"
 	"errors"
+	"io"
 	"os"
 	"path/filepath"
 	"testing"
@@ -41,5 +42,28 @@ func TestLockCancellationAndAtomicReplacement(t *testing.T) {
 	t.Setenv("HERDR_PLUGIN_STATE_DIR", "")
 	if _, err := Dir(); err == nil {
 		t.Fatal("accepted missing state directory")
+	}
+}
+
+func TestOpenReaderKeepsCompleteVersionDuringReplacement(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "snapshot")
+	if err := AtomicWrite(path, []byte("first")); err != nil {
+		t.Fatal(err)
+	}
+	reader, err := openRead(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer reader.Close()
+	if err := AtomicWrite(path, []byte("replacement")); err != nil {
+		t.Fatal(err)
+	}
+	original, err := io.ReadAll(reader)
+	if err != nil || string(original) != "first" {
+		t.Fatalf("original=%q error=%v", original, err)
+	}
+	replacement, err := ReadFile(path)
+	if err != nil || string(replacement) != "replacement" {
+		t.Fatalf("replacement=%q error=%v", replacement, err)
 	}
 }

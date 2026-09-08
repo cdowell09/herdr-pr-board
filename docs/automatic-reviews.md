@@ -65,12 +65,15 @@ export HERDR_PLUGIN_STATE_DIR="/absolute/path/to/plugin-state"
 bin/herdr-pr-board --monitor --config /absolute/path/to/config.toml
 ```
 
+For Windows commands and state requirements, see [Windows setup](windows.md).
+
 The setup panel shows the monitor as running, stopped, or unknown.
 A running monitor does not prove that its latest observation succeeded.
 The panel reports failed observations and configuration differences separately.
 When the monitor stops, the panel shows its exact command.
 If background startup fails, copy the complete command and run it in another terminal.
 Keep the command's continuation characters when copying multiple lines.
+On Windows, paste the command into PowerShell.
 The command uses the current executable, configuration path, and state directory.
 Startup failures remain visible until a startup retry succeeds.
 Background diagnostics use the private `monitor.log` file in `HERDR_PLUGIN_STATE_DIR`.
