@@ -76,6 +76,10 @@ timeout = "30m"
 # [[reviewers]]
 # id = "pi"
 # command = ["/absolute/path/to/herdr-pr-board", "--pi-reviewer"]
+# Other built-in adapters use --codex-reviewer or --claude-reviewer.
+# Use --codex-skill or --claude-skill for an explicit review skill file.
+# Each adapter requires its installed and authenticated agent CLI.
+# See docs/agent-adapters.md for requirements.
 #
 # [[repositories]]
 # name = "owner/repository"
@@ -102,4 +106,5 @@ timeout = "30m"
 # reviewer = "pi-security"
 #
 # A Codex command needs an adapter that implements the documented reviewer contract.
-# A built-in Codex adapter and prompt-template settings are not available.
+# Built-in adapters support Pi, Codex, and Claude Code.
+# Prompt-template settings are not available.

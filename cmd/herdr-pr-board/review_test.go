@@ -86,3 +86,44 @@ func TestReviewOptionModesRejectConflicts(t *testing.T) {
 		}
 	}
 }
+
+func TestBuiltinAdapterOptionsAreIsolated(t *testing.T) {
+	for _, name := range []string{"pi", "codex", "claude"} {
+		t.Run(name, func(t *testing.T) {
+			args := []string{"--" + name + "-reviewer", "--" + name + "-executable", "/agent with spaces", "--" + name + "-skill", "/review skill/SKILL.md"}
+			o, err := parseOptions(args, &bytes.Buffer{})
+			if err != nil || o.adapter.name != name || o.adapter.executable != "/agent with spaces" || o.adapter.skill != "/review skill/SKILL.md" {
+				t.Fatalf("options=%+v err=%v", o.adapter, err)
+			}
+			for _, invalid := range [][]string{
+				{"--" + name + "-executable", "agent"},
+				{"--" + name + "-skill", "skill"},
+				{"--" + name + "-reviewer", "--config", "config.toml"},
+				{"--" + name + "-reviewer", "--json"},
+				{"--" + name + "-reviewer", "--repository-settings", "acme/repo"},
+			} {
+				if _, err := parseOptions(invalid, &bytes.Buffer{}); err == nil {
+					t.Fatalf("accepted %v", invalid)
+				}
+			}
+			for _, other := range []string{"pi", "codex", "claude"} {
+				if other == name {
+					continue
+				}
+				for _, invalid := range [][]string{
+					{"--" + name + "-reviewer", "--" + other + "-reviewer"},
+					{"--" + name + "-reviewer", "--" + other + "-skill", "skill"},
+				} {
+					if _, err := parseOptions(invalid, &bytes.Buffer{}); err == nil {
+						t.Fatalf("accepted %v", invalid)
+					}
+				}
+			}
+			t.Setenv("HERDR_PLUGIN_CONFIG_DIR", filepath.Join(t.TempDir(), "absent"))
+			var diagnostics bytes.Buffer
+			if code := runAdapter(o.adapter, strings.NewReader("{}"), &diagnostics); code != 1 || strings.Contains(diagnostics.String(), "config") {
+				t.Fatalf("adapter must validate stdin without configuration: code=%d diagnostic=%s", code, &diagnostics)
+			}
+		})
+	}
+}

@@ -1,4 +1,4 @@
-package piadapter
+package agentadapter
 
 import (
 	"errors"
@@ -9,7 +9,7 @@ import (
 )
 
 // inheritedClaim duplicates the explicit claim descriptor without closing the
-// adapter's inherited descriptor. Pi retains the duplicate if this adapter dies.
+// adapter's inherited descriptor. The agent retains the duplicate if this adapter dies.
 func inheritedClaim() (*os.File, error) {
 	value, present := os.LookupEnv("HERDR_REVIEW_CLAIM_FD")
 	if !present {

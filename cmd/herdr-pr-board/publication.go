@@ -20,14 +20,17 @@ import (
 
 type publicationOptions struct {
 	repository, publish, history, runID, action, reviewer, actions, autoPublish string
-	autoLaunch, autoSet, actionsSet, autoPublishSet, pi                         bool
+	autoLaunch, autoSet, actionsSet, autoPublishSet                             bool
+	builtins                                                                    map[string]*bool
 }
 
 func addPublicationFlags(flags *flag.FlagSet) *publicationOptions {
-	p := &publicationOptions{}
+	p := &publicationOptions{builtins: map[string]*bool{}}
 	flags.StringVar(&p.repository, "repository-settings", "", "configure owner/repository without a terminal")
 	flags.StringVar(&p.reviewer, "set-reviewer", "", "reviewer ID for repository settings")
-	flags.BoolVar(&p.pi, "use-pi-reviewer", false, "add the built-in Pi reviewer during repository setup")
+	for _, builtin := range config.BuiltinReviewers("") {
+		p.builtins[builtin.ID] = flags.Bool("use-"+builtin.ID+"-reviewer", false, "add the built-in "+builtin.ID+" reviewer during repository setup")
+	}
 	flags.BoolVar(&p.autoLaunch, "auto-launch", false, "allow automatic repository reviews (true or false)")
 	flags.StringVar(&p.autoPublish, "auto-publish", "", "automatic publication action; empty keeps findings local")
 	flags.StringVar(&p.actions, "publish-actions", "", "comma-separated allowed actions; empty keeps findings local")
@@ -59,11 +62,20 @@ func (p *publicationOptions) validate(flags *flag.FlagSet) error {
 			p.actionsSet = true
 		}
 	})
-	if p.repository == "" && (p.reviewer != "" || p.pi || p.autoSet || p.actionsSet || p.autoPublishSet) {
+	if p.repository == "" && (p.reviewer != "" || p.builtin() != "" || p.autoSet || p.actionsSet || p.autoPublishSet) {
 		return errors.New("repository settings flags require --repository-settings")
 	}
-	if p.pi && p.reviewer != "" {
-		return errors.New("choose --set-reviewer or --use-pi-reviewer")
+	selections := 0
+	if p.reviewer != "" {
+		selections++
+	}
+	for _, enabled := range p.builtins {
+		if *enabled {
+			selections++
+		}
+	}
+	if selections > 1 {
+		return errors.New("choose one reviewer with --set-reviewer or one --use-AGENT-reviewer flag")
 	}
 	if p.publish != "" {
 		if p.runID == "" || !config.PublicationAction(p.action).Valid() {
@@ -100,18 +112,23 @@ func configureRepository(path string, p *publicationOptions, stdout, stderr io.W
 		repo.Reviewer = p.reviewer
 	}
 	var builtin *config.Reviewer
-	if p.pi {
+	if id := p.builtin(); id != "" {
 		binary, err := os.Executable()
 		if err != nil {
 			return fail(stderr, err)
 		}
-		repo.Reviewer = "pi"
+		repo.Reviewer = id
 		for _, r := range cfg.Reviewers {
-			if r.ID == "pi" {
-				return fail(stderr, errors.New("reviewer pi already exists; select it with --set-reviewer pi"))
+			if r.ID == id {
+				return fail(stderr, fmt.Errorf("reviewer %s already exists; select it with --set-reviewer %s", id, id))
 			}
 		}
-		builtin = &config.Reviewer{ID: "pi", Command: []string{binary, "--pi-reviewer"}}
+		for _, r := range config.BuiltinReviewers(binary) {
+			if r.ID == id {
+				builtin = &r
+				break
+			}
+		}
 	}
 	if p.autoSet {
 		repo.AutoLaunch = p.autoLaunch
@@ -183,4 +200,13 @@ func printPublicationHistory(prURL string, stdout, stderr io.Writer) int {
 		return fail(stderr, fmt.Errorf("write publication history: %w", err))
 	}
 	return 0
+}
+
+func (p *publicationOptions) builtin() string {
+	for id, enabled := range p.builtins {
+		if *enabled {
+			return id
+		}
+	}
+	return ""
 }

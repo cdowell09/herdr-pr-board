@@ -60,6 +60,13 @@ Create repository settings with the built-in Pi reviewer:
 bin/herdr-pr-board --repository-settings owner/repository --use-pi-reviewer
 ```
 
+Use `--use-codex-reviewer` or `--use-claude-reviewer` to add another built-in adapter.
+Choose only one `--use-AGENT-reviewer` flag.
+Use `--set-reviewer ID` when that reviewer ID already exists.
+Setup does not replace existing reviewer commands.
+See [agent requirements](agent-adapters.md) before starting a review.
+
+
 Use an existing reviewer and allow comment publication:
 
 ```sh

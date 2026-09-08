@@ -13,7 +13,7 @@ import (
 )
 
 func TestRunUsesPinnedCheckoutAndValidatesPiResult(t *testing.T) {
-	for _, mode := range []string{"complete", "empty_spec", "pi_error", "bad_result", "wrong_revision", "missing_issue", "changed_pr", "missing_skill", "omitted_identity", "omitted_version", "omitted_base_oid", "omitted_outcome"} {
+	for _, mode := range []string{"complete", "oversized_diff", "empty_spec", "pi_error", "bad_result", "wrong_revision", "missing_issue", "changed_pr", "missing_skill", "omitted_identity", "omitted_version", "omitted_base_oid", "omitted_outcome"} {
 		t.Run(mode, func(t *testing.T) {
 			dir := t.TempDir()
 			bin := filepath.Join(dir, "bin")
@@ -32,6 +32,10 @@ case "$(basename "$0")" in
  git)
   case "$1" in
    rev-parse) printf '%s\n' "$HEAD_OID";;
+   --no-pager)
+    if [ "$2" = diff ]; then
+     if [ "$PI_TEST_MODE" = oversized_diff ]; then head -c 4194305 /dev/zero; else printf 'CAPTURED_DIFF'; fi
+    else printf 'CAPTURED_LOG'; fi;;
    merge-base) printf '%s\n' "$BASE_OID";;
   esac;;
  pi)
@@ -46,6 +50,7 @@ esac
 			}
 			t.Setenv("PATH", bin+":"+os.Getenv("PATH"))
 			t.Setenv("TRACE", filepath.Join(dir, "trace"))
+			t.Setenv("PI_TEST_MODE", mode)
 			t.Setenv("PROMPT", filepath.Join(dir, "prompt"))
 			in := reviewercontract.Input{Version: 1, Identity: reviewmemory.Identity{Repository: "owner/repo", Number: 42, HeadOID: strings.Repeat("a", 40), BaseRefName: "main"}, BaseOID: strings.Repeat("b", 40), ResultPath: filepath.Join(dir, "result.json")}
 			t.Setenv("HEAD_OID", in.Identity.HeadOID)
@@ -136,18 +141,18 @@ esac
 			}
 			trace, _ := os.ReadFile(filepath.Join(dir, "trace"))
 			if want == "blocked" {
-				if strings.Contains(string(trace), "repo clone") {
+				if mode != "oversized_diff" && strings.Contains(string(trace), "repo clone") {
 					t.Fatal("blocked run started checkout")
 				}
 				return
 			}
-			for _, arg := range []string{"fetch --no-tags origin " + in.Identity.HeadOID + " " + in.BaseOID, "checkout --detach " + in.Identity.HeadOID, "--print --mode json --no-session --no-extensions --no-skills --no-context-files --no-approve --skill"} {
+			for _, arg := range []string{"fetch --no-tags origin " + in.Identity.HeadOID + " " + in.BaseOID, "checkout --detach " + in.Identity.HeadOID, "--no-pager diff --no-ext-diff --no-textconv " + in.BaseOID + "...HEAD", "--no-pager log --no-show-signature --format=fuller " + in.BaseOID + "..HEAD", "--print --mode json --no-session --no-extensions --no-skills --no-context-files --no-approve --skill"} {
 				if !strings.Contains(string(trace), arg) {
 					t.Fatalf("missing %q: %s", arg, trace)
 				}
 			}
 			prompt, _ := os.ReadFile(filepath.Join(dir, "prompt"))
-			if !strings.Contains(string(prompt), body) {
+			if !strings.Contains(string(prompt), body) || !strings.Contains(string(prompt), "CAPTURED_DIFF") || !strings.Contains(string(prompt), "CAPTURED_LOG") || !strings.Contains(string(prompt), "Review both axes") {
 				t.Fatal("PR body was not preserved as data")
 			}
 			if _, err := os.Stat(filepath.Join(dir, "PWNED")); !os.IsNotExist(err) {
