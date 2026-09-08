@@ -3,6 +3,7 @@ package reviewinstructions
 import (
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"testing"
 )
@@ -59,7 +60,7 @@ func TestInstructionFilesRejectInvalidSources(t *testing.T) {
 				}
 			}
 			for _, files := range []Files{{Prompt: path}, {Skill: path}} {
-				if _, err := files.Load(dir); err == nil || !strings.Contains(err.Error(), path) {
+				if _, err := files.Load(dir); err == nil || !strings.Contains(err.Error(), strconv.Quote(path)) {
 					t.Fatalf("invalid source accepted or path omitted: %v", err)
 				}
 			}
