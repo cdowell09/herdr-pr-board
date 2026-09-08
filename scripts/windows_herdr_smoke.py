@@ -159,8 +159,7 @@ def smoke(root, temporary):
             pane = open_board()
             wait_for("board configuration", config.exists)
             original = config.read_bytes()
-            wait_for("native GitHub refresh", lambda: "api graphql" in Path(env["GH_TEST_LOG"]).read_text() if Path(env["GH_TEST_LOG"]).exists() else False)
-            wait_for("board UI", lambda: "acme/api" in host("pane", "read", pane, "--source", "visible", json_result=False))
+            wait_for("board UI", lambda: "Pull Requests" in host("pane", "read", pane, "--source", "visible", json_result=False))
             tabs = host("tab", "list", "--workspace", workspace_id)["tabs"]
             assert sum(tab.get("label") == "PR Board" for tab in tabs) == 1, tabs
             before = {tab["tab_id"] for tab in tabs}
@@ -172,7 +171,7 @@ def smoke(root, temporary):
             assert config.read_bytes() == original, "Pane cleanup changed configuration"
             reopened = open_board()
             assert reopened != pane, "The action reused a closed pane"
-            wait_for("reopened board UI", lambda: "acme/api" in host("pane", "read", reopened, "--source", "visible", json_result=False))
+            wait_for("reopened board UI", lambda: "Pull Requests" in host("pane", "read", reopened, "--source", "visible", json_result=False))
             assert config.read_bytes() == original, "Reopening changed configuration"
             host("pane", "send-keys", reopened, "ctrl+c", json_result=False)
             wait_for("reopened pane cleanup", lambda: not record.exists())
@@ -186,9 +185,25 @@ def smoke(root, temporary):
             assert config.read_bytes() == original, "Local linking changed configuration"
             # The CI build supplies this local linked executable.
             linked_pane = open_board()
-            wait_for("linked board UI", lambda: "acme/api" in host("pane", "read", linked_pane, "--source", "visible", json_result=False))
+            wait_for("linked board UI", lambda: "Pull Requests" in host("pane", "read", linked_pane, "--source", "visible", json_result=False))
             host("pane", "send-keys", linked_pane, "ctrl+c", json_result=False)
             wait_for("linked pane cleanup", lambda: not record.exists())
+
+            def open_fixture_board():
+                # Herdr 0.9 replaces inherited PATH with Windows registry values.
+                # Its pane API supplies an explicit PATH without changing the host.
+                host("plugin", "pane", "open", "--plugin", PLUGIN, "--entrypoint", "board",
+                     "--workspace", workspace_id, "--env", "PATH=" + env["PATH"])
+                return wait_for("fixture board pane record", lambda: record.read_text().strip() if record.exists() else None)
+
+            fixture_pane = open_fixture_board()
+            # GH_TEST_LOG remains inherited from the isolated server environment.
+            wait_for("native GitHub refresh", lambda: "api graphql" in Path(env["GH_TEST_LOG"]).read_text() if Path(env["GH_TEST_LOG"]).exists() else False)
+            wait_for("fixture board UI", lambda: "acme/api" in host("pane", "read", fixture_pane, "--source", "visible", json_result=False))
+            assert open_board() == fixture_pane, "The action did not reuse the native fixture pane"
+            assert config.read_bytes() == original, "Fixture pane reuse changed configuration"
+            host("pane", "send-keys", fixture_pane, "ctrl+c", json_result=False)
+            wait_for("fixture pane cleanup", lambda: not record.exists())
             automatic = original.decode("utf-8").replace('auto_views = []', 'auto_views = ["review"]', 1)
             assert automatic != original.decode("utf-8"), "The automatic-view fixture did not apply"
             automatic += '\n[[reviewers]]\nid = "native-smoke"\ncommand = ' + json.dumps([str(tools / "gh.exe"), "unused", "reviewer"]) + '\n'
@@ -203,7 +218,7 @@ def smoke(root, temporary):
                 ["powershell.exe", "-NoProfile", "-NonInteractive", "-Command", MONITOR_GUARD],
                 env=guard_env, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True,
             )
-            monitoring_pane = open_board()
+            monitoring_pane = open_fixture_board()
 
             def monitor_is_ready():
                 if monitor_guard.poll() is not None:
@@ -222,7 +237,7 @@ def smoke(root, temporary):
             retained = wait_for("retained monitor observation", lambda: json.loads(snapshot_path.read_text()))
             assert retained["Config"] == observed["Config"], retained
             assert monitor_guard.poll() is None, "The background monitor stopped with its board"
-            monitoring_pane = open_board()
+            monitoring_pane = open_fixture_board()
             wait_for("monitor reuse board UI", lambda: "acme/api" in host("pane", "read", monitoring_pane, "--source", "visible", json_result=False))
             host("pane", "send-keys", monitoring_pane, "ctrl+c", json_result=False)
             wait_for("monitor reuse board cleanup", lambda: not record.exists())

@@ -7,6 +7,9 @@ Install Herdr 0.9.0 or later, Git, GitHub CLI, and Go 1.24 or later.
 Use local NTFS volumes for configuration and runtime state.
 Do not use network shares for runtime state.
 The native plugin does not require Bash or WSL.
+Add GitHub CLI and agent CLI directories to the Windows user or system `PATH`.
+Herdr 0.9 [reads pane `PATH` from the Windows registry](https://github.com/herdrdev/herdr/blob/v0.9.0/vendor/portable-pty/src/cmdbuilder.rs#L169-L228).
+A PowerShell `$env:PATH` change may not reach Herdr panes.
 
 ## Install and open
 
