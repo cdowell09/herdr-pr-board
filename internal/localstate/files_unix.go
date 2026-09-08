@@ -4,9 +4,10 @@ package localstate
 
 import (
 	"errors"
-	"golang.org/x/sys/unix"
 	"os"
 	"path/filepath"
+
+	"golang.org/x/sys/unix"
 )
 
 // TryLock returns an ownership descriptor. Close it to release ownership.

@@ -34,7 +34,12 @@ func TestMonitorCommandRoundTripsHostileAndUnicodePaths(t *testing.T) {
 	result := filepath.Join(dir, "arguments")
 	t.Setenv("PR_BOARD_MONITOR_ARGUMENTS", result)
 	t.Setenv("GORACE", os.Getenv("GORACE")+" atexit_sleep_ms=0")
-	path := filepath.Join(dir, "config with 'single' \"double\" $(not-a-command) 日本語.toml")
+	filename := "config with 'single' \"double\" $(not-a-command) 日本語.toml"
+	if runtime.GOOS == "windows" {
+		// Double quotes are not valid Windows filename characters.
+		filename = strings.ReplaceAll(filename, "\"", "")
+	}
+	path := filepath.Join(dir, filename)
 	state := filepath.Join(dir, "state with 'quotes' $value 日本語")
 	command, err := monitorCommand(binary, path, state)
 	if err != nil {

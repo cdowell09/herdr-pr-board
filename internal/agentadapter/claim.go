@@ -2,7 +2,6 @@ package agentadapter
 
 import (
 	"errors"
-
 	"os"
 
 	"github.com/cdowell09/herdr-pr-board/internal/cli"

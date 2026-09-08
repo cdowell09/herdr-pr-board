@@ -2,9 +2,10 @@ package monitor
 
 import (
 	"errors"
-	"golang.org/x/sys/windows"
 	"os/exec"
 	"syscall"
+
+	"golang.org/x/sys/windows"
 )
 
 func detachMonitor(cmd *exec.Cmd) {

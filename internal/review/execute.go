@@ -110,13 +110,6 @@ func readResult(path string) ([]byte, error) {
 		return nil, fmt.Errorf("read reviewer result: %w", err)
 	}
 	defer f.Close()
-	info, err := f.Stat()
-	if err != nil {
-		return nil, err
-	}
-	if !info.Mode().IsRegular() {
-		return nil, fmt.Errorf("reviewer result must be a regular file")
-	}
 	data, err := io.ReadAll(io.LimitReader(f, maxResultBytes+1))
 	if err != nil {
 		return nil, err

@@ -23,8 +23,9 @@ type buildMatrix struct {
 }
 
 var goOSByPlatform = map[string]string{
-	"linux": "linux",
-	"macos": "darwin",
+	"linux":   "linux",
+	"macos":   "darwin",
+	"windows": "windows",
 }
 
 func main() {

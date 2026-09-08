@@ -7,13 +7,13 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"github.com/cdowell09/herdr-pr-board/internal/cli"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"strings"
 	"time"
 
+	"github.com/cdowell09/herdr-pr-board/internal/cli"
 	"github.com/cdowell09/herdr-pr-board/internal/localstate"
 )
 

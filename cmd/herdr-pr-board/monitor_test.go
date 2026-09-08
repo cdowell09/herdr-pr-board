@@ -3,6 +3,7 @@ package main
 import (
 	"bytes"
 	"encoding/json"
+	"fmt"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -172,12 +173,23 @@ func TestBackgroundReadinessPrecedesFirstGitHubScan(t *testing.T) {
 	}
 	writer.Close()
 	t.Cleanup(func() { child.Process.Kill(); child.Wait() })
-	if err := reader.SetReadDeadline(time.Now().Add(5 * time.Second)); err != nil {
-		t.Fatal(err)
-	}
-	var ack [1]byte
-	if n, err := reader.Read(ack[:]); err != nil || n != 1 || ack[0] != 1 {
-		t.Fatalf("readiness: %d %v %v", n, ack, err)
+	ready := make(chan error, 1)
+	go func() {
+		var ack [1]byte
+		n, err := reader.Read(ack[:])
+		if err != nil || n != 1 || ack[0] != 1 {
+			ready <- fmt.Errorf("readiness: %d %v %v", n, ack, err)
+			return
+		}
+		ready <- nil
+	}()
+	select {
+	case err := <-ready:
+		if err != nil {
+			t.Fatal(err)
+		}
+	case <-time.After(5 * time.Second):
+		t.Fatal("monitor readiness timed out")
 	}
 	if calls, _ := os.ReadFile(log); len(calls) != 0 {
 		t.Fatalf("GitHub request before scan release: %s", calls)
