@@ -11,9 +11,11 @@ import (
 
 	"github.com/cdowell09/herdr-pr-board/internal/claudeadapter"
 	"github.com/cdowell09/herdr-pr-board/internal/codexadapter"
+	"github.com/cdowell09/herdr-pr-board/internal/copilotadapter"
 	gh "github.com/cdowell09/herdr-pr-board/internal/github"
 	"github.com/cdowell09/herdr-pr-board/internal/kimiadapter"
 	"github.com/cdowell09/herdr-pr-board/internal/localstate"
+	"github.com/cdowell09/herdr-pr-board/internal/mastraadapter"
 	"github.com/cdowell09/herdr-pr-board/internal/ompadapter"
 	"github.com/cdowell09/herdr-pr-board/internal/piadapter"
 	"github.com/cdowell09/herdr-pr-board/internal/qoderadapter"
@@ -53,6 +55,10 @@ func runAdapter(o adapterOptions, stdin io.Reader, stderr io.Writer) int {
 		err = ompadapter.Run(ctx, input, ompadapter.Options{OMP: o.executable, Prompt: o.prompt, Skill: o.skill})
 	case "qodercli":
 		err = qoderadapter.Run(ctx, input, qoderadapter.Options{Qoder: o.executable, Prompt: o.prompt, Skill: o.skill})
+	case "copilot":
+		err = copilotadapter.Run(ctx, input, copilotadapter.Options{Copilot: o.executable, Prompt: o.prompt, Skill: o.skill})
+	case "mastracode":
+		err = mastraadapter.Run(ctx, input, mastraadapter.Options{MastraCode: o.executable, Prompt: o.prompt, Skill: o.skill})
 	default:
 		err = fmt.Errorf("unknown review adapter %q", o.name)
 	}

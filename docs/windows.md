@@ -58,7 +58,7 @@ command = ['C:\Tools\herdr-pr-board.exe', '--pi-reviewer']
 
 Replace the example path with the installed PR Board executable path.
 See the [Pi guide](pi-adapter.md) and [Codex and Claude Code guide](agent-adapters.md) for CLI requirements.
-See [additional agent compatibility](agent-compatibility.md) for Oh My Pi, Kimi, Qoder CLI, and Qwen Code.
+See [additional agent compatibility](agent-compatibility.md) for other adapters and their platform requirements.
 
 ## Monitor and state
 

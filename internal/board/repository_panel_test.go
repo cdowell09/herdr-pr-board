@@ -160,7 +160,11 @@ func renderedRepositoryLine(t *testing.T, m Model, text string) int {
 }
 
 func TestRepositorySetupOffersMissingAdaptersAndPreservesCustomCommands(t *testing.T) {
-	for _, selected := range []string{"codex", "claude", "qwen", "omp", "qodercli", "kimi"} {
+	for _, builtin := range config.BuiltinReviewers("") {
+		selected := builtin.ID
+		if selected == "pi" {
+			continue // This fixture already has a custom Pi command.
+		}
 		t.Run(selected, func(t *testing.T) {
 			m := panelModel(t)
 			m.configPath = filepath.Join(t.TempDir(), "config.toml")

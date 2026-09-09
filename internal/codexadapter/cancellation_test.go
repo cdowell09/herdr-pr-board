@@ -21,6 +21,7 @@ import (
 	"github.com/cdowell09/herdr-pr-board/internal/localstate"
 	"github.com/cdowell09/herdr-pr-board/internal/reviewercontract"
 	"github.com/cdowell09/herdr-pr-board/internal/reviewmemory"
+	"github.com/cdowell09/herdr-pr-board/internal/testutil"
 )
 
 // The fake agent handles only SIGINT, like Codex 0.153.4, and owns a tool in a
@@ -103,24 +104,17 @@ exec "$PR_BOARD_CODEX_CANCEL_BINARY" -test.run=^TestCodexInterruptCancellation$
 	cmd.Stdout = &diagnostics
 	cmd.Stderr = &diagnostics
 	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
-	done := make(chan error, 1)
-	go func() { done <- cli.RunProcess(ctx, cmd, 3*time.Second) }()
-	var pid int
-	deadline := time.Now().Add(5 * time.Second)
-	for time.Now().Before(deadline) {
-		if data, err := os.ReadFile(filepath.Join(dir, "tool.pid")); err == nil {
-			pid, _ = strconv.Atoi(string(data))
-			if pid > 0 {
-				break
-			}
-		}
-		time.Sleep(10 * time.Millisecond)
-	}
-	if pid == 0 {
+	done := make(chan struct{})
+	var exitErr error
+	go func() { exitErr = cli.RunProcess(ctx, cmd, 3*time.Second); close(done) }()
+	defer func() { cancel(); <-done }()
+	startup, cancelStartup := context.WithTimeout(t.Context(), 30*time.Second)
+	defer cancelStartup()
+	pid, err := testutil.WaitForPID(startup, filepath.Join(dir, "tool.pid"), done)
+	if err != nil {
 		cancel()
 		<-done
-		t.Fatalf("fake Codex tool did not start: %s", &diagnostics)
+		t.Fatalf("fake Codex tool did not start: %v; adapter exit: %v; %s", err, exitErr, &diagnostics)
 	}
 	defer syscall.Kill(-pid, syscall.SIGKILL)
 	acquired, err := localstate.TryLock(claimPath)
@@ -131,8 +125,9 @@ exec "$PR_BOARD_CODEX_CANCEL_BINARY" -test.run=^TestCodexInterruptCancellation$
 		t.Fatalf("claim released before cancellation: %v", err)
 	}
 	cancel()
-	if err := <-done; !errors.Is(err, context.Canceled) {
-		t.Fatalf("outer cancellation: %v, %s", err, &diagnostics)
+	<-done
+	if !errors.Is(exitErr, context.Canceled) {
+		t.Fatalf("outer cancellation: %v, %s", exitErr, &diagnostics)
 	}
 	if data, err := os.ReadFile(filepath.Join(dir, "interrupted")); err != nil || string(data) != "SIGINT" {
 		t.Fatalf("Codex missed graceful interrupt: %s, %v; %s", data, err, &diagnostics)
@@ -145,7 +140,7 @@ exec "$PR_BOARD_CODEX_CANCEL_BINARY" -test.run=^TestCodexInterruptCancellation$
 	}
 	// Wait reaps the tool shell, but its killed child can close the inherited
 	// claim later. Observe the lock itself rather than assume signal delivery.
-	deadline = time.Now().Add(5 * time.Second)
+	deadline := time.Now().Add(5 * time.Second)
 	for {
 		acquired, err = localstate.TryLock(claimPath)
 		if err == nil {

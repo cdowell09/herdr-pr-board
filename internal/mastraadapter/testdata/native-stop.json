@@ -1,0 +1,8 @@
+{
+  "type": "result",
+  "status": "completed",
+  "finishReason": "complete",
+  "providerFinishReason": "stop",
+  "exitCode": 0,
+  "text": "{}"
+}

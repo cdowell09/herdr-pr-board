@@ -1,0 +1,12 @@
+{
+  "type": "result",
+  "status": "error",
+  "finishReason": "error",
+  "providerFinishReason": "length",
+  "exitCode": 1,
+  "error": {
+    "name": "Error",
+    "message": "The model stopped because it reached its maximum output length before finishing."
+  },
+  "text": "{}"
+}

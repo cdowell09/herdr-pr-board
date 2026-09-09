@@ -1,0 +1,12 @@
+{"jsonrpc":"2.0","id":1,"result":{"ok":true,"protocolVersion":3,"version":"1.0.83","taskKinds":["agent","shell"]}}
+{"jsonrpc":"2.0","id":2,"result":{"sessionId":"session-1","isRemote":false}}
+{"jsonrpc":"2.0","method":"session.event","params":{"sessionId":"session-1","event":{"type":"session.skills_loaded","data":{"skills":[]},"ephemeral":true}}}
+{"jsonrpc":"2.0","id":3,"result":{"success":true,"pluginHookCount":0}}
+{"jsonrpc":"2.0","id":4,"result":{"success":true}}
+{"jsonrpc":"2.0","id":5,"result":{"messageId":"message-1"}}
+{"jsonrpc":"2.0","method":"session.event","params":{"sessionId":"session-1","event":{"type":"session.mcp_servers_loaded","data":{"servers":[]},"ephemeral":true}}}
+{"jsonrpc":"2.0","method":"session.event","params":{"sessionId":"session-1","event":{"type":"assistant.turn_start","data":{"turnId":"0"}}}}
+{"jsonrpc":"2.0","method":"session.event","params":{"sessionId":"session-1","event":{"type":"model.model_call_success","data":{"kind":"model_call_success","turn":0,"modelCallDurationMs":1,"modelCall":{"model":"dummy","api_id":"offline-completion","api_endpoint":"/chat/completions","request_id":null,"client_request_id":null,"service_request_id":null,"rte":false,"initiator":"user","transport":"http"},"responseChunk":{"id":"offline-completion","object":"chat.completion.chunk","created":1,"model":"dummy","choices":[{"delta":{"responses_message_status":"completed","role":"assistant","content":"OFFLINE_RESULT"},"finish_reason":"stop","index":0}],"usage":{"prompt_tokens":1,"completion_tokens":1,"total_tokens":2}},"responseUsage":{"prompt_tokens":1,"completion_tokens":1,"total_tokens":2,"prompt_cache_frontier_source":"estimated","prompt_cache_details_reported":false},"quotaSnapshots":{},"rte":false,"maxPromptTokens":128000,"toolCount":0,"toolTokenCount":0},"ephemeral":true}}}
+{"jsonrpc":"2.0","method":"session.event","params":{"sessionId":"session-1","event":{"type":"assistant.message","data":{"model":"dummy","content":"OFFLINE_RESULT","toolRequests":[],"turnId":"0","rte":false,"apiCallId":"offline-completion"}}}}
+{"jsonrpc":"2.0","method":"session.event","params":{"sessionId":"session-1","event":{"type":"assistant.turn_end","data":{"turnId":"0"}}}}
+{"jsonrpc":"2.0","method":"session.event","params":{"sessionId":"session-1","event":{"type":"session.idle","data":{"mode":"interactive"},"ephemeral":true}}}
