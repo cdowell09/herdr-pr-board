@@ -5,6 +5,7 @@
 Maintain PR Board as a small, reliable Herdr plugin. Preserve its config-driven views, accurate API budgeting, responsive Bubble Tea UI, and direct GitHub installation.
 
 Read [`README.md`](README.md) for user behavior and configuration.
+Read [`docs/journeys.md`](docs/journeys.md) and [`docs/adr/`](docs/adr/) before proposing or scoping features.
 Read [`docs/automatic-reviews.md`](docs/automatic-reviews.md) before changing automatic eligibility or dispatch. Read [`herdr-plugin.toml`](herdr-plugin.toml) before changing plugin metadata, entrypoints, placement, platforms, or build commands.
 
 ## Source map
