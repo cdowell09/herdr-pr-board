@@ -148,7 +148,7 @@ func editRepository(data []byte, repo Repository) ([]byte, error) {
 		if err != nil {
 			return nil, err
 		}
-		text := string(data) + "\n\n[[repositories]]\nname = " + string(encoded) + "\n"
+		text := string(data) + "\n[[repositories]]\nname = " + string(encoded) + "\n"
 		for _, field := range repositoryFields(repo) {
 			text += field.key + " = " + field.value + "\n"
 		}
@@ -242,15 +242,22 @@ func editTableFields(data []byte, table string, index int, fields []repositoryFi
 
 type repositoryField struct{ key, value string }
 
-func repositoryFields(repo Repository) []repositoryField {
-	actions := repo.PublishActions
-	if actions == nil {
-		actions = []PublicationAction{}
+// tomlArray formats values as a TOML array literal with a comma and one space
+// between items, matching the style of config.example.toml. A nil or empty
+// slice formats as [].
+func tomlArray[T ~string](values []T) string {
+	items := make([]string, len(values))
+	for i, value := range values {
+		encoded, _ := json.Marshal(string(value))
+		items[i] = string(encoded)
 	}
+	return "[" + strings.Join(items, ", ") + "]"
+}
+
+func repositoryFields(repo Repository) []repositoryField {
 	reviewer, _ := json.Marshal(repo.Reviewer)
-	publication, _ := json.Marshal(actions)
 	automatic, _ := json.Marshal(repo.AutoPublish)
-	return []repositoryField{{"reviewer", string(reviewer)}, {"auto_launch", fmt.Sprint(repo.AutoLaunch)}, {"publish_actions", string(publication)}, {"auto_publish", string(automatic)}}
+	return []repositoryField{{"reviewer", string(reviewer)}, {"auto_launch", fmt.Sprint(repo.AutoLaunch)}, {"publish_actions", tomlArray(repo.PublishActions)}, {"auto_publish", string(automatic)}}
 }
 
 // Only the repository setup fields are edited. The TOML parser handles quoted keys,
@@ -300,19 +307,13 @@ type AutomaticViewsEdit struct {
 }
 
 func editAutomaticViews(data []byte, selected []string) ([]byte, error) {
-	if selected == nil {
-		selected = []string{}
-	}
-	encoded, err := json.Marshal(selected)
-	if err != nil {
-		return nil, err
-	}
+	encoded := tomlArray(selected)
 	var parsed map[string]any
 	if err := toml.Unmarshal(data, &parsed); err != nil {
 		return nil, err
 	}
 	if _, exists := parsed["review"]; !exists {
-		return append(data, []byte("\n[review]\nauto_views = "+string(encoded)+"\n")...), nil
+		return append(data, []byte("\n[review]\nauto_views = "+encoded+"\n")...), nil
 	}
-	return editTableFields(data, "review", 0, []repositoryField{{"auto_views", string(encoded)}})
+	return editTableFields(data, "review", 0, []repositoryField{{"auto_views", encoded}})
 }

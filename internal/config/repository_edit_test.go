@@ -52,6 +52,52 @@ reviewer = 'pi'
 	}
 }
 
+func TestFirstRepositorySetupNormalizesTOMLSpacing(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "config.toml")
+	if err := os.WriteFile(path, []byte(DefaultFile), 0600); err != nil {
+		t.Fatal(err)
+	}
+	reviewer := Reviewer{ID: "pi", Command: []string{"/plugin/board", "--pi-reviewer"}}
+	repo := Repository{Name: "acme/api", Reviewer: "pi", PublishActions: []PublicationAction{PublishComment, PublishApprove}}
+	if _, err := SaveRepository(context.Background(), path, t.TempDir(), repo, &ReviewerEdit{Value: reviewer}, nil, nil); err != nil {
+		t.Fatal(err)
+	}
+	data, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := DefaultFile +
+		"\n[[reviewers]]\nid = \"pi\"\ncommand = [\"/plugin/board\", \"--pi-reviewer\"]\n" +
+		"\n[[repositories]]\nname = \"acme/api\"\nreviewer = \"pi\"\nauto_launch = false\npublish_actions = [\"comment\", \"approve\"]\nauto_publish = \"\"\n"
+	if string(data) != want {
+		t.Fatalf("spacing mismatch:\ngot=%q\nwant=%q", data, want)
+	}
+	if strings.Contains(string(data), "\n\n\n") {
+		t.Fatal("wrote more than one blank line between tables")
+	}
+}
+
+func TestRepositorySettingsEditNormalizesPublishActionsSpacing(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "config.toml")
+	content := DefaultFile + "\n[[reviewers]]\nid = \"pi\"\ncommand = [\"pi\"]\n\n[[repositories]]\nname = \"acme/api\"\nreviewer = \"pi\"\npublish_actions = [\"comment\"]\n"
+	if err := os.WriteFile(path, []byte(content), 0600); err != nil {
+		t.Fatal(err)
+	}
+	original := repositoryExpectation(t, path, "acme/api")
+	updated := *original
+	updated.PublishActions = []PublicationAction{PublishComment, PublishApprove, PublishRequestChanges}
+	if _, err := SaveRepository(context.Background(), path, t.TempDir(), updated, nil, original, nil); err != nil {
+		t.Fatal(err)
+	}
+	data, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(data), `publish_actions = ["comment", "approve", "request_changes"]`) {
+		t.Fatalf("actions not spaced with commas: %s", data)
+	}
+}
+
 func TestFirstRepositorySetupAddsReusableReviewerAtomically(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "config.toml")
 	if err := os.WriteFile(path, []byte(DefaultFile), 0600); err != nil {

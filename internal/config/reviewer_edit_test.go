@@ -66,6 +66,30 @@ func TestLegacyRelativeInstructionsKeepLauncherDirectory(t *testing.T) {
 	}
 }
 
+func TestNewReviewerNormalizesTOMLSpacing(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "config.toml")
+	if err := os.WriteFile(path, []byte(DefaultFile), 0600); err != nil {
+		t.Fatal(err)
+	}
+	reviewer := Reviewer{ID: "custom", Command: []string{"/opt/bin/reviewer", "--flag", "value"}}
+	if _, err := SaveRepository(context.Background(), path, t.TempDir(), Repository{Name: "acme/api", Reviewer: "custom"}, &ReviewerEdit{Value: reviewer}, nil, nil); err != nil {
+		t.Fatal(err)
+	}
+	data, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := DefaultFile +
+		"\n[[reviewers]]\nid = \"custom\"\ncommand = [\"/opt/bin/reviewer\", \"--flag\", \"value\"]\n" +
+		"\n[[repositories]]\nname = \"acme/api\"\nreviewer = \"custom\"\nauto_launch = false\npublish_actions = []\nauto_publish = \"\"\n"
+	if string(data) != want {
+		t.Fatalf("spacing mismatch:\ngot=%q\nwant=%q", data, want)
+	}
+	if strings.Contains(string(data), "\n\n\n") {
+		t.Fatal("wrote more than one blank line between tables")
+	}
+}
+
 func TestReviewerInstructionEditsPreserveCommandAndUnrelatedSettings(t *testing.T) {
 	dir := t.TempDir()
 	path := filepath.Join(dir, "config.toml")
