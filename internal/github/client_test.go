@@ -351,8 +351,12 @@ func TestRateLimitsAuthErrorGetsTokenVarHint(t *testing.T) {
 	client.SetTokenVars([]string{"GITHUB_TOKEN"})
 
 	_, err := client.RateLimits(context.Background())
-	if err == nil || !strings.Contains(err.Error(), "HTTP 401: Bad credentials") || !strings.Contains(err.Error(), "GITHUB_TOKEN") {
-		t.Fatalf("error = %v, want the original text and a GITHUB_TOKEN hint", err)
+	want := "GitHub authentication failed. Run: gh auth login; GITHUB_TOKEN is set and overrides the gh keyring login; unset it or replace it with a valid token"
+	if err == nil || err.Error() != want {
+		t.Fatalf("error = %v, want %q", err, want)
+	}
+	if strings.Contains(err.Error(), "Bad credentials") {
+		t.Fatalf("error = %v, must not show the raw gh error text", err)
 	}
 }
 
@@ -363,8 +367,8 @@ func TestRateLimitsAuthErrorWithoutTokenVarsHasNoHint(t *testing.T) {
 	client := NewClient(runner, config.GitHubConfig{})
 
 	_, err := client.RateLimits(context.Background())
-	if err == nil || err.Error() != "HTTP 401: Bad credentials" {
-		t.Fatalf("error = %v, want the original text with no hint", err)
+	if err == nil || err.Error() != authFailedMessage {
+		t.Fatalf("error = %v, want %q", err, authFailedMessage)
 	}
 }
 
@@ -376,8 +380,8 @@ func TestRateLimitsAuthErrorWithEmptyTokenVarsHasNoHint(t *testing.T) {
 	client.SetTokenVars(nil)
 
 	_, err := client.RateLimits(context.Background())
-	if err == nil || err.Error() != "HTTP 401: Bad credentials" {
-		t.Fatalf("error = %v, want the original text with no hint", err)
+	if err == nil || err.Error() != authFailedMessage {
+		t.Fatalf("error = %v, want %q", err, authFailedMessage)
 	}
 }
 
@@ -402,11 +406,40 @@ func TestSearchViewAuthErrorGetsTokenVarHint(t *testing.T) {
 	client.SetTokenVars([]string{"GH_TOKEN", "GITHUB_TOKEN"})
 
 	_, err := client.SearchView(context.Background(), config.View{Title: "All", Query: "is:open"})
-	if err == nil || !strings.Contains(err.Error(), "HTTP 401: Bad credentials") {
-		t.Fatalf("error = %v, want the original text", err)
+	if err == nil || !strings.Contains(err.Error(), authFailedMessage) {
+		t.Fatalf("error = %v, want %q", err, authFailedMessage)
 	}
 	if !strings.Contains(err.Error(), "GH_TOKEN") || !strings.Contains(err.Error(), "GITHUB_TOKEN") {
 		t.Fatalf("error = %v, want both token variable names in the hint", err)
+	}
+	if strings.Contains(err.Error(), "Bad credentials") {
+		t.Fatalf("error = %v, must not show the raw gh error text", err)
+	}
+}
+
+// TestSearchViewAuthErrorHidesEscapedResponseBody reproduces the friction
+// log evidence for #118: a bad GH_TOKEN makes gh print the raw 401 response
+// body with escaped line breaks. The wrapped error must show the short
+// message and the token hint instead, with the stage prefix from discovery
+// still in place.
+func TestSearchViewAuthErrorHidesEscapedResponseBody(t *testing.T) {
+	rawBody := "non-200 OK status code: 401 Unauthorized body: \"{\\r\\n  \\\"message\\\": \\\"Bad credentials\\\", \\\"documentation_url\\\": \\\"https://docs.github.com/rest\\\"}\""
+	runner := Runner(func(_ context.Context, _ ...string) ([]byte, error) {
+		return nil, errors.New(rawBody)
+	})
+	client := NewClient(runner, config.GitHubConfig{LimitPerScope: 10})
+	client.SetTokenVars([]string{"GH_TOKEN"})
+
+	_, err := client.SearchView(context.Background(), config.View{Title: "Opened by me", Query: "is:open"})
+	if err == nil {
+		t.Fatal("want an error")
+	}
+	want := `search "Opened by me": GitHub authentication failed. Run: gh auth login; GH_TOKEN is set and overrides the gh keyring login; unset it or replace it with a valid token`
+	if err.Error() != want {
+		t.Fatalf("error = %v, want %q", err, want)
+	}
+	if strings.Contains(err.Error(), `\r\n`) || strings.Contains(err.Error(), "documentation_url") {
+		t.Fatalf("error = %v, must not show the raw response body", err)
 	}
 }
 
@@ -706,7 +739,7 @@ func TestReconfiguredPreservesAuthHint(t *testing.T) {
 	client.SetTokenVars([]string{"GH_TOKEN"})
 	next := client.Reconfigured(config.GitHubConfig{})
 	_, err := next.RateLimits(context.Background())
-	if err == nil || !strings.Contains(err.Error(), "GH_TOKEN is set") {
+	if err == nil || !strings.Contains(err.Error(), "GH_TOKEN is set") || !strings.Contains(err.Error(), authFailedMessage) {
 		t.Fatalf("reconfigured authentication error = %v", err)
 	}
 }

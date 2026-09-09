@@ -17,7 +17,13 @@ gh auth status
 
 ### GitHub CLI is not authenticated
 
-The plugin does not store a GitHub token. It uses GitHub CLI (`gh`). If searches fail with an authentication error, sign in:
+The plugin does not store a GitHub token. It uses GitHub CLI (`gh`). If searches fail with an authentication error, the board footer, the JSON output, and CLI standard error show this message:
+
+```
+GitHub authentication failed. Run: gh auth login
+```
+
+Sign in:
 
 ```sh
 gh auth login
@@ -26,7 +32,11 @@ gh auth status
 
 ### An environment token overrides the GitHub CLI login
 
-GitHub CLI reads `GH_TOKEN`, then `GITHUB_TOKEN`, before its stored login. An invalid value in either variable makes every search fail with `Bad credentials`. This happens even when `gh auth status` shows a valid keyring account. The board names the overriding variable in the footer.
+GitHub CLI reads `GH_TOKEN`, then `GITHUB_TOKEN`, before its stored login. An invalid value in either variable makes every search fail. This happens even when `gh auth status` shows a valid keyring account. The board names the overriding variable after the authentication message:
+
+```
+GitHub authentication failed. Run: gh auth login; GH_TOKEN is set and overrides the gh keyring login; unset it or replace it with a valid token
+```
 
 Verify this outside the board:
 
