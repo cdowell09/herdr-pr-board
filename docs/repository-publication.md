@@ -8,25 +8,26 @@ Repository visibility grants no publication permission.
 
 Select a PR and press `v`.
 The first review action opens repository settings when the repository has no saved settings.
-The panel groups settings under Reviews, GitHub permissions, Automatic posting, and Global views.
+The panel groups settings under Reviews, GitHub permissions, Automatic posting, Global views, and Advanced.
+The rows keep that order.
 Select a reviewer under Reviews with the arrow keys or Space.
-Select Prompt file and Skill file to choose instructions or keep the defaults.
-Press Space or click a path row to edit it.
-Press Enter to accept the path before saving settings.
-Press Esc to discard only the active path edit.
-See [instruction setup](review-instructions.md#select-files-in-the-board) for file rules and editing controls.
 Enable automatic launches only when you want unattended reviews.
-Select existing global automatic views for unattended reviews.
-These selections apply to all repositories that allow automatic launches.
-The panel selects no views by default.
 Enable Comments under GitHub permissions to allow comments.
 Permission allows publication but does not schedule publication.
+Approval and change requests each require a separate selection.
 Select After review: Post comment under Automatic posting to post each newly completed review.
 Select After review: Keep local to keep findings local.
 The saved posting choice applies to manual reviews, explicit reruns, CLI reviews, and monitor reviews.
 Automatic launch permission remains separate.
 Reading history or saving settings does not publish existing runs.
-Approval and change requests each require a separate selection.
+Select existing global automatic views for unattended reviews.
+These selections apply to all repositories that allow automatic launches.
+The panel selects no views by default.
+Select Prompt file and Skill file under Advanced to choose instructions or keep the defaults.
+Press Space or click a path row to edit it.
+Press Enter to accept the path before saving settings.
+Press Esc to discard only the active path edit.
+See [instruction setup](review-instructions.md#select-files-in-the-board) for file rules and editing controls.
 Press Enter to save.
 Press Esc to discard changes.
 Use PgUp, PgDn, or the mouse wheel to scroll through long settings.

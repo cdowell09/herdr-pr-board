@@ -11,10 +11,10 @@ import (
 	tea "github.com/charmbracelet/bubbletea"
 )
 
+// Essential rows keep fixed indexes and come first. One global view row follows
+// for each configured view. The Advanced file rows come last.
 const (
 	repositoryReviewerRow = iota
-	repositoryPromptRow
-	repositorySkillRow
 	repositoryAutomaticRow
 	repositoryPermissionsRow
 	repositoryApprovalRow
@@ -46,6 +46,19 @@ type repositorySetup struct {
 // automatic launches. Manual reviews need no monitor.
 func (s *repositorySetup) automationSelected() bool {
 	return s.repo.AutoLaunch || len(s.automatic.Selected) > 0
+}
+
+// The Advanced rows follow the last global view row.
+func (s *repositorySetup) promptRow() int { return repositoryViewsRow + len(s.views) }
+
+func (s *repositorySetup) skillRow() int { return s.promptRow() + 1 }
+
+// Report the global view a row selects. All other rows select no view.
+func (s *repositorySetup) globalView(row int) (config.View, bool) {
+	if row < repositoryViewsRow || row >= s.promptRow() {
+		return config.View{}, false
+	}
+	return s.views[row-repositoryViewsRow], true
 }
 
 type repositorySettingsMsg struct {
@@ -201,6 +214,14 @@ func (m Model) updateRepositoryKey(key tea.KeyMsg) (tea.Model, tea.Cmd) {
 }
 
 func (s *repositorySetup) toggle() {
+	if view, ok := s.globalView(s.row); ok {
+		if i := slices.Index(s.automatic.Selected, view.ID); i >= 0 {
+			s.automatic.Selected = slices.Delete(s.automatic.Selected, i, i+1)
+		} else {
+			s.automatic.Selected = append(s.automatic.Selected, view.ID)
+		}
+		return
+	}
 	switch s.row {
 	case repositoryReviewerRow:
 		for i, r := range s.reviewers {
@@ -209,18 +230,15 @@ func (s *repositorySetup) toggle() {
 				break
 			}
 		}
-	case repositoryPromptRow, repositorySkillRow:
-		reviewer := s.selectedReviewer()
-		if reviewer.Builtin() != "" {
-			prompt, skill := s.instructionFiles()
-			value := prompt
-			if s.row == repositorySkillRow {
-				value = skill
-			}
-			s.editing = &instructionEditor{value: []rune(value), cursor: len([]rune(value))}
-		}
 	case repositoryAutomaticRow:
 		s.repo.AutoLaunch = !s.repo.AutoLaunch
+	case repositoryPermissionsRow, repositoryApprovalRow, repositoryChangesRow:
+		action := config.PublicationActions()[s.row-repositoryPermissionsRow]
+		if index := slices.Index(s.repo.PublishActions, action); index >= 0 {
+			s.repo.SetPublishActions(slices.Delete(s.repo.PublishActions, index, index+1))
+		} else {
+			s.repo.PublishActions = append(s.repo.PublishActions, action)
+		}
 	case repositoryPostingRow:
 		choices := []config.PublicationAction{"", config.PublishComment}
 		for _, action := range config.PublicationActions() {
@@ -233,37 +251,20 @@ func (s *repositorySetup) toggle() {
 		if s.repo.AutoPublish == config.PublishComment && !slices.Contains(s.repo.PublishActions, config.PublishComment) {
 			s.repo.PublishActions = append(s.repo.PublishActions, config.PublishComment)
 		}
-	default:
-		if s.row >= repositoryViewsRow {
-			id := s.views[s.row-repositoryViewsRow].ID
-			if i := slices.Index(s.automatic.Selected, id); i >= 0 {
-				s.automatic.Selected = slices.Delete(s.automatic.Selected, i, i+1)
-			} else {
-				s.automatic.Selected = append(s.automatic.Selected, id)
+	default: // The Advanced prompt and skill rows.
+		if s.selectedReviewer().Builtin() != "" {
+			prompt, skill := s.instructionFiles()
+			value := prompt
+			if s.row == s.skillRow() {
+				value = skill
 			}
-			return
-		}
-		action := config.PublicationActions()[s.row-repositoryPermissionsRow]
-		if index := slices.Index(s.repo.PublishActions, action); index >= 0 {
-			s.repo.SetPublishActions(slices.Delete(s.repo.PublishActions, index, index+1))
-		} else {
-			s.repo.PublishActions = append(s.repo.PublishActions, action)
+			s.editing = &instructionEditor{value: []rune(value), cursor: len([]rune(value))}
 		}
 	}
 }
 
 func (s *repositorySetup) rows() []string {
-	prompt, skill := s.instructionFiles()
-	if prompt == "" {
-		prompt = "Default review"
-	}
-	if skill == "" {
-		skill = "None"
-	}
-	if s.selectedReviewer().Builtin() == "" {
-		prompt, skill = "Custom command", "Custom command"
-	}
-	rows := []string{"Reviewer: " + s.repo.Reviewer, "Prompt file: " + prompt, "Skill file: " + skill, repositoryToggleLabel("Automatic launches", s.repo.AutoLaunch)}
+	rows := []string{"Reviewer: " + s.repo.Reviewer, repositoryToggleLabel("Automatic launches", s.repo.AutoLaunch)}
 	for _, action := range config.PublicationActions() {
 		label := ""
 		switch action {
@@ -289,7 +290,17 @@ func (s *repositorySetup) rows() []string {
 	for _, view := range s.views {
 		rows = append(rows, repositoryToggleLabel(view.ID+" · "+view.Title, slices.Contains(s.automatic.Selected, view.ID)))
 	}
-	return rows
+	prompt, skill := s.instructionFiles()
+	if prompt == "" {
+		prompt = "Default review"
+	}
+	if skill == "" {
+		skill = "None"
+	}
+	if s.selectedReviewer().Builtin() == "" {
+		prompt, skill = "Custom command", "Custom command"
+	}
+	return append(rows, "Prompt file: "+prompt, "Skill file: "+skill)
 }
 
 func repositoryToggleLabel(label string, enabled bool) string {
@@ -349,7 +360,7 @@ func (s *repositorySetup) editInstruction(key tea.KeyMsg) {
 		s.editing = nil
 	case tea.KeyEnter:
 		value := string(e.value)
-		if s.row == repositoryPromptRow {
+		if s.row == s.promptRow() {
 			s.selectedReviewer().PromptFile = &value
 		} else {
 			s.selectedReviewer().SkillFile = &value

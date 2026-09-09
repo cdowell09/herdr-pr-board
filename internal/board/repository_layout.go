@@ -34,18 +34,11 @@ func (m Model) repositoryContent() []repositoryLine {
 			lines[i].text = keyStyle.Render(lines[i].text)
 		}
 	}
+	promptRow, skillRow := s.promptRow(), s.skillRow()
 	for i, row := range s.rows() {
 		switch i {
 		case repositoryReviewerRow:
 			section("Reviews")
-		case repositoryPromptRow:
-			if s.selectedReviewer().Builtin() != "" {
-				add("Default review checks repository standards and specification.", -1)
-				add("Choose prompt and skill files, or keep defaults.", -1)
-				add("All repositories using "+s.repo.Reviewer+" share these files.", -1)
-			} else {
-				add("This custom command manages its own instructions.", -1)
-			}
 		case repositoryPermissionsRow:
 			section("GitHub permissions")
 			add("Allowed actions, not automatic posts.", -1)
@@ -53,7 +46,22 @@ func (m Model) repositoryContent() []repositoryLine {
 			section("Automatic posting")
 		case repositoryViewsRow:
 			section("Global views")
-			add("Shared by all opted-in repositories.", -1)
+			if len(s.views) == 0 {
+				add("No configured views are available.", -1)
+			} else {
+				add("Shared by all opted-in repositories.", -1)
+			}
+		}
+		// Without configured views, the prompt row is also the first view row.
+		if i == promptRow {
+			section("Advanced")
+			if s.selectedReviewer().Builtin() != "" {
+				add("Default review checks repository standards and specification.", -1)
+				add("Choose prompt and skill files, or keep defaults.", -1)
+				add("All repositories using "+s.repo.Reviewer+" share these files.", -1)
+			} else {
+				add("This custom command manages its own instructions.", -1)
+			}
 		}
 		prefix := "  "
 		if i == s.row {
@@ -61,7 +69,7 @@ func (m Model) repositoryContent() []repositoryLine {
 		}
 		if i == s.row && s.editing != nil {
 			label := "Prompt file: "
-			if i == repositorySkillRow {
+			if i == skillRow {
 				label = "Skill file: "
 			}
 			e := s.editing
@@ -72,17 +80,13 @@ func (m Model) repositoryContent() []repositoryLine {
 			row = label + left + "▏" + right
 		}
 		add(prefix+row, i)
-		if i == repositorySkillRow && s.selectedReviewer().Builtin() != "" {
+		if i == skillRow && s.selectedReviewer().Builtin() != "" {
 			add("A custom prompt replaces default criteria. A skill adds requirements.", -1)
 			add("New relative paths start in the configuration directory.", -1)
 		}
 		if i == repositoryPostingRow {
 			add("For every completed review.", -1)
 		}
-	}
-	if len(s.views) == 0 {
-		section("Global views")
-		add("No configured views are available.", -1)
 	}
 	if builtin := s.selectedBuiltin(); builtin != nil {
 		section("New reviewer: " + builtin.ID)

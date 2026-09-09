@@ -156,14 +156,15 @@ An older or unavailable owner cannot accept the request.
 
 Press `s` in the panel to edit repository settings.
 Use the arrow keys and Space to change settings.
-Select **Prompt file** and **Skill file** to choose custom instructions.
-See [instruction setup](review-instructions.md#select-files-in-the-board) for path editing controls.
 
-The settings panel separates reviews, GitHub permissions, automatic posting, and global views.
+The settings panel separates reviews, GitHub permissions, automatic posting, global views, and advanced files.
+The rows keep that order.
 Select global automatic view IDs explicitly.
 These view selections apply to all repositories that allow automatic launches.
 Permission alone does not enable automatic posting.
 Select **After review: Keep local** to publish findings only with manual controls.
+Select **Prompt file** and **Skill file** under **Advanced** to choose custom instructions.
+See [instruction setup](review-instructions.md#select-files-in-the-board) for path editing controls.
 See [repository setup and publication](repository-publication.md) for permissions, automatic posting, and failure recovery.
 
 The panel shows the monitor state and missing setup requirements when automatic launches or global views are on.

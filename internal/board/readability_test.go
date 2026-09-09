@@ -2,6 +2,7 @@ package board
 
 import (
 	"reflect"
+	"slices"
 	"strings"
 	"testing"
 
@@ -10,11 +11,49 @@ import (
 	"github.com/charmbracelet/x/ansi"
 )
 
+var repositorySections = []string{"Reviews", "GitHub permissions", "Automatic posting", "Global views", "Advanced"}
+
+// Essentials come first. Prompt and skill files come last, under Advanced.
+func TestRepositorySetupPutsEssentialsBeforeAdvancedFiles(t *testing.T) {
+	want := []string{
+		"Reviews", "Reviewer:", "[x] Automatic launches",
+		"GitHub permissions", "[x] Comments", "[ ] Approval", "[ ] Change requests",
+		"Automatic posting", "After review:",
+		"Global views", "[ ] mine", "[ ] review",
+		"Advanced", "Prompt file:", "Skill file:",
+	}
+	for _, size := range [][2]int{{80, 24}, {30, 10}} {
+		m := onboardingModel(t, size[0], size[1], 2)
+		var got []string
+		started := make(map[int]bool)
+		for _, line := range m.repositoryContent() {
+			text := strings.TrimPrefix(strings.TrimSpace(stripANSI(line.text)), "› ")
+			switch {
+			case line.row < 0:
+				if slices.Contains(repositorySections, text) {
+					got = append(got, text)
+				}
+			case !started[line.row]:
+				started[line.row] = true
+				got = append(got, text)
+			}
+		}
+		if len(got) != len(want) {
+			t.Fatalf("width%d: setup order %q", size[0], got)
+		}
+		for i, prefix := range want {
+			if !strings.HasPrefix(got[i], prefix) {
+				t.Fatalf("width%d: position %d is %q, want %q", size[0], i, got[i], prefix)
+			}
+		}
+	}
+}
+
 func TestRepositoryGroupsPreserveRowsAndMouseTargets(t *testing.T) {
 	for _, size := range [][2]int{{80, 24}, {30, 10}} {
 		m := onboardingModel(t, size[0], size[1], 3)
 		s := m.reviewPanel.setup
-		for _, heading := range []string{"Reviews", "GitHub permissions", "Automatic posting", "Global views"} {
+		for _, heading := range repositorySections {
 			found := -1
 			for i, line := range m.repositoryContent() {
 				if stripANSI(line.text) == heading {
