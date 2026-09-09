@@ -105,6 +105,9 @@ func monitorStartupProcess() {
 	s := New(dir, cfg, startupLoader{dir: dir})
 	err = s.Run(ctx, nil, func() error {
 		if mode == "delayed" {
+			if err := os.WriteFile(filepath.Join(dir, "owner-ready"), nil, 0600); err != nil {
+				return err
+			}
 			for {
 				if _, err := os.Stat(filepath.Join(dir, "ack-allowed")); err == nil {
 					break
@@ -140,7 +143,9 @@ func (l startupLoader) RefreshAll(ctx context.Context) discovery.Snapshot {
 		Detached bool
 		PID      int
 	}{os.Args, os.Getenv(readyEnvironment), detached, os.Getpid()})
-	os.WriteFile(filepath.Join(l.dir, "scan-started"), data, 0600)
+	if err := localstate.AtomicWrite(filepath.Join(l.dir, "scan-started"), data); err != nil {
+		panic(err)
+	}
 	<-ctx.Done()
 	return discovery.Snapshot{}
 }
@@ -317,7 +322,8 @@ func TestClosedLauncherPipeDoesNotStopMonitor(t *testing.T) {
 			t.Error("helper did not stop")
 		}
 	})
-	waitStartup(t, func() bool { running, _ := hasOwner(dir); return running })
+	// Wait without taking the ownership lock away from the starting monitor.
+	waitStartup(t, func() bool { _, err := os.Stat(filepath.Join(dir, "owner-ready")); return err == nil })
 	reader.Close() // The launching board exits before the ownership acknowledgement.
 	if err := os.WriteFile(filepath.Join(dir, "ack-allowed"), nil, 0600); err != nil {
 		t.Fatal(err)

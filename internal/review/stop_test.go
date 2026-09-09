@@ -16,6 +16,7 @@ import (
 
 	"github.com/cdowell09/herdr-pr-board/internal/cli"
 	"github.com/cdowell09/herdr-pr-board/internal/config"
+	"github.com/cdowell09/herdr-pr-board/internal/localstate"
 	"github.com/cdowell09/herdr-pr-board/internal/reviewercontract"
 	"github.com/cdowell09/herdr-pr-board/internal/reviewmemory"
 	"github.com/pelletier/go-toml/v2"
@@ -48,7 +49,8 @@ func TestStoppableReviewerChild(t *testing.T) {
 		return
 	}
 	signal.Ignore(syscall.SIGTERM)
-	if err := os.WriteFile(os.Args[len(os.Args)-1], []byte(strconv.Itoa(os.Getpid())), 0600); err != nil {
+	// The parent treats this path as readiness, so publish the complete PID.
+	if err := localstate.AtomicWrite(os.Args[len(os.Args)-1], []byte(strconv.Itoa(os.Getpid()))); err != nil {
 		t.Fatal(err)
 	}
 	time.Sleep(30 * time.Second)
