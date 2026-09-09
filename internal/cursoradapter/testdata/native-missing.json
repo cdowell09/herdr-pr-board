@@ -1,0 +1,10 @@
+{
+  "type": "result",
+  "status": "error",
+  "turnEnded": 0,
+  "pending": 0,
+  "cancelled": false,
+  "error": {
+    "message": "Stream ended without turnEnded \u2014 connection likely dropped mid-stream"
+  }
+}

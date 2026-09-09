@@ -89,10 +89,11 @@ Use [config.example.toml](config.example.toml) as the complete configuration ref
 
 ## Review with an agent
 
-Built-in adapters support Pi, Codex, Claude Code, Qwen Code, Oh My Pi, Kimi, Qoder CLI, Copilot, and Mastra Code.
-Install and authenticate the selected agent CLI before you start a review.
+Built-in adapters support Pi, Codex, Claude Code, Qwen Code, Oh My Pi, Kimi, and Qoder CLI.
+They also support Copilot, Mastra Code, Hermes, Cursor, Antigravity, and Grok.
+Install and authenticate the selected native CLI or SDK before you start a review.
 See [reviewer setup](docs/reviews.md#configure-reviewers) for supported versions and custom reviewer commands.
-See [agent compatibility](docs/agent-compatibility.md) for additional CLI requirements and assessed limitations.
+See [agent compatibility](docs/agent-compatibility.md) for native version requirements and assessed limitations.
 
 Select a PR and press `v`.
 The panel opens repository setup when the repository has no saved settings.

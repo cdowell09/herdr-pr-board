@@ -1,0 +1,10 @@
+{
+  "type": "result",
+  "status": "error",
+  "turnEnded": 1,
+  "pending": 0,
+  "cancelled": false,
+  "error": {
+    "message": "[resource_exhausted] Mock output token limit"
+  }
+}

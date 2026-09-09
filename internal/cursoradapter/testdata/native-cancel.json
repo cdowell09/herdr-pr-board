@@ -1,0 +1,7 @@
+{
+  "type": "result",
+  "status": "cancelled",
+  "turnEnded": 0,
+  "pending": 0,
+  "cancelled": true
+}

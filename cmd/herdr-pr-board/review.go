@@ -9,10 +9,14 @@ import (
 	"os/signal"
 	"syscall"
 
+	"github.com/cdowell09/herdr-pr-board/internal/antigravityadapter"
 	"github.com/cdowell09/herdr-pr-board/internal/claudeadapter"
 	"github.com/cdowell09/herdr-pr-board/internal/codexadapter"
 	"github.com/cdowell09/herdr-pr-board/internal/copilotadapter"
+	"github.com/cdowell09/herdr-pr-board/internal/cursoradapter"
 	gh "github.com/cdowell09/herdr-pr-board/internal/github"
+	"github.com/cdowell09/herdr-pr-board/internal/grokadapter"
+	"github.com/cdowell09/herdr-pr-board/internal/hermesadapter"
 	"github.com/cdowell09/herdr-pr-board/internal/kimiadapter"
 	"github.com/cdowell09/herdr-pr-board/internal/localstate"
 	"github.com/cdowell09/herdr-pr-board/internal/mastraadapter"
@@ -59,6 +63,14 @@ func runAdapter(o adapterOptions, stdin io.Reader, stderr io.Writer) int {
 		err = copilotadapter.Run(ctx, input, copilotadapter.Options{Copilot: o.executable, Prompt: o.prompt, Skill: o.skill})
 	case "mastracode":
 		err = mastraadapter.Run(ctx, input, mastraadapter.Options{MastraCode: o.executable, Prompt: o.prompt, Skill: o.skill})
+	case "hermes":
+		err = hermesadapter.Run(ctx, input, hermesadapter.Options{Hermes: o.executable, Prompt: o.prompt, Skill: o.skill})
+	case "cursor":
+		err = cursoradapter.Run(ctx, input, cursoradapter.Options{Cursor: o.executable, Prompt: o.prompt, Skill: o.skill})
+	case "antigravity":
+		err = antigravityadapter.Run(ctx, input, antigravityadapter.Options{Antigravity: o.executable, Prompt: o.prompt, Skill: o.skill})
+	case "grok":
+		err = grokadapter.Run(ctx, input, grokadapter.Options{Grok: o.executable, Prompt: o.prompt, Skill: o.skill})
 	default:
 		err = fmt.Errorf("unknown review adapter %q", o.name)
 	}

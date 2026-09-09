@@ -19,6 +19,10 @@ func BuiltinReviewers(binary string) []Reviewer {
 		{ID: "qodercli", Command: []string{binary, "--qodercli-reviewer"}},
 		{ID: "copilot", Command: []string{binary, "--copilot-reviewer"}},
 		{ID: "mastracode", Command: []string{binary, "--mastracode-reviewer"}},
+		{ID: "hermes", Command: []string{binary, "--hermes-reviewer"}},
+		{ID: "cursor", Command: []string{binary, "--cursor-reviewer"}},
+		{ID: "antigravity", Command: []string{binary, "--antigravity-reviewer"}},
+		{ID: "grok", Command: []string{binary, "--grok-reviewer"}},
 	}
 }
 

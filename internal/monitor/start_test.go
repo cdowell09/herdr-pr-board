@@ -217,7 +217,10 @@ func TestConcurrentStartupReusesOneOwnerBeforeSlowScan(t *testing.T) {
 		Detached bool
 		PID      int
 	}
-	data, _ := os.ReadFile(filepath.Join(dir, "scan-started"))
+	data, err := localstate.ReadFile(filepath.Join(dir, "scan-started"))
+	if err != nil {
+		t.Fatal(err)
+	}
 	if err := json.Unmarshal(data, &record); err != nil {
 		t.Fatal(err)
 	}
