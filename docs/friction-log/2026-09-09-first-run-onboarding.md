@@ -91,17 +91,17 @@ CLI settings. Output has PascalCase keys. TOML has double blank line.
 
 ## Follow-Up
 
-- Detect installed agent CLIs in repository setup and default to one that exists. Priority: high. Friction 1.
-- Show a manual-review-ready header and hide monitor command until automation is enabled. Priority: high. Friction 2, 3.
-- Reorder setup rows and group prompt and skill files under Advanced. Priority: medium. Friction 4.
-- Show reviewer position or a list in the reviewer row. Priority: medium. Friction 5.
-- Add contextual empty states per view. Priority: medium. Friction 6.
-- Fix footer leading separator. Priority: low. Friction 7.
-- Add `--version` and show the version in the title bar. Priority: medium. Friction 8.
-- Replace raw 401 body with a `gh auth login` hint. Priority: medium. Friction 10.
-- Announce the editor before `E` launches it. Priority: low. Friction 11.
-- Add `?` help overlay and trim the footer to the top keys. Priority: medium. Friction 12.
-- Add JSON tags to `--repository-settings` output and normalize TOML spacing. Priority: low. Friction 13.
-- Explain the Go prerequisite in README. Priority: low. Friction 9. Herdr constraint.
-- Optional shell alias for the open command. Priority: low. May not fix. Friction 14. Herdr does not expose actions in its UI.
+- Detect installed agent CLIs in repository setup and default to one that exists. Priority: high. Friction 1. Issue: #123.
+- Show a manual-review-ready header and hide monitor command until automation is enabled. Priority: high. Friction 2, 3. Issue: #110, #111.
+- Reorder setup rows and group prompt and skill files under Advanced. Priority: medium. Friction 4. Issue: #112.
+- Show reviewer position or a list in the reviewer row. Priority: medium. Friction 5. Issue: #113.
+- Add contextual empty states per view. Priority: medium. Friction 6. Issue: #114.
+- Fix footer leading separator. Priority: low. Friction 7. Issue: #115.
+- Add `--version` and show the version in the title bar. Priority: medium. Friction 8. Issue: #116.
+- Replace raw 401 body with a `gh auth login` hint. Priority: medium. Friction 10. Issue: #118.
+- Announce the editor before `E` launches it. Priority: low. Friction 11. Issue: #119.
+- Add `?` help overlay and trim the footer to the top keys. Priority: medium. Friction 12. Issue: #120.
+- Add JSON tags to `--repository-settings` output and normalize TOML spacing. Priority: low. Friction 13. Issue: #121, #122.
+- Explain the Go prerequisite in README. Priority: low. Friction 9. Herdr constraint. Issue: #117.
+- Optional shell alias for the open command. Priority: low. May not fix. Friction 14. Herdr does not expose actions in its UI. No issue filed.
 - Open question: capture a real failed first review with a missing CLI on an open PR and attach the panel text. Friction 1 evidence.
