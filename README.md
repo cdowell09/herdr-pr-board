@@ -148,6 +148,7 @@ Use the [headless monitor](docs/monitor.md) to share discovery observations with
 
 ## Reference and development
 
+- [Core user journeys](docs/journeys.md) and [architecture decisions](docs/adr/)
 - [Troubleshooting and plugin lifecycle](docs/troubleshooting.md)
 - [Local source builds and contribution checks](CONTRIBUTING.md)
 - [Local review history and ownership](docs/review-memory.md)
