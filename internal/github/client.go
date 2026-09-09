@@ -31,6 +31,7 @@ type ciCacheEntry struct {
 type Client struct {
 	runner     Runner
 	baseRunner Runner
+	tokenVars  []string
 	cfg        config.GitHubConfig
 
 	loginMu sync.Mutex
@@ -52,7 +53,7 @@ func NewClient(runner Runner, cfg config.GitHubConfig) *Client {
 		capacity = 1
 	}
 	return &Client{
-		runner:     runner,
+		runner:     withAuthHint(runner, nil),
 		baseRunner: runner,
 		cfg:        cfg,
 		ciCache:    make(map[string]ciCacheEntry),
@@ -61,38 +62,66 @@ func NewClient(runner Runner, cfg config.GitHubConfig) *Client {
 	}
 }
 
-// Reconfigured returns a client with the same command runner and new settings.
+// Reconfigured returns a client with the same base command runner and new
+// settings. It carries over the recorded token variables and wraps the base
+// runner with the auth hint exactly once; it never wraps the already-wrapped
+// runner, which would grow a new no-op layer on every reconfiguration.
 func (c *Client) Reconfigured(cfg config.GitHubConfig) *Client {
-	return NewClient(c.runner, cfg)
+	next := NewClient(c.baseRunner, cfg)
+	next.SetTokenVars(c.tokenVars)
+	return next
 }
 
 // SetTokenVars records which of the variables in TokenVars are set in the
 // process environment. The github package does not read the environment
 // itself; the caller checks TokenVars with os.Getenv and passes the names
-// that are set. When a recorded variable is set and a gh command fails with
-// an authentication error, the client appends a hint naming the variable to
-// the returned error.
+// that are set. When a gh command fails with an authentication error, the
+// client replaces the raw gh error with a short message naming the fix, and
+// appends a hint naming the variable when a recorded variable is set.
 func (c *Client) SetTokenVars(set []string) {
-	c.runner = withAuthHint(c.baseRunner, append([]string(nil), set...))
+	c.tokenVars = append([]string(nil), set...)
+	c.runner = withAuthHint(c.baseRunner, c.tokenVars)
 }
 
-// withAuthHint wraps runner so an authentication failure names the
-// overriding environment variable. It passes stdout through unchanged and
-// only appends to the error.
+// authFailedMessage replaces the raw gh error text on an authentication
+// failure. The raw text can embed an HTTP response body with escaped line
+// breaks; this message names the fix instead.
+const authFailedMessage = "GitHub authentication failed. Run: gh auth login"
+
+// withAuthHint wraps runner so an authentication failure replaces the raw gh
+// error, which can embed an escaped HTTP response body, with a short message
+// naming the fix. It appends a hint naming the overriding environment
+// variable when one is set. It passes stdout through unchanged and only
+// replaces the error.
 func withAuthHint(runner Runner, tokenVars []string) Runner {
 	return func(ctx context.Context, args ...string) ([]byte, error) {
 		output, err := runner(ctx, args...)
-		if err != nil && len(tokenVars) > 0 && isAuthError(err) {
-			err = fmt.Errorf("%w; %s", err, tokenHintSentence(tokenVars))
+		if err != nil && isAuthError(err) {
+			err = authError(tokenVars)
 		}
 		return output, err
 	}
 }
 
+// authError builds the replacement authentication error, adding the
+// environment token hint when a token variable overrides the gh keyring
+// login.
+func authError(tokenVars []string) error {
+	if len(tokenVars) == 0 {
+		return errors.New(authFailedMessage)
+	}
+	return fmt.Errorf("%s; %s", authFailedMessage, tokenHintSentence(tokenVars))
+}
+
 // isAuthError reports whether err looks like a gh authentication failure.
+// This covers a stored login rejected by GitHub ("bad credentials", an HTTP
+// 401) and gh finding no login at all, keyring or environment token ("to get
+// started with github cli").
 func isAuthError(err error) bool {
 	lower := strings.ToLower(err.Error())
-	return strings.Contains(lower, "bad credentials") || strings.Contains(lower, "http 401")
+	return strings.Contains(lower, "bad credentials") ||
+		strings.Contains(lower, "http 401") ||
+		strings.Contains(lower, "to get started with github cli")
 }
 
 // tokenHintSentence names the environment variables that override the gh
