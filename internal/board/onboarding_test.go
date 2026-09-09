@@ -139,6 +139,7 @@ func TestOnboardingManyViewsRemainSelectableAndScrollable(t *testing.T) {
 				t.Fatalf("width overflow %q", line)
 			}
 		}
+		// The selected automatic views keep the monitor command in this panel.
 		commandLines := m.monitorCommandLines()
 		end := len(commandLines) - 1
 		if runtime.GOOS == "windows" {
@@ -147,6 +148,12 @@ func TestOnboardingManyViewsRemainSelectableAndScrollable(t *testing.T) {
 		if end < 0 || !strings.Contains(rendered, commandLines[end]) {
 			t.Fatalf("command end unreachable:\n%s", rendered)
 		}
+		selected := setup.automatic.Selected
+		setup.repo.AutoLaunch, setup.automatic.Selected = false, nil
+		if rendered := stripANSI(m.View()); strings.Contains(rendered, "Run in another terminal") {
+			t.Fatalf("manual setup shows the monitor command:\n%s", rendered)
+		}
+		setup.repo.AutoLaunch, setup.automatic.Selected = true, selected
 		updated, _ = m.Update(tea.WindowSizeMsg{Width: 80, Height: 24})
 		m = updated.(Model)
 		_, _, start, _ := m.repositoryViewport()
@@ -171,13 +178,71 @@ func TestSetupSummariesDoNotConfusePermissionWithScheduling(t *testing.T) {
 		t.Fatalf("lock alone implied readiness: %s", lines)
 	}
 	setup.repo.AutoLaunch = false
+	if lines := stripANSI(m.View()); !strings.Contains(lines, "Manual reviews ready. Press Enter to save, then n to run.") || strings.Contains(lines, "Waiting:") {
+		t.Fatalf("manual setup still reads as blocked: %s", lines)
+	}
 	m.cfg.Repositories = []config.Repository{setup.repo}
 	m.cfg.Review.AutoViews = setup.automatic.Selected
 	m.reviewPanel.setup = nil
 	lines = stripANSI(strings.Join(m.reviewLines(), "\n"))
-	for _, want := range []string{"Automatic launches: off", "After review: keep local"} {
+	for _, want := range []string{"Waiting: enable automatic launches", "Automatic launches: off", "After review: keep local"} {
 		if !strings.Contains(lines, want) {
 			t.Fatalf("missing %q: %s", want, lines)
+		}
+	}
+}
+
+func repositoryText(lines []repositoryLine) string {
+	text := make([]string, 0, len(lines))
+	for _, line := range lines {
+		text = append(text, line.text)
+	}
+	return stripANSI(strings.Join(text, "\n"))
+}
+
+func TestSetupWithoutAutomationInvitesManualReview(t *testing.T) {
+	for _, size := range [][2]int{{80, 24}, {30, 10}} {
+		ready, running := "Manual reviews ready. Press Enter to save, then n to run.", "Monitor: stopped"
+		if size[0] < 60 {
+			ready, running = "Ready · Enter save · n run", "Settings · monitor stopped"
+		}
+		m := onboardingModel(t, size[0], size[1], 3)
+		setup := m.reviewPanel.setup
+		setup.repo.AutoLaunch = false
+		header, content, _, _ := m.repositoryViewport()
+		top, body := stripANSI(strings.Join(header, "\n")), repositoryText(content)
+		if !strings.Contains(top, ready) {
+			t.Fatalf("width%d: manual invitation missing:\n%s", size[0], top)
+		}
+		for _, unwanted := range []string{"waiting:", "monitor"} {
+			if strings.Contains(strings.ToLower(top), unwanted) {
+				t.Fatalf("width%d: header keeps %q:\n%s", size[0], unwanted, top)
+			}
+		}
+		for _, unwanted := range []string{"Run in another terminal", "start the monitor in another terminal"} {
+			if strings.Contains(body, unwanted) {
+				t.Fatalf("width%d: content keeps %q:\n%s", size[0], unwanted, body)
+			}
+		}
+		m.monitorError = "Monitor startup failed"
+		_, content, _, _ = m.repositoryViewport()
+		if !strings.Contains(repositoryText(content), m.monitorError) {
+			t.Fatalf("width%d: startup failure hidden:\n%s", size[0], repositoryText(content))
+		}
+		m.monitorError = ""
+		// Either automation choice makes the monitor state relevant again.
+		for _, enable := range []func(){func() { setup.repo.AutoLaunch = true }, func() {
+			setup.repo.AutoLaunch, setup.automatic.Selected = false, []string{setup.views[0].ID}
+		}} {
+			enable()
+			header, content, _, _ = m.repositoryViewport()
+			top, body = stripANSI(strings.Join(header, "\n")), repositoryText(content)
+			if !strings.Contains(top, running) {
+				t.Fatalf("width%d: monitor state hidden:\n%s", size[0], top)
+			}
+			if !strings.Contains(body, "Run in another terminal:") {
+				t.Fatalf("width%d: stopped monitor kept its command hidden:\n%s", size[0], body)
+			}
 		}
 	}
 }

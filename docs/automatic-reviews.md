@@ -8,6 +8,7 @@ The monitor uses existing discovery views.
 ## Enable automatic reviews
 
 Press `v`, then press `s` to open repository settings.
+The setup header shows that manual reviews are ready when automatic launches are off.
 Enable automatic launches for the repository.
 Select existing IDs under Global views.
 These selections apply to all repositories that allow automatic launches.
@@ -67,10 +68,12 @@ bin/herdr-pr-board --monitor --config /absolute/path/to/config.toml
 
 For Windows commands and state requirements, see [Windows setup](windows.md).
 
-The setup panel shows the monitor as running, stopped, or unknown.
+The setup panel hides monitor state until automatic launches or global views are on.
+It then shows the monitor as running, stopped, or unknown.
 A running monitor does not prove that its latest observation succeeded.
 The panel reports failed observations and configuration differences separately.
 When the monitor stops, the panel shows its exact command.
+The panel keeps monitor startup failures visible in both states.
 If background startup fails, copy the complete command and run it in another terminal.
 Keep the command's continuation characters when copying multiple lines.
 On Windows, paste the command into PowerShell.

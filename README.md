@@ -97,6 +97,7 @@ See [agent compatibility](docs/agent-compatibility.md) for additional CLI requir
 Select a PR and press `v`.
 The panel opens repository setup when the repository has no saved settings.
 Choose a reviewer and save the settings.
+The setup header shows that manual reviews are ready when automatic launches are off.
 Press `n` in the review panel to run the review.
 Press `s` in the review panel to change settings later.
 
