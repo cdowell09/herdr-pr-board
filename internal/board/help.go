@@ -5,6 +5,7 @@ import (
 
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
+	"github.com/charmbracelet/x/ansi"
 )
 
 // helpSection is one group of controls in the ? overlay.
@@ -50,23 +51,29 @@ var helpSections = []helpSection{
 }
 
 // helpOverlayLines renders every control as one styled line. A pair that does
-// not fit the terminal width breaks after the keys, so narrow terminals keep
-// the full key list.
+// not fit the terminal width breaks after the keys and wraps. No width removes
+// text, so scrolling always reaches every complete control.
 func (m Model) helpOverlayLines() []string {
 	width := max(1, m.width)
 	var lines []string
+	wrap := func(value, indent string, style lipgloss.Style) {
+		budget := max(1, width-lipgloss.Width(indent))
+		for _, line := range strings.Split(ansi.Wrap(value, budget, ""), "\n") {
+			lines = append(lines, indent+style.Render(line))
+		}
+	}
 	for i, section := range helpSections {
 		if i > 0 {
 			lines = append(lines, "")
 		}
-		lines = append(lines, keyStyle.Render(truncate(section.title, width)))
+		wrap(section.title, "", keyStyle)
 		for _, entry := range section.entries {
 			if lipgloss.Width(entry.keys+"  "+entry.action) <= width {
 				lines = append(lines, keyStyle.Render(entry.keys)+"  "+dimStyle.Render(entry.action))
 				continue
 			}
-			lines = append(lines, keyStyle.Render(truncate(entry.keys, width)))
-			lines = append(lines, "  "+dimStyle.Render(truncate(entry.action, max(1, width-2))))
+			wrap(entry.keys, "", keyStyle)
+			wrap(entry.action, "  ", dimStyle)
 		}
 	}
 	return lines

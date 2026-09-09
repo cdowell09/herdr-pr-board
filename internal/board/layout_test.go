@@ -323,8 +323,11 @@ func TestHelpOverlayKeepsTheFilterLineBehavior(t *testing.T) {
 	}
 }
 
-func TestHelpOverlayFitsNarrowTerminalsAndScrollsToTheLastControl(t *testing.T) {
-	for _, size := range [][2]int{{tierNarrow, 24}, {30, 10}, {80, 24}, {120, 40}} {
+func TestHelpOverlayFitsNarrowTerminalsAndKeepsEveryControl(t *testing.T) {
+	// Wrapping keeps every character, but it can consume a space at a break.
+	// Comparing without spaces makes the check exact at every width.
+	compact := func(value string) string { return strings.ReplaceAll(value, " ", "") }
+	for _, size := range [][2]int{{tierNarrow, 24}, {30, 10}, {12, 6}, {80, 24}, {120, 40}} {
 		model := layoutModel(t, size[0])
 		model.height = size[1]
 		model.helpOverlay = true
@@ -338,6 +341,20 @@ func TestHelpOverlayFitsNarrowTerminalsAndScrollsToTheLastControl(t *testing.T) 
 		for _, line := range rendered {
 			if got := lipgloss.Width(stripANSI(line)); got > size[0] {
 				t.Fatalf("%v: overlay line is %d cells wide: %q", size, got, line)
+			}
+		}
+		var plain strings.Builder
+		for _, line := range lines {
+			plain.WriteString(stripANSI(line))
+		}
+		content := compact(plain.String())
+		for _, section := range helpSections {
+			for _, entry := range section.entries {
+				for _, want := range []string{section.title, entry.keys, entry.action} {
+					if !strings.Contains(content, compact(want)) {
+						t.Fatalf("%v: overlay lost %q", size, want)
+					}
+				}
 			}
 		}
 		if last := stripANSI(lines[len(lines)-1]); !strings.Contains(stripANSI(model.View()), last) {
