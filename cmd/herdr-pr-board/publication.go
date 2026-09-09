@@ -97,6 +97,28 @@ func (p *publicationOptions) modes() int {
 	return count
 }
 
+// repositorySettingsJSON is the version-one wire representation for --repository-settings
+// output. It stays separate from config.Repository so wire keys do not depend on Go field
+// names, matching the wire-type separation convention in cmd/herdr-pr-board/snapshot.go.
+type repositorySettingsJSON struct {
+	Name           string                     `json:"name"`
+	Reviewer       string                     `json:"reviewer"`
+	AutoLaunch     bool                       `json:"auto_launch"`
+	PublishActions []config.PublicationAction `json:"publish_actions"`
+	AutoPublish    config.PublicationAction   `json:"auto_publish"`
+}
+
+func wireRepositorySettings(repo config.Repository) repositorySettingsJSON {
+	actions := repo.PublishActions
+	if actions == nil {
+		actions = []config.PublicationAction{}
+	}
+	return repositorySettingsJSON{
+		Name: repo.Name, Reviewer: repo.Reviewer, AutoLaunch: repo.AutoLaunch,
+		PublishActions: actions, AutoPublish: repo.AutoPublish,
+	}
+}
+
 func configureRepository(path string, p *publicationOptions, stdout, stderr io.Writer) int {
 	cfg, err := config.LoadExisting(path)
 	if err != nil {
@@ -160,7 +182,7 @@ func configureRepository(path string, p *publicationOptions, stdout, stderr io.W
 	if _, err := config.SaveRepository(ctx, path, dir, repo, reviewerEdit, expected, nil); err != nil {
 		return fail(stderr, err)
 	}
-	if err := json.NewEncoder(stdout).Encode(repo); err != nil {
+	if err := json.NewEncoder(stdout).Encode(wireRepositorySettings(repo)); err != nil {
 		return fail(stderr, err)
 	}
 	return 0

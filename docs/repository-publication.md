@@ -100,6 +100,16 @@ New repositories default to manual launches and local findings.
 Use `--set-reviewer pi` when the Pi definition already exists.
 Set `HERDR_PLUGIN_STATE_DIR` to an absolute installation state directory before saving settings.
 
+`--repository-settings` prints the saved settings as one JSON document on standard output:
+
+```json
+{"name":"owner/repository","reviewer":"pi","auto_launch":false,"publish_actions":["comment"],"auto_publish":""}
+```
+
+Keys use snake_case, matching every other JSON surface.
+An empty `publish_actions` list prints as `[]`.
+An empty `auto_publish` string means no automatic publication action.
+
 You can also edit the active TOML file:
 
 ```toml

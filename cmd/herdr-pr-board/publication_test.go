@@ -25,7 +25,7 @@ func TestRepositorySettingsCommandPreservesUnspecifiedPermissions(t *testing.T) 
 	if code := run([]string{"--config", path, "--repository-settings", "acme/api", "--auto-launch=false"}, &stdout, &stderr); code != 0 {
 		t.Fatalf("code=%d stderr=%s", code, &stderr)
 	}
-	var repo config.Repository
+	var repo repositorySettingsJSON
 	if err := json.Unmarshal(stdout.Bytes(), &repo); err != nil {
 		t.Fatal(err)
 	}
@@ -43,6 +43,20 @@ func TestRepositorySettingsCommandPreservesUnspecifiedPermissions(t *testing.T) 
 	stderr.Reset()
 	if code := run([]string{"--publication-history", "https://github.com/acme/api/pull/7"}, &stdout, &stderr); code != 0 || !strings.Contains(stdout.String(), `"attempts":[]`) {
 		t.Fatalf("code=%d stdout=%s stderr=%s", code, &stdout, &stderr)
+	}
+}
+
+func TestRepositorySettingsCommandPrintsSnakeCaseJSON(t *testing.T) {
+	t.Setenv("HERDR_PLUGIN_STATE_DIR", t.TempDir())
+	path := writeConfig(t, validConfigTOML+"\n[[reviewers]]\nid = \"agent\"\ncommand = [\"agent\"]\n")
+	var stdout, stderr bytes.Buffer
+	args := []string{"--config", path, "--repository-settings", "acme/api", "--set-reviewer", "agent"}
+	if code := run(args, &stdout, &stderr); code != 0 {
+		t.Fatalf("code=%d stderr=%s", code, &stderr)
+	}
+	want := `{"name":"acme/api","reviewer":"agent","auto_launch":false,"publish_actions":[],"auto_publish":""}` + "\n"
+	if stdout.String() != want {
+		t.Fatalf("stdout=%q want=%q", stdout.String(), want)
 	}
 }
 
