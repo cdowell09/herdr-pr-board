@@ -7,8 +7,8 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"os"
 	"os/exec"
-	"path/filepath"
 	"time"
 
 	"github.com/cdowell09/herdr-pr-board/internal/cli"
@@ -63,13 +63,13 @@ func checkInspection(data []byte, config string) error {
 	if len(layers) != 1 || layers[0].Role != "user" || layers[0].Note != "" {
 		return errors.New("grok discovered configuration outside the isolated review settings")
 	}
-	// macOS canonicalizes /tmp to /private/tmp in native reports.
-	actual, err := filepath.EvalSymlinks(layers[0].Path)
+	// Native reports can use another spelling of the same file on Windows or macOS.
+	actual, err := os.Stat(layers[0].Path)
 	if err != nil {
 		return err
 	}
-	expected, err := filepath.EvalSymlinks(config)
-	if err != nil || actual != expected {
+	expected, err := os.Stat(config)
+	if err != nil || !os.SameFile(actual, expected) {
 		return errors.New("grok did not load the isolated review settings")
 	}
 	if report.Permissions == nil || report.Permissions.ManagedSettingsExists == nil || *report.Permissions.ManagedSettingsExists ||

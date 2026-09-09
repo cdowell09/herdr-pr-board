@@ -35,6 +35,17 @@ func TestInspectionRejectsConfigurationOutsideReview(t *testing.T) {
 	if err := check(inspection(config)); err != nil {
 		t.Fatal(err)
 	}
+	t.Run("same file with different case", func(t *testing.T) {
+		alias := filepath.Join(filepath.Dir(config), "CONFIG.TOML")
+		if _, err := os.Stat(alias); os.IsNotExist(err) {
+			t.Skip("filesystem distinguishes path case")
+		} else if err != nil {
+			t.Fatal(err)
+		}
+		if err := check(inspection(alias)); err != nil {
+			t.Fatalf("same configuration file rejected: %v", err)
+		}
+	})
 	for name, change := range map[string]func(map[string]any){
 		"unsupported version": func(r map[string]any) { r["grokVersion"] = "1.0.25" },
 		"machine policy": func(r map[string]any) {

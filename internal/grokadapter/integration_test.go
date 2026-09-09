@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -54,12 +55,12 @@ func fixtureTool(tool, dir string, args []string) error {
 				promptPath = args[i+1]
 			}
 		}
-		cwd, err := os.Getwd()
+		current, err := os.Stat(".")
 		if err != nil {
 			return err
 		}
-		actual, err := filepath.EvalSymlinks(filepath.Dir(promptPath))
-		if err != nil || actual != cwd {
+		expected, err := os.Stat(filepath.Dir(promptPath))
+		if err != nil || !os.SameFile(current, expected) {
 			return fmt.Errorf("runtime cwd is not the isolated session: %v", err)
 		}
 		prompt, err := os.ReadFile(promptPath)
@@ -117,7 +118,8 @@ func TestRunUsesSharedCapturedRevisionAndSelectedInstructions(t *testing.T) {
 			continue
 		}
 		if err != nil {
-			t.Fatal(err)
+			diagnostics, _ := os.ReadFile(filepath.Join(dir, "grok-stderr.log"))
+			t.Fatalf("%v\n%s", err, diagnostics)
 		}
 		data, err := os.ReadFile(in.ResultPath)
 		if err != nil {
@@ -143,5 +145,28 @@ func TestRunUsesSharedCapturedRevisionAndSelectedInstructions(t *testing.T) {
 	leftovers, err := filepath.Glob(filepath.Join(dir, "grok-*"))
 	if err != nil || len(leftovers) != 2 { // Only the durable events and diagnostics remain.
 		t.Fatalf("unexpected Grok temporary files: %v error=%v", leftovers, err)
+	}
+}
+
+func TestFixtureAcceptsDirectoryCaseAliases(t *testing.T) {
+	dir := t.TempDir()
+	session := filepath.Join(dir, "MixedCaseSession")
+	if err := os.Mkdir(session, 0700); err != nil {
+		t.Fatal(err)
+	}
+	alias := filepath.Join(dir, "mixedcasesession")
+	if _, err := os.Stat(alias); os.IsNotExist(err) {
+		t.Skip("filesystem distinguishes path case")
+	} else if err != nil {
+		t.Fatal(err)
+	}
+	writeTestFile(t, filepath.Join(session, "prompt.txt"), "selected instructions")
+	writeTestFile(t, filepath.Join(dir, "response"), "native fixture response")
+	t.Setenv("PR_BOARD_GROK_TEST_DIR", dir)
+	t.Setenv("GORACE", os.Getenv("GORACE")+" atexit_sleep_ms=0")
+	cmd := exec.Command(testutil.Executable(t, dir, "grok"), "--prompt-file", filepath.Join(alias, "prompt.txt"))
+	cmd.Dir = session
+	if output, err := cmd.CombinedOutput(); err != nil {
+		t.Fatalf("same directory rejected: %v\n%s", err, output)
 	}
 }
