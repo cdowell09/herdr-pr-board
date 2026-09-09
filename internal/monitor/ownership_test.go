@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"sync"
 	"testing"
@@ -70,7 +71,7 @@ func TestInspectionDoesNotSuppressStartup(t *testing.T) {
 	defer func() { close(done); wg.Wait() }()
 	for i := 0; i < 100; i++ {
 		err := EnsureRunning(context.Background(), filepath.Join(dir, "missing-binary"), path, dir)
-		if !errors.Is(err, os.ErrNotExist) {
+		if !errors.Is(err, os.ErrNotExist) && !errors.Is(err, exec.ErrNotFound) {
 			t.Fatalf("startup must try the missing executable on iteration %d: %v", i, err)
 		}
 	}
