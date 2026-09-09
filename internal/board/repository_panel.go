@@ -42,6 +42,12 @@ type repositorySetup struct {
 	offset    int
 }
 
+// Monitor state matters only when this repository or the global views ask for
+// automatic launches. Manual reviews need no monitor.
+func (s *repositorySetup) automationSelected() bool {
+	return s.repo.AutoLaunch || len(s.automatic.Selected) > 0
+}
+
 type repositorySettingsMsg struct {
 	url   string
 	cfg   config.Config

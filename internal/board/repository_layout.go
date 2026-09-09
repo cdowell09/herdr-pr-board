@@ -88,12 +88,17 @@ func (m Model) repositoryContent() []repositoryLine {
 		section("New reviewer: " + builtin.ID)
 		add("Install and authenticate the agent CLI before running a review.", -1)
 	}
-	section("Monitor")
-	if observed := m.reviewPanel.monitor.ObservedAt; !observed.IsZero() {
-		add("Latest observation: "+observed.Format(time.RFC3339), -1)
+	automatic := s.automationSelected()
+	if automatic || m.reviewPanel.message != "" || m.monitorError != "" || s.saving {
+		section("Monitor")
 	}
-	if message := m.reviewPanel.monitor.Message; message != "" {
-		add(message, -1)
+	if automatic {
+		if observed := m.reviewPanel.monitor.ObservedAt; !observed.IsZero() {
+			add("Latest observation: "+observed.Format(time.RFC3339), -1)
+		}
+		if message := m.reviewPanel.monitor.Message; message != "" {
+			add(message, -1)
+		}
 	}
 	if m.reviewPanel.message != "" {
 		add(m.reviewPanel.message, -1)
@@ -104,10 +109,12 @@ func (m Model) repositoryContent() []repositoryLine {
 	if s.saving {
 		add("Saving…", -1)
 	}
-	if command := m.monitorCommandLines(); len(command) > 0 {
-		add("Run in another terminal:", -1)
-		for _, line := range command {
-			lines = append(lines, repositoryLine{line, -1})
+	if automatic {
+		if command := m.monitorCommandLines(); len(command) > 0 {
+			add("Run in another terminal:", -1)
+			for _, line := range command {
+				lines = append(lines, repositoryLine{line, -1})
+			}
 		}
 	}
 	return lines
@@ -115,12 +122,19 @@ func (m Model) repositoryContent() []repositoryLine {
 
 // The same viewport defines visible lines and clickable row coordinates.
 func (m Model) repositoryViewport() (header []string, content []repositoryLine, start, size int) {
+	s := m.reviewPanel.setup
 	status := m.reviewPanel.monitor.State
 	if status == "" {
 		status = "unknown"
 	}
+	narrow, automatic := m.width < 60, s.automationSelected()
 	summary := "Setup ready; save to apply"
-	if reason := automaticSetupWait(m.reviewPanel.setup.repo, m.reviewPanel.setup.automatic.Selected, m.reviewPanel.monitor); reason != "" {
+	switch reason := automaticSetupWait(s.repo, s.automatic.Selected, m.reviewPanel.monitor); {
+	case !s.repo.AutoLaunch && narrow:
+		summary = "Ready · Enter save · n run"
+	case !s.repo.AutoLaunch:
+		summary = "Manual reviews ready. Press Enter to save, then n to run."
+	case reason != "":
 		summary = "Waiting: " + reason
 	}
 	if m.reviewPanel.message != "" {
@@ -129,13 +143,21 @@ func (m Model) repositoryViewport() (header []string, content []repositoryLine, 
 	if m.monitorError != "" {
 		summary = m.monitorError
 	}
-	if m.reviewPanel.setup.saving {
+	if s.saving {
 		summary = "Saving settings…"
 	}
-	header = []string{titleStyle.Render(truncate("Repository settings", m.width)), urlStyle.Render(truncate(reviewText(m.reviewPanel.pr.URL), m.width)), truncate("Monitor: "+string(status), m.width), truncate(reviewText(summary), m.width)}
-	if m.width < 60 {
-		header = []string{titleStyle.Render(truncate("Settings · monitor "+string(status), m.width)), header[1], header[3]}
+	title := "Repository settings"
+	if narrow {
+		title = "Settings"
+		if automatic {
+			title += " · monitor " + string(status)
+		}
 	}
+	header = []string{titleStyle.Render(truncate(title, m.width)), urlStyle.Render(truncate(reviewText(m.reviewPanel.pr.URL), m.width))}
+	if automatic && !narrow {
+		header = append(header, truncate("Monitor: "+string(status), m.width))
+	}
+	header = append(header, truncate(reviewText(summary), m.width))
 	height := max(3, m.height)
 	help := m.repositoryHelp()
 	header = header[:min(len(header), max(0, height-len(help)-1))]

@@ -109,6 +109,8 @@ Custom programs keep their own instruction interface.
 Press `v` to open the selected PR's review history.
 The panel opens repository setup when the repository has no saved settings.
 Choose a reviewer and save the settings.
+The setup header shows that manual reviews are ready when automatic launches are off.
+It names Enter to save the settings and `n` to run the review.
 Press `n` in the review panel to start the review.
 
 The panel shows the latest review before previous reviews.
@@ -163,7 +165,7 @@ Permission alone does not enable automatic posting.
 Select **After review: Keep local** to publish findings only with manual controls.
 See [repository setup and publication](repository-publication.md) for permissions, automatic posting, and failure recovery.
 
-The panel shows the monitor state and missing setup requirements.
+The panel shows the monitor state and missing setup requirements when automatic launches or global views are on.
 Use PgUp and PgDn to scroll through settings and the monitor command.
 Press Enter to save, or Esc to discard changes.
 Successful saves start a stopped monitor when automatic views and repository launches are enabled.
