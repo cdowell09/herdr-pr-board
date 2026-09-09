@@ -256,7 +256,7 @@ func TestInstructionFilesRoundTripThroughBoardAndTOML(t *testing.T) {
 				next, _ := m.Update(tea.KeyMsg{Type: kind, Runes: []rune(value)})
 				m = next.(Model)
 			}
-			s.row = repositoryPromptRow
+			s.row = s.promptRow()
 			key(tea.KeySpace, "")
 			key(tea.KeyCtrlU, "")
 			key(tea.KeyRunes, prompt)
@@ -267,7 +267,7 @@ func TestInstructionFilesRoundTripThroughBoardAndTOML(t *testing.T) {
 			if data, err := os.ReadFile(m.configPath); err != nil || string(data) != before {
 				t.Fatal("accepting a path saved settings before Enter save")
 			}
-			s.row = repositorySkillRow
+			s.row = s.skillRow()
 			m.revealRepositoryRow()
 			next, _ := m.Update(tea.MouseMsg{Button: tea.MouseButtonLeft, Action: tea.MouseActionPress, X: 1, Y: renderedRepositoryLine(t, m, "Skill file:")})
 			m = next.(Model)
@@ -310,7 +310,7 @@ func TestInstructionEditorKeepsCursorVisibleAndCancelsDraft(t *testing.T) {
 	m := onboardingModel(t, 30, 10, 3)
 	s := m.reviewPanel.setup
 	s.repo.Reviewer = "pi"
-	s.row = repositoryPromptRow
+	s.row = s.promptRow()
 	s.toggle()
 	path := strings.Repeat("日本語/", 30) + "left"
 	for _, key := range []tea.KeyMsg{{Type: tea.KeyRunes, Runes: []rune(path)}, {Type: tea.KeyRunes, Runes: []rune("q")}, {Type: tea.KeySpace}} {

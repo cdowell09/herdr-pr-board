@@ -98,7 +98,7 @@ func TestOnboardingManyViewsRemainSelectableAndScrollable(t *testing.T) {
 		if len(setup.automatic.Selected) != 0 || setup.repo.AutoPublish != "" {
 			t.Fatal("setup silently selected automation")
 		}
-		for row := repositoryViewsRow; row < len(setup.rows()); row++ {
+		for row := repositoryViewsRow; row < setup.promptRow(); row++ {
 			setup.row = row
 			m.revealRepositoryRow()
 			header, content, start, visible := m.repositoryViewport()

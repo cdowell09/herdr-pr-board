@@ -98,6 +98,7 @@ See [agent compatibility](docs/agent-compatibility.md) for native version requir
 
 Select a PR and press `v`.
 The panel opens repository setup when the repository has no saved settings.
+The panel groups settings under Reviews, GitHub permissions, Automatic posting, Global views, and Advanced.
 Choose a reviewer and save the settings.
 The setup header shows that manual reviews are ready when automatic launches are off.
 Press `n` in the review panel to run the review.
@@ -108,7 +109,8 @@ The specification comes from the PR body and linked closing issues.
 Missing required evidence blocks the review.
 Defaults require no custom instruction files.
 
-Select **Prompt file** and **Skill file** during setup to customize the review:
+The setup panel puts **Prompt file** and **Skill file** last, under **Advanced**.
+Select those two rows to customize the review:
 
 - A custom prompt replaces the default review criteria.
 - An optional skill adds compatible requirements.

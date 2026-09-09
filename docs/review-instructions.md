@@ -24,9 +24,10 @@ Select a PR and press `v`.
 The first review action opens setup for a repository without saved settings.
 Press `s` to change existing repository settings.
 Select a reviewer profile under Reviews.
-The panel explains the default review and the selected profile's scope.
 
+The panel keeps the file rows last, under **Advanced**.
 Select **Prompt file** or **Skill file** with the arrow keys.
+The panel explains the default review and the selected profile's scope above those rows.
 Press Space, or click the row, to edit its path.
 Type or paste the path.
 Use Left, Right, Home, End, Backspace, or Delete to edit the path.
