@@ -1,13 +1,13 @@
 package monitor
 
 import (
+	"context"
 	"errors"
 	"os"
 	"path/filepath"
 	"time"
 
 	"github.com/cdowell09/herdr-pr-board/internal/config"
-	"github.com/cdowell09/herdr-pr-board/internal/localstate"
 )
 
 type State string
@@ -41,15 +41,13 @@ func Inspect(dir string, cfg config.Config) Status {
 	if !info.IsDir() {
 		return Status{State: Unknown, Message: "state path must be a directory"}
 	}
-	owner, err := localstate.TryLock(filepath.Join(dir, "monitor.lock"))
-	if err == nil {
-		owner.Close()
+	ctx, cancel := context.WithTimeout(context.Background(), time.Second)
+	defer cancel()
+	running, err := hasOwner(ctx, dir)
+	if errors.Is(err, os.ErrNotExist) || err == nil && !running {
 		return Status{State: Stopped, Message: "start the monitor in another terminal"}
 	}
-	if errors.Is(err, os.ErrNotExist) {
-		return Status{State: Stopped, Message: "start the monitor in another terminal"}
-	}
-	if !errors.Is(err, localstate.ErrLocked) {
+	if err != nil {
 		return Status{State: Unknown, Message: err.Error()}
 	}
 	status := Status{State: Running}
