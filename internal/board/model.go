@@ -732,29 +732,32 @@ func (m Model) renderTable(lay boardLayout) string {
 func (m Model) renderFooter() string {
 	help := m.footerHelpLines()
 
-	meta := ""
+	// Collect the meta parts, then join them. Prefixing a separator to each
+	// part leaves a leading separator when an earlier part is absent.
+	var parts []string
+	if m.monitorError != "" {
+		parts = append(parts, reviewText(m.monitorError))
+	}
 	if len(m.reviewJobs) > 0 {
-		meta = fmt.Sprintf("%d review requests · v reviews", len(m.reviewJobs))
+		parts = append(parts, fmt.Sprintf("%d review requests · v reviews", len(m.reviewJobs)))
 	}
 	freshness := m.currentView().UpdatedAt
 	if !freshness.IsZero() {
-		meta += fmt.Sprintf(" · updated %s", relativeTime(freshness))
+		parts = append(parts, "updated "+relativeTime(freshness))
 	}
 	if stale(m.currentView()) {
-		meta += " · stale"
+		parts = append(parts, "stale")
 	}
 	if m.rates.Search.Limit > 0 {
-		meta += fmt.Sprintf(" · Search %d/%d", m.rates.Search.Remaining, m.rates.Search.Limit)
+		parts = append(parts, fmt.Sprintf("Search %d/%d", m.rates.Search.Remaining, m.rates.Search.Limit))
 	}
 	if m.rates.GraphQL.Limit > 0 {
-		meta += fmt.Sprintf(" · GraphQL %d/%d", m.rates.GraphQL.Remaining, m.rates.GraphQL.Limit)
+		parts = append(parts, fmt.Sprintf("GraphQL %d/%d", m.rates.GraphQL.Remaining, m.rates.GraphQL.Limit))
 	}
 	if m.warning != "" {
-		meta += " · " + m.warning
+		parts = append(parts, m.warning)
 	}
-	if m.monitorError != "" {
-		meta = reviewText(m.monitorError) + " · " + meta
-	}
+	meta := strings.Join(parts, " · ")
 	return strings.Join(append(help, warningStyle.Render(truncate(meta, m.width))), "\n")
 }
 

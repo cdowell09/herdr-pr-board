@@ -258,6 +258,26 @@ func TestFooterNamesShortcutContexts(t *testing.T) {
 	}
 }
 
+func TestFooterMetaLineStartsWithoutASeparator(t *testing.T) {
+	model := layoutModel(t, 200)
+	model.views[model.active].UpdatedAt = time.Now()
+	metaLine := func(m Model) string {
+		lines := strings.Split(stripANSI(m.renderFooter()), "\n")
+		return lines[len(lines)-1]
+	}
+	if got, want := metaLine(model), "updated now"; got != want {
+		t.Fatalf("meta line with no review jobs = %q, want %q", got, want)
+	}
+	model.reviewJobs = map[string]string{"https://github.com/acme/web-ui/pull/42": "running"}
+	if got, want := metaLine(model), "1 review requests · v reviews · updated now"; got != want {
+		t.Fatalf("meta line with one review job = %q, want %q", got, want)
+	}
+	model.monitorError = "monitor stopped"
+	if got, want := metaLine(model), "monitor stopped · 1 review requests · v reviews · updated now"; got != want {
+		t.Fatalf("meta line with a monitor error = %q, want %q", got, want)
+	}
+}
+
 func TestFooterWrapsWithinWidthAndHeight(t *testing.T) {
 	for _, width := range []int{40, 60, 80, 120, 200} {
 		model := layoutModel(t, width)
