@@ -14,7 +14,8 @@ PR Board brings GitHub searches, CI status, and agent reviews into one reusable 
 ## Install and open
 
 Install Herdr, Git, GitHub CLI (`gh`), and Go 1.24 or later.
-Herdr builds the plugin from source during installation.
+Herdr plugins build from source on your machine.
+The build step needs a working Go installation.
 
 | Platform | Requirements |
 | --- | --- |
