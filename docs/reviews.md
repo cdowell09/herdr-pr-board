@@ -134,6 +134,7 @@ The panel checks shared review slots each second.
 | `j`, `k`, `↑`, `↓`, mouse wheel | Scroll through findings and diagnostics. |
 | `g`, `Home`, `G`, `End` | Move to the first or last history line. |
 | `o`, click the URL | Open the PR in a browser. |
+| `?` | Open or close the keyboard help. |
 | `Esc`, `v` | Return to the board. |
 | `q`, `Ctrl+C` | Close the board and stop its review requests. |
 

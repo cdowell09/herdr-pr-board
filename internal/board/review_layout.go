@@ -183,7 +183,7 @@ func (m Model) reviewLines() []string {
 func shortRevision(value string) string { r := []rune(value); return string(r[:min(8, len(r))]) }
 
 func (m Model) reviewViewport() ([]string, int) {
-	text := "n run · N rerun · s settings · c comment · a approve · x changes · j/k scroll · o open · Esc back · q quit"
+	text := "n run · N rerun · s settings · c comment · a approve · x changes · j/k scroll · o open · ? help · Esc back · q quit"
 	stopControl := ""
 	if target, ok := m.reviewPanel.stopTarget(); ok {
 		stopControl = "t stop " + shortRevision(target.ID)
