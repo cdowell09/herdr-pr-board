@@ -17,9 +17,9 @@ gh auth status
 
 ### The install fails during the build step
 
-Herdr runs the plugin's build commands during install. PR Board's build command runs `go build`. Go 1.24 or later must already be installed.
+Herdr runs the plugin's build commands during install. PR Board's build command runs `go build`. You must install Go 1.24 or later before this step runs.
 
-If Go is missing or too old, the build step fails. `herdr plugin install` reports a build error and stops.
+If Go is missing, the build step fails. An older Go version can also fail the build. `herdr plugin install` reports a build error and stops.
 
 Check your Go version:
 
