@@ -10,7 +10,10 @@ import (
 func checkPolicyDirectory(path string) error {
 	entries, err := os.ReadDir(path)
 	if os.IsNotExist(err) {
-		return nil
+		// Windows can report a regular file as a missing directory.
+		if _, statErr := os.Stat(path); os.IsNotExist(statErr) {
+			return nil
+		}
 	}
 	if err != nil {
 		return fmt.Errorf("cannot exclude Copilot machine policy hooks: %w", err)
