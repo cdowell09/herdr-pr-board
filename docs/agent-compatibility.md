@@ -13,7 +13,7 @@ See [manual reviews](reviews.md) for launch, cancellation, history, and publicat
 
 ## Available adapters
 
-| Agent | Verified CLI version | Executable | Reviewer flag |
+| Agent | Verified native version | Executable or SDK | Reviewer flag |
 | --- | --- | --- | --- |
 | Oh My Pi | Exactly 18.1.14 | `omp` | `--omp-reviewer` |
 | Kimi | 1.50.0 | `kimi` | `--kimi-reviewer` |
@@ -21,6 +21,10 @@ See [manual reviews](reviews.md) for launch, cancellation, history, and publicat
 | Qwen Code | 0.23.0 | `qwen` | `--qwen-reviewer` |
 | GitHub Copilot CLI | Exactly 1.0.83 | `copilot` | `--copilot-reviewer` |
 | Mastra Code | Exactly 0.39.0 | `mastracode` | `--mastracode-reviewer` |
+| Hermes | Exactly release 2026.9.7 | Hermes environment Python | `--hermes-reviewer` |
+| Cursor | Exactly SDK 1.0.31 | `@cursor/sdk` | `--cursor-reviewer` |
+| Google Antigravity CLI | Exactly 1.1.28 | `agy` | `--antigravity-reviewer` |
+| Grok Build | Exactly 1.0.24 | `grok` | `--grok-reviewer` |
 
 Use exact versions where the table says `Exactly`.
 Other listed versions are minimum verified versions.
@@ -28,7 +32,7 @@ Version guards protect isolation controls and terminal protocols that depend on 
 Unsupported options or output fail the review.
 PR Board does not retry with weaker isolation.
 
-Authenticate the selected CLI before starting a review.
+Authenticate the selected native CLI or SDK before starting a review.
 The adapters do not read or copy credential files.
 Follow the selected program's installation and authentication guide:
 
@@ -38,6 +42,10 @@ Follow the selected program's installation and authentication guide:
 - Qwen Code: [installation and authentication](https://qwenlm.github.io/qwen-code-docs/en/users/quickstart/).
 - GitHub Copilot CLI: [installation and login](https://github.com/github/copilot-cli).
 - Mastra Code: [official package](https://www.npmjs.com/package/mastracode/v/0.39.0).
+- Hermes: [installation](https://hermes-agent.nousresearch.com/docs/getting-started/installation).
+- Cursor: [SDK installation and authentication](https://cursor.com/docs/sdk/typescript).
+- Antigravity: [installation and authentication](https://antigravity.google/docs/cli/install/).
+- Grok Build: [getting started](https://docs.x.ai/build/overview).
 
 Install Oh My Pi version 18.1.14.
 For Kimi, install the `kimi-cli` distribution.
@@ -67,10 +75,12 @@ Alternatively, use a setup command:
 bin/herdr-pr-board --repository-settings owner/repository --use-qwen-reviewer
 ```
 
-Replace `qwen` with another executable name from the table for another adapter.
+Replace `qwen` with the selected reviewer flag prefix, such as `antigravity`.
 Use `--set-reviewer ID` for an existing named profile.
 Each adapter accepts matching `--AGENT-executable`, `--AGENT-prompt`, and `--AGENT-skill` options.
-Replace `AGENT` with the executable name from the table.
+Replace `AGENT` with the selected reviewer flag prefix.
+The Cursor executable option selects an SDK entrypoint.
+The Hermes executable option selects a Python interpreter.
 Each option requires its matching reviewer flag.
 Use profile fields for normal board configuration:
 
@@ -204,6 +214,139 @@ and [headless contract](https://github.com/mastra-ai/mastra/blob/75a962527507424
 Native offline probes verify direct completion, read-tool completion, truncation, and unknown or missing provider stops.
 Regression tests also verify large output delivery and dependency guards.
 
+### Hermes
+
+Install Hermes release 2026.9.7 and configure its native authentication and model.
+Use Python 3.11, 3.12, or 3.13, as required by that release.
+The adapter uses the installed Python interface.
+The selected Python interpreter must import the installed Hermes package.
+The default interpreter is `python3`.
+Set `--hermes-executable` to the Hermes environment's Python path when necessary.
+On Windows, select that environment's `Scripts/python.exe`.
+Do not select the `hermes` CLI launcher for this option.
+
+For example, configure a profile with the interpreter path:
+
+```toml
+[[reviewers]]
+id = "hermes"
+command = ["/absolute/path/to/herdr-pr-board", "--hermes-reviewer", "--hermes-executable", "/path/to/hermes/.venv/bin/python"]
+```
+
+Replace both paths with the installed paths.
+Hermes resolves the configured model and authentication inside its own runtime.
+The adapter does not read or copy credential files.
+The adapter requires an in-process provider transport and the built-in compressor context engine.
+External agent transports and MoA are not supported.
+
+Native safe mode excludes hooks, plugins, MCP servers, and external integrations.
+Explicit constructor settings exclude context files, memory, and background review.
+Only file reads and searches remain available.
+A separate control directory prevents automatic nested instruction discovery during captured-file reads.
+Python isolated mode excludes ambient startup options and checkout imports.
+
+A successful review requires native completion and matching final assistant text.
+Failures, partial results, interruption, transformed responses, and preview responses fail the review.
+The shared runner still validates the exact captured revision and review result.
+
+The contract uses the [Python integration interface](https://hermes-agent.nousresearch.com/docs/developer-guide/programmatic-integration)
+and [2026.9.7 source](https://github.com/NousResearch/hermes-agent/tree/v2026.9.7).
+Native local probes verify captured-file reads, customization exclusion, and transport truncation.
+Regression tests verify completion flags, cancellation, version guards, and selected instructions.
+
+### Cursor
+
+The adapter uses the public `@cursor/sdk` package, version 1.0.31.
+Use Node.js 22.13 or later.
+Install the pinned SDK:
+
+```sh
+npm install --global @cursor/sdk@1.0.31
+```
+
+Authenticate through the SDK's native browser login:
+
+```sh
+cd "$(npm root -g)/@cursor/sdk"
+node --input-type=module -e 'import { Cursor } from "./dist/esm/index.js"; await Cursor.auth.login();'
+```
+
+These commands also work in PowerShell.
+The SDK stores this login in `~/.cursor/sdk/auth.json`.
+The SDK login is separate from the Cursor CLI and application logins.
+An existing `CURSOR_API_KEY` also works through native SDK authentication.
+The adapter does not read or copy either credential.
+
+The default adapter locates the global package with `npm root -g`.
+For another installation location, set `--cursor-executable` to the package's `dist/esm/index.js` file.
+The adapter uses `composer-2.5` by default.
+Set `CURSOR_MODEL` before starting Herdr to select another available model.
+
+Empty SDK setting sources exclude user, project, team, machine policy, and plugin customizations.
+The session permits only read, directory listing, grep, and glob tools.
+It uses a fresh local store and disables agent retries.
+A successful review requires SDK completion, one turn ending, and no pending tools.
+Errors, cancellation, and incomplete turns fail the review.
+
+The contract uses the [official SDK reference](https://cursor.com/docs/sdk/typescript)
+and [1.0.31 package](https://www.npmjs.com/package/@cursor/sdk/v/1.0.31).
+Native local probes verify nested file reads, customization exclusion, native login, cancellation, and completion failures.
+A control run confirms that enabled sources discover instructions and execute generated hooks and MCP commands.
+
+### Google Antigravity CLI
+
+Install and authenticate Antigravity CLI 1.1.28.
+The default executable is `agy`.
+The adapter retains the native CLI data directory and model preference.
+It uses separate customization and data directory controls.
+These undocumented controls require the exact verified version.
+On Windows, runtime state and the native user directory must use the same volume.
+
+A generated agent disables customization and MCP inheritance.
+The agent permits file reads and grep searches.
+The native task metadata tool also remains available.
+Personal, project, and legacy customization sources remain excluded.
+
+Native `statusLine.command` and `title.command` settings execute during headless operation.
+The adapter refuses to run when either command is configured.
+It does not change native settings.
+
+The adapter requires the selected agent, matching conversation, completed steps, and a successful terminal result.
+It returns only the final completed assistant response.
+Native timeouts can report success with incomplete text.
+The adapter rejects those results and keeps the shared review timeout authoritative.
+
+The contract uses the [headless protocol](https://antigravity.google/docs/cli/headless/)
+and [1.1.28 release](https://github.com/google-antigravity/antigravity-cli/blob/1.1.28/CHANGELOG.md).
+Native local probes verify generated customization exclusion and a complete source-file read.
+Regression fixtures include native timeouts with empty and valid-looking partial responses.
+
+### Grok Build
+
+Install and authenticate Grok Build 1.0.24.
+The adapter uses an isolated native configuration and an empty repository for discovery.
+Read tools access the captured checkout through its absolute path.
+Only file reads, grep searches, and directory listings remain available.
+These tools retain Grok's native read scope.
+The native runtime retains ownership of login storage through `GROK_AUTH_PATH`.
+The adapter does not read or copy that storage.
+
+A native `inspect --json` preflight checks the effective configuration before each review.
+It rejects inherited configuration, managed settings, instructions, hooks, plugins, skills, MCP servers, and language servers.
+It also checks compatibility-source exclusions and the exact CLI version.
+The adapter refuses to run when the inspector cannot prove isolation.
+
+A successful review requires matching initialization, final assistant text, and a successful result from one session.
+Both the assistant response and the result must report `end_turn`.
+Errors, partial output, unexpected events, and unfinished tools fail the review.
+Grok determines completion for the upstream model stream.
+PR Board validates Grok's terminal result and the captured review contract.
+
+The contract uses the native 1.0.24 inspector and event protocol.
+See [headless scripting](https://docs.x.ai/build/cli/headless-scripting)
+and [CLI reference](https://docs.x.ai/build/cli/reference).
+Native local probes verify stored authentication, isolated discovery, and a complete captured-file read.
+
 ## Assessed agents without a built-in adapter
 
 These findings apply to the listed versions or source revisions.
@@ -289,96 +432,3 @@ Evidence: [CLI documentation](https://kilo.ai/docs/code-with-ai/platforms/cli),
 [array merging](https://github.com/Kilo-Org/kilocode/blob/v7.5.16/packages/opencode/src/config/config.ts#L72),
 [MCP initialization](https://github.com/Kilo-Org/kilocode/blob/v7.5.16/packages/opencode/src/mcp/index.ts#L530),
 and [plugin exclusion](https://github.com/Kilo-Org/kilocode/blob/v7.5.16/packages/opencode/src/plugin/index.ts#L189).
-
-### Hermes 2026.9.7
-
-Hermes provides two unattended paths with different contracts.
-Top-level `-z --usage-file` exports explicit `completed` and `failed` fields.
-However, this path constructs an agent without the context and memory exclusion arguments.
-Those arguments default to false.
-The safe-mode environment does not change those constructor defaults.
-
-The alternative `chat --safe-mode --cli -Q --query-file -` passes the exclusion arguments correctly.
-However, its exit status checks `failed` without requiring `completed` or excluding `partial`.
-The usage report applies only to top-level `-z`.
-Thus neither inspected path provides both required isolation and explicit completion evidence.
-
-The ACP path also omits the context and memory exclusion arguments.
-Its terminal response distinguishes cancellation but does not check the agent's failure or completion fields.
-The Python interface exposes those fields and constructor arguments.
-However, nested file reads still trigger separate instruction discovery in the captured checkout.
-The inspected tool executor does not check the context exclusion argument before this discovery.
-
-Support requires the usage-report path to honor context and memory exclusions.
-Alternatively, the isolated chat path must expose a terminal completion result.
-Both paths must exclude automatic nested instruction discovery.
-
-Evidence: [one-shot construction and usage report](https://github.com/NousResearch/hermes-agent/blob/v2026.9.7/hermes_cli/oneshot.py),
-[constructor defaults](https://github.com/NousResearch/hermes-agent/blob/v2026.9.7/agent/agent_init.py#L2204),
-[chat exclusion arguments](https://github.com/NousResearch/hermes-agent/blob/v2026.9.7/hermes_cli/cli_agent_setup_mixin.py#L543),
-and [quiet chat exit handling](https://github.com/NousResearch/hermes-agent/blob/v2026.9.7/cli.py#L4056).
-Additional evidence: [ACP construction](https://github.com/NousResearch/hermes-agent/blob/v2026.9.7/acp_adapter/session.py#L371),
-[ACP completion](https://github.com/NousResearch/hermes-agent/blob/v2026.9.7/acp_adapter/server.py#L870),
-[Python integration](https://hermes-agent.nousresearch.com/docs/developer-guide/programmatic-integration),
-and [nested instruction discovery](https://github.com/NousResearch/hermes-agent/blob/v2026.9.7/agent/tool_executor.py#L1015).
-
-### Cursor Agent 2026.09.08-6caf4ff
-
-The executable is `agent`, with `cursor-agent` retained as an alias.
-Print mode supports JSON and streaming JSON.
-The inspected native help exposes no complete customization exclusion.
-`CURSOR_CONFIG_DIR` changes CLI configuration discovery.
-However, the published hook loader still reads user hooks from the native home directory.
-It also reads enterprise hooks from fixed platform directories.
-On macOS, this includes `/Library/Application Support/Cursor/hooks.json`.
-The authentication store also uses the native home directory on macOS.
-Changing that home replaces the normal stored login location.
-
-Support requires a native isolation control that excludes hooks and other ambient customization while preserving login.
-
-Evidence: [CLI parameters](https://cursor.com/docs/cli/reference/parameters),
-[configuration paths](https://cursor.com/docs/cli/reference/configuration), and [hooks](https://cursor.com/docs/hooks).
-Verification also inspects the [official pinned release archive](https://downloads.cursor.com/lab/2026.09.08-6caf4ff/darwin/arm64/agent-cli-package.tar.gz).
-The archive's `190.index.js` defines hook paths independently of `CURSOR_CONFIG_DIR`.
-Its `index.js` defines the separate authentication path.
-Help verification uses temporary configuration, home, and cache directories.
-
-### Google Antigravity CLI 1.1.28
-
-This assessment covers Google's native Antigravity CLI.
-Print mode supports JSON, streaming JSON, and JSON schema output.
-An isolated named Markdown agent uses `inheritCustomizations: false`.
-Native offline probes confirm that this excludes personal and project rules and hook execution.
-A default-agent control includes the generated rules and executes both generated hooks.
-However, personal and project MCP processes still start with inheritance disabled.
-Explicit `inheritMcp: false` and `mcpServers: []` do not prevent personal MCP startup.
-The native CLI rejects `--strict-mcp-config` and `--mcp-config` as undefined options.
-
-Print timeout output can report `status: SUCCESS` with partial output.
-A future adapter must independently reject that timeout.
-Support requires native MCP startup exclusion while preserving normal authentication.
-
-Evidence: [headless mode](https://antigravity.google/docs/cli/headless),
-[MCP controls](https://antigravity.google/docs/cli/mcp/),
-and the [CLI changelog](https://github.com/google-antigravity/antigravity-cli/blob/1.1.28/CHANGELOG.md).
-Verification uses the official 1.1.28 binary, generated home directories, and a local mock model endpoint.
-Generated MCP commands create local markers and exit.
-
-### Grok Build
-
-The public changelog lists 1.0.13 during this assessment.
-Source inspection uses revision `75810042ca2762aa0b0fa17864f3f68823ccbea5`.
-The CLI supports unattended prompts, JSON output, and native login.
-`GROK_CONFIG` and `GROK_CONFIG_PATH` provide configuration overlays.
-However, hook configuration layers combine additively outside ordinary configuration merging.
-Root-owned policy hooks cannot be disabled by user settings.
-Native hook-disable actions persist names in global state.
-The ACP path uses the same hook assembler.
-No native binary probe forms part of this Grok reassessment.
-The inspected CLI does not expose a complete isolation mode.
-
-Support requires a native invocation that excludes ambient customization while retaining native authentication.
-
-Evidence: [changelog](https://x.ai/build/changelog), [headless scripting](https://docs.x.ai/build/cli/headless-scripting),
-[configuration overlay](https://github.com/xai-org/grok-build/blob/75810042ca2762aa0b0fa17864f3f68823ccbea5/crates/codegen/xai-grok-config/src/env_overlay.rs),
-and [hook layer policy](https://github.com/xai-org/grok-build/blob/75810042ca2762aa0b0fa17864f3f68823ccbea5/crates/codegen/xai-grok-config/src/loader.rs#L210).

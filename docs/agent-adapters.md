@@ -2,7 +2,7 @@
 
 PR Board includes local review adapters for Codex and Claude Code.
 Both adapters use the same reviewer contract as Pi.
-See [additional agent compatibility](agent-compatibility.md) for Oh My Pi, Kimi, Qoder CLI, and Qwen Code.
+See [additional agent compatibility](agent-compatibility.md) for the other built-in adapters and their required native versions.
 The adapters share checkout preparation, specification retrieval, result validation, and process cleanup.
 They do not publish directly to GitHub.
 Repository publication settings control the separate publication step.

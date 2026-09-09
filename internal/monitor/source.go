@@ -56,15 +56,14 @@ func (s *Source) RefreshOne(ctx context.Context, view config.View) discovery.Vie
 func (s *Source) Observe(ctx context.Context) *discovery.Snapshot {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	owner, err := localstate.TryLock(filepath.Join(s.dir, "monitor.lock"))
-	if err != nil && !errors.Is(err, localstate.ErrLocked) {
+	running, err := hasOwner(ctx, s.dir)
+	if err != nil {
 		failed := s.failure(err)
 		return &failed
 	}
-	if errors.Is(err, localstate.ErrLocked) {
+	if running {
 		return s.observedSnapshot()
 	}
-	owner.Close()
 	interval, _ := s.cfg.RefreshEvery()
 	if s.initialized && (interval == 0 || time.Now().Before(s.next)) {
 		return nil
@@ -76,15 +75,14 @@ func (s *Source) Observe(ctx context.Context) *discovery.Snapshot {
 	}
 	defer lock.Close()
 	// Recheck ownership after waiting for another scan.
-	owner, err = localstate.TryLock(filepath.Join(s.dir, "monitor.lock"))
-	if errors.Is(err, localstate.ErrLocked) {
+	running, err = hasOwner(ctx, s.dir)
+	if running {
 		return s.observedSnapshot()
 	}
 	if err != nil {
 		failed := s.failure(err)
 		return &failed
 	}
-	owner.Close()
 	snapshot := s.loader.RefreshAll(ctx)
 	s.initialized = true
 	s.next = time.Now().Add(interval)
@@ -111,7 +109,7 @@ func (s *Source) observedSnapshot() *discovery.Snapshot {
 
 // Run holds ownership until cancellation. Kernel locks release after a crash.
 func (s *Source) Run(ctx context.Context, report func(discovery.Snapshot), ready func() error) error {
-	owner, err := localstate.TryLock(filepath.Join(s.dir, "monitor.lock"))
+	owner, err := claimOwner(ctx, s.dir)
 	if errors.Is(err, localstate.ErrLocked) {
 		return errors.New("a monitor already runs in HERDR_PLUGIN_STATE_DIR")
 	}

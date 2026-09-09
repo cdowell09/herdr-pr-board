@@ -48,7 +48,7 @@ func EnsureRunning(ctx context.Context, binary, path, dir string) error {
 		return err
 	}
 	defer start.Close()
-	running, err := hasOwner(dir)
+	running, err := hasOwner(ctx, dir)
 	if err != nil || running {
 		return err
 	}
@@ -59,24 +59,12 @@ func EnsureRunning(ctx context.Context, binary, path, dir string) error {
 	}
 	logPath := filepath.Join(dir, "monitor.log")
 	if err := launch(ctx, binary, path, dir, logPath); err != nil {
-		if running, checkErr := hasOwner(dir); checkErr == nil && running {
+		if running, checkErr := hasOwner(ctx, dir); checkErr == nil && running {
 			return nil
 		}
 		return fmt.Errorf("start monitor: %w (log: %s)", err, logPath)
 	}
 	return nil
-}
-
-func hasOwner(dir string) (bool, error) {
-	owner, err := localstate.TryLock(filepath.Join(dir, "monitor.lock"))
-	if errors.Is(err, localstate.ErrLocked) {
-		return true, nil
-	}
-	if err != nil {
-		return false, err
-	}
-	owner.Close()
-	return false, nil
 }
 
 func launch(ctx context.Context, binary, path, dir, logPath string) error {
@@ -125,7 +113,7 @@ func launch(ctx context.Context, binary, path, dir, logPath string) error {
 	case err = <-ready:
 		if err == nil {
 			var running bool
-			running, err = hasOwner(dir)
+			running, err = hasOwner(ctx, dir)
 			if err == nil && !running {
 				err = errors.New("monitor exited before retaining ownership")
 			}

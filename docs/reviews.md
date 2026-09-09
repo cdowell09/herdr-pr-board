@@ -53,10 +53,11 @@ The default is 30 minutes.
 The timeout includes queue time and execution time.
 PR Board checks current configuration before each launch attempt.
 
-Built-in adapters support Pi, Codex, Claude Code, Oh My Pi, Kimi, Qoder CLI, Qwen Code, Copilot, and Mastra Code.
+Built-in adapters support Pi, Codex, Claude Code, Oh My Pi, Kimi, Qoder CLI, and Qwen Code.
+They also support Copilot, Mastra Code, Hermes, Cursor, Antigravity, and Grok.
 See the [Pi adapter guide](pi-adapter.md) and [Codex and Claude Code guide](agent-adapters.md).
 See [additional agent compatibility](agent-compatibility.md) for the other adapters and assessed limitations.
-Each adapter requires its own installed agent CLI.
+Each adapter requires its own installed native CLI or SDK.
 See [Windows setup](windows.md) for native executables, npm launchers, and filesystem requirements.
 Other reviewers do not require Pi.
 

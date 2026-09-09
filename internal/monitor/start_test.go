@@ -171,7 +171,7 @@ func startupFixture(t *testing.T) (binary, path, dir string) {
 		if err := os.WriteFile(filepath.Join(dir, "stop"), nil, 0600); err != nil {
 			t.Error(err)
 		}
-		waitStartup(t, func() bool { running, _ := hasOwner(dir); return !running })
+		waitStartup(t, func() bool { running, _ := hasOwner(context.Background(), dir); return !running })
 	})
 	return
 }
@@ -217,7 +217,10 @@ func TestConcurrentStartupReusesOneOwnerBeforeSlowScan(t *testing.T) {
 		Detached bool
 		PID      int
 	}
-	data, _ := os.ReadFile(filepath.Join(dir, "scan-started"))
+	data, err := localstate.ReadFile(filepath.Join(dir, "scan-started"))
+	if err != nil {
+		t.Fatal(err)
+	}
 	if err := json.Unmarshal(data, &record); err != nil {
 		t.Fatal(err)
 	}
@@ -288,7 +291,7 @@ func TestMonitorSurvivesLauncherExit(t *testing.T) {
 	if output, err := parent.CombinedOutput(); err != nil {
 		t.Fatalf("parent: %v %s", err, output)
 	}
-	if running, err := hasOwner(dir); err != nil || !running {
+	if running, err := hasOwner(context.Background(), dir); err != nil || !running {
 		t.Fatalf("monitor died with launcher: %v", err)
 	}
 }
@@ -329,7 +332,7 @@ func TestClosedLauncherPipeDoesNotStopMonitor(t *testing.T) {
 		t.Fatal(err)
 	}
 	waitStartup(t, func() bool { _, err := os.Stat(filepath.Join(dir, "scan-started")); return err == nil })
-	if running, _ := hasOwner(dir); !running {
+	if running, _ := hasOwner(context.Background(), dir); !running {
 		t.Fatal("vanished launcher stopped the monitor")
 	}
 }

@@ -1,0 +1,8 @@
+{
+  "type": "result",
+  "status": "finished",
+  "turnEnded": 1,
+  "pending": 1,
+  "cancelled": false,
+  "text": "progress{}"
+}

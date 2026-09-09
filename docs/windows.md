@@ -40,8 +40,8 @@ herdr plugin link "$PWD" --enabled
 
 ## Reviewers
 
-Install and authenticate the selected agent CLI separately.
-The agent CLI must support native Windows.
+Install and authenticate the selected native CLI or SDK separately.
+The native CLI or SDK must support Windows.
 Built-in adapters accept native executables and standard npm launchers for Node.js.
 Install Node.js when the agent CLI requires it.
 The adapter launches Node.js directly and preserves each argument.
@@ -59,6 +59,9 @@ command = ['C:\Tools\herdr-pr-board.exe', '--pi-reviewer']
 Replace the example path with the installed PR Board executable path.
 See the [Pi guide](pi-adapter.md) and [Codex and Claude Code guide](agent-adapters.md) for CLI requirements.
 See [additional agent compatibility](agent-compatibility.md) for other adapters and their platform requirements.
+The Cursor executable option selects its installed SDK entrypoint.
+The Hermes executable option selects Python from its installed environment.
+Antigravity requires runtime state and the native user directory on the same volume.
 
 ## Monitor and state
 
