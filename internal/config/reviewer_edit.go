@@ -42,8 +42,7 @@ func editReviewer(data []byte, reviewers []Reviewer, edit ReviewerEdit) ([]byte,
 			return nil, fmt.Errorf("reviewer %s already exists; reload repository settings", r.ID)
 		}
 		id, _ := json.Marshal(r.ID)
-		command, _ := json.Marshal(r.Command)
-		text := "\n\n[[reviewers]]\nid = " + string(id) + "\ncommand = " + string(command) + "\n"
+		text := "\n[[reviewers]]\nid = " + string(id) + "\ncommand = " + tomlArray(r.Command) + "\n"
 		for _, field := range reviewerFields(r) {
 			text += field.key + " = " + field.value + "\n"
 		}
