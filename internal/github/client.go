@@ -31,6 +31,7 @@ type ciCacheEntry struct {
 type Client struct {
 	runner     Runner
 	baseRunner Runner
+	tokenVars  []string
 	cfg        config.GitHubConfig
 
 	loginMu sync.Mutex
@@ -61,9 +62,14 @@ func NewClient(runner Runner, cfg config.GitHubConfig) *Client {
 	}
 }
 
-// Reconfigured returns a client with the same command runner and new settings.
+// Reconfigured returns a client with the same base command runner and new
+// settings. It carries over the recorded token variables and wraps the base
+// runner with the auth hint exactly once; it never wraps the already-wrapped
+// runner, which would grow a new no-op layer on every reconfiguration.
 func (c *Client) Reconfigured(cfg config.GitHubConfig) *Client {
-	return NewClient(c.runner, cfg)
+	next := NewClient(c.baseRunner, cfg)
+	next.SetTokenVars(c.tokenVars)
+	return next
 }
 
 // SetTokenVars records which of the variables in TokenVars are set in the
@@ -73,7 +79,8 @@ func (c *Client) Reconfigured(cfg config.GitHubConfig) *Client {
 // client replaces the raw gh error with a short message naming the fix, and
 // appends a hint naming the variable when a recorded variable is set.
 func (c *Client) SetTokenVars(set []string) {
-	c.runner = withAuthHint(c.baseRunner, append([]string(nil), set...))
+	c.tokenVars = append([]string(nil), set...)
+	c.runner = withAuthHint(c.baseRunner, c.tokenVars)
 }
 
 // authFailedMessage replaces the raw gh error text on an authentication
@@ -107,9 +114,14 @@ func authError(tokenVars []string) error {
 }
 
 // isAuthError reports whether err looks like a gh authentication failure.
+// This covers a stored login rejected by GitHub ("bad credentials", an HTTP
+// 401) and gh finding no login at all, keyring or environment token ("to get
+// started with github cli").
 func isAuthError(err error) bool {
 	lower := strings.ToLower(err.Error())
-	return strings.Contains(lower, "bad credentials") || strings.Contains(lower, "http 401")
+	return strings.Contains(lower, "bad credentials") ||
+		strings.Contains(lower, "http 401") ||
+		strings.Contains(lower, "to get started with github cli")
 }
 
 // tokenHintSentence names the environment variables that override the gh

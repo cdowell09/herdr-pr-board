@@ -443,6 +443,27 @@ func TestSearchViewAuthErrorHidesEscapedResponseBody(t *testing.T) {
 	}
 }
 
+// TestSearchViewSignedOutErrorGetsAuthMessage reproduces the error gh prints
+// when no keyring login and no token variable exist at all: it refuses
+// locally before any HTTP call, so the text never contains "bad credentials"
+// or "http 401". The classifier must still recognize it as an authentication
+// failure and replace it with the short message.
+func TestSearchViewSignedOutErrorGetsAuthMessage(t *testing.T) {
+	signedOut := "To get started with GitHub CLI, please run:  gh auth login\nAlternatively, populate the GH_TOKEN environment variable with a GitHub API authentication token."
+	runner := Runner(func(_ context.Context, _ ...string) ([]byte, error) {
+		return nil, errors.New(signedOut)
+	})
+	client := NewClient(runner, config.GitHubConfig{LimitPerScope: 10})
+
+	_, err := client.SearchView(context.Background(), config.View{Title: "All", Query: "is:open"})
+	if err == nil || !strings.Contains(err.Error(), authFailedMessage) {
+		t.Fatalf("error = %v, want %q", err, authFailedMessage)
+	}
+	if strings.Contains(err.Error(), "Alternatively") {
+		t.Fatalf("error = %v, must not show the raw gh signed-out text", err)
+	}
+}
+
 func TestRateLimits(t *testing.T) {
 	runner := Runner(func(_ context.Context, _ ...string) ([]byte, error) {
 		return []byte(`{"resources":{"search":{"limit":30,"remaining":27,"reset":1786107600},"graphql":{"limit":5000,"remaining":4800,"reset":1786111200}}}`), nil
@@ -741,6 +762,26 @@ func TestReconfiguredPreservesAuthHint(t *testing.T) {
 	_, err := next.RateLimits(context.Background())
 	if err == nil || !strings.Contains(err.Error(), "GH_TOKEN is set") || !strings.Contains(err.Error(), authFailedMessage) {
 		t.Fatalf("reconfigured authentication error = %v", err)
+	}
+}
+
+// TestReconfiguredWrapsAuthHintExactlyOnce guards against Reconfigured
+// wrapping an already-wrapped runner. A second wrap around a runner whose
+// error text was already replaced can never re-match isAuthError, so a
+// later SetTokenVars call on the reconfigured client would be silently
+// ignored unless Reconfigured rebuilds the wrap from the base runner.
+func TestReconfiguredWrapsAuthHintExactlyOnce(t *testing.T) {
+	client := NewClient(func(context.Context, ...string) ([]byte, error) {
+		return nil, errors.New("HTTP 401: Bad credentials")
+	}, config.GitHubConfig{})
+	client.SetTokenVars([]string{"GH_TOKEN"})
+	next := client.Reconfigured(config.GitHubConfig{})
+	next.SetTokenVars([]string{"GITHUB_TOKEN"})
+
+	_, err := next.RateLimits(context.Background())
+	want := authFailedMessage + "; GITHUB_TOKEN is set and overrides the gh keyring login; unset it or replace it with a valid token"
+	if err == nil || err.Error() != want {
+		t.Fatalf("error = %v, want %q (exactly one auth-hint wrap, updated token vars)", err, want)
 	}
 }
 
