@@ -234,27 +234,160 @@ func TestReferenceDocumentsEveryImplementedKey(t *testing.T) {
 	}
 }
 
-func TestFooterListsEveryImplementedControl(t *testing.T) {
-	model := layoutModel(t, 200)
-	output := stripANSI(model.View())
-	for _, key := range []string{"h/l", "g/G", "Home/End", "Ctrl+U", "/", "E", "Enter", "wheel", "quit"} {
-		if !strings.Contains(output, key) {
-			t.Fatalf("footer missing %q:\n%s", key, output)
+// helpOverlayKeys returns every key literal the ? overlay names.
+func helpOverlayKeys() map[string]bool {
+	keys := map[string]bool{}
+	separator := func(r rune) bool { return r == '/' || r == '–' }
+	for _, section := range helpSections {
+		for _, entry := range section.entries {
+			for _, field := range strings.Fields(entry.keys) {
+				keys[field] = true
+				for _, part := range strings.FieldsFunc(field, separator) {
+					keys[part] = true
+				}
+			}
+		}
+	}
+	return keys
+}
+
+func TestHelpOverlayNamesEveryImplementedControl(t *testing.T) {
+	keys := helpOverlayKeys()
+	for _, key := range implementedKeys {
+		if !keys[key] {
+			t.Fatalf("the ? overlay does not name the %q control", key)
 		}
 	}
 }
 
-func TestFooterNamesShortcutContexts(t *testing.T) {
+func TestFooterShowsTheTopControls(t *testing.T) {
 	model := layoutModel(t, 200)
 	footer := stripANSI(model.renderFooter())
-	for _, want := range []string{
-		"h/l ←/→ view", "j/k ↑/↓ select", "g/G Home/End first/last",
-		"/ Enter filter", "Ctrl+U Esc clear", "Backspace edit", "E edit config",
-		"r R refresh", "Enter o open", "wheel/click mouse", "q Ctrl+C quit",
-	} {
-		if !strings.Contains(footer, want) {
-			t.Fatalf("footer missing %q:\n%s", want, footer)
+	want := "Tab view · ↑↓ select · Enter open · v reviews · E config · ? help"
+	if !strings.Contains(footer, want) {
+		t.Fatalf("footer missing %q:\n%s", want, footer)
+	}
+	for _, absent := range []string{"first/last", "edit config", "wheel/click"} {
+		if strings.Contains(footer, absent) {
+			t.Fatalf("footer still lists %q:\n%s", absent, footer)
 		}
+	}
+}
+
+func TestHelpOverlayOpensAndClosesFromBoardAndReviewPanel(t *testing.T) {
+	question := tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("?")}
+	board := layoutModel(t, 80)
+	next, _ := board.Update(question)
+	opened := next.(Model)
+	if !opened.helpOverlay {
+		t.Fatal("? did not open the help overlay on the board")
+	}
+	overlay := stripANSI(opened.View())
+	for _, want := range []string{"Board", "Review panel", "Esc"} {
+		if !strings.Contains(overlay, want) {
+			t.Fatalf("overlay missing %q:\n%s", want, overlay)
+		}
+	}
+	for _, key := range []tea.KeyMsg{question, {Type: tea.KeyEsc}} {
+		closed, _ := opened.Update(key)
+		if closed.(Model).helpOverlay {
+			t.Fatalf("%q did not close the help overlay", key.String())
+		}
+	}
+
+	panel := panelModel(t)
+	next, _ = panel.Update(question)
+	opened = next.(Model)
+	if !opened.helpOverlay {
+		t.Fatal("? did not open the help overlay in the review panel")
+	}
+	back, _ := opened.Update(tea.KeyMsg{Type: tea.KeyEsc})
+	if closed := back.(Model); closed.helpOverlay || closed.reviewPanel == nil {
+		t.Fatal("Esc did not return from the help overlay to the review panel")
+	}
+}
+
+func TestHelpOverlayKeepsTheFilterLineBehavior(t *testing.T) {
+	model := layoutModel(t, 80)
+	next, _ := model.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("/")})
+	next, _ = next.(Model).Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("?")})
+	filtering := next.(Model)
+	if filtering.helpOverlay {
+		t.Fatal("? opened the help overlay during filter input")
+	}
+	if filtering.filter != "?" {
+		t.Fatalf("filter = %q, want %q", filtering.filter, "?")
+	}
+	if view := stripANSI(filtering.View()); !strings.Contains(view, "filter: ?") {
+		t.Fatalf("filter line missing:\n%s", view)
+	}
+}
+
+func TestHelpOverlayFitsNarrowTerminalsAndKeepsEveryControl(t *testing.T) {
+	// Wrapping keeps every character, but it can consume a space at a break.
+	// Comparing without spaces makes the check exact at every width.
+	compact := func(value string) string { return strings.ReplaceAll(value, " ", "") }
+	for _, size := range [][2]int{{tierNarrow, 24}, {30, 10}, {12, 6}, {80, 24}, {120, 40}} {
+		model := layoutModel(t, size[0])
+		model.height = size[1]
+		model.helpOverlay = true
+		lines := model.helpOverlayLines()
+		model.helpOffset = len(lines)
+		model.clampHelpOffset()
+		rendered := strings.Split(model.View(), "\n")
+		if len(rendered) > size[1] {
+			t.Fatalf("%v: overlay rendered %d lines", size, len(rendered))
+		}
+		for _, line := range rendered {
+			if got := lipgloss.Width(stripANSI(line)); got > size[0] {
+				t.Fatalf("%v: overlay line is %d cells wide: %q", size, got, line)
+			}
+		}
+		var plain strings.Builder
+		for _, line := range lines {
+			plain.WriteString(stripANSI(line))
+		}
+		content := compact(plain.String())
+		for _, section := range helpSections {
+			for _, entry := range section.entries {
+				for _, want := range []string{section.title, entry.keys, entry.action} {
+					if !strings.Contains(content, compact(want)) {
+						t.Fatalf("%v: overlay lost %q", size, want)
+					}
+				}
+			}
+		}
+		if last := stripANSI(lines[len(lines)-1]); !strings.Contains(stripANSI(model.View()), last) {
+			t.Fatalf("%v: scrolling does not reach %q:\n%s", size, last, stripANSI(model.View()))
+		}
+	}
+}
+
+func TestReviewPanelHelpLineOffersTheHelpOverlay(t *testing.T) {
+	model := panelModel(t)
+	help, _ := model.reviewViewport()
+	if line := stripANSI(strings.Join(help, " ")); !strings.Contains(line, "? help") {
+		t.Fatalf("review panel help line missing %q: %q", "? help", line)
+	}
+}
+
+func TestFooterMetaLineStartsWithoutASeparator(t *testing.T) {
+	model := layoutModel(t, 200)
+	model.views[model.active].UpdatedAt = time.Now()
+	metaLine := func(m Model) string {
+		lines := strings.Split(stripANSI(m.renderFooter()), "\n")
+		return lines[len(lines)-1]
+	}
+	if got, want := metaLine(model), "updated now"; got != want {
+		t.Fatalf("meta line with no review jobs = %q, want %q", got, want)
+	}
+	model.reviewJobs = map[string]string{"https://github.com/acme/web-ui/pull/42": "running"}
+	if got, want := metaLine(model), "1 review requests · v reviews · updated now"; got != want {
+		t.Fatalf("meta line with one review job = %q, want %q", got, want)
+	}
+	model.monitorError = "monitor stopped"
+	if got, want := metaLine(model), "monitor stopped · 1 review requests · v reviews · updated now"; got != want {
+		t.Fatalf("meta line with a monitor error = %q, want %q", got, want)
 	}
 }
 

@@ -165,6 +165,8 @@ func (m Model) updateReviewKey(key tea.KeyMsg) (tea.Model, tea.Cmd) {
 	switch key.String() {
 	case "esc", "v":
 		m.reviewPanel = nil
+	case "?":
+		m.helpOverlay = true
 	case "q", "ctrl+c":
 		return m, tea.Quit
 	case "j", "down":

@@ -50,6 +50,7 @@ The board refreshes every five minutes by default.
 | `r` / `R` | Refresh the current view / all views. |
 | `v` | Open reviews and repository settings. |
 | `E` | Edit configuration and reload valid changes. |
+| `?` | Show the keyboard help for all controls. |
 | `q` | Close the board. |
 
 The CI column shows check status.

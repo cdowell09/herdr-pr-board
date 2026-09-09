@@ -75,6 +75,7 @@ GitHub review observations follow the normal refresh interval and cache.
 | `r` | Refresh the active view. |
 | `R` | Refresh all views. |
 | `Enter`, `o` | Open the selected PR in a browser. |
+| `?` | Open or close the keyboard help. |
 | `q`, `Ctrl+C` | Close the board. |
 
 The board sorts PRs by update time, with the most recent first.
@@ -90,9 +91,12 @@ It keeps the previous configuration when the editor or validation fails.
 The board reports browser failures at the bottom of the screen.
 The selected URL stays visible for manual copying.
 
-The footer pairs each keybinding with its action. On narrow terminals, the pairs wrap.
+The footer shows the six most used controls. On narrow terminals, the pairs wrap.
 
-![Grouped keyboard shortcuts in the board footer](images/keyboard-shortcuts.png)
+Press `?` for the keyboard help.
+The help lists every board control and every review panel control.
+Scroll it with `j`, `k`, `↑`, `↓`, `g`, `G`, `Home`, `End`, or the mouse wheel.
+Press `?` or `Esc` to close it.
 
 See [manual reviews](reviews.md) for review controls, cancellation, and result history.
 

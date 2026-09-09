@@ -114,28 +114,25 @@ type keyHelpEntry struct {
 }
 
 // keyHelp is the single source of truth for the footer control list.
+// The footer shows the most useful keys. The ? overlay shows all of them.
 var keyHelp = []keyHelpEntry{
-	{"1–9 Tab ⇧Tab h/l ←/→", "view"},
-	{"j/k ↑/↓", "select"},
-	{"g/G Home/End", "first/last"},
-	{"/ Enter", "filter"},
-	{"Ctrl+U Esc", "clear"},
-	{"Backspace", "edit"},
-	{"E", "edit config"},
+	{"Tab", "view"},
+	{"↑↓", "select"},
+	{"Enter", "open"},
 	{"v", "reviews"},
-	{"r R", "refresh"},
-	{"Enter o", "open"},
-	{"wheel/click", "mouse"},
-	{"q Ctrl+C", "quit"},
+	{"E", "config"},
+	{"?", "help"},
 }
 
 // documentedKeys lists every key literal the board and review guides must document.
-// The documentation drift test fails when one is missing. Add new bindings
-// from updateKey or updateFilter here and to the corresponding guide.
+// The documentation drift test fails when one is missing. Add new bindings from
+// updateKey, updateFilter, or updateReviewKey here, to helpSections, and to the
+// corresponding guide.
 var documentedKeys = []string{
 	"1", "9", "Tab", "Shift+Tab", "h", "l", "←", "→",
 	"j", "k", "↑", "↓", "g", "G", "Home", "End",
-	"/", "Enter", "Ctrl+U", "Esc", "Backspace", "E", "v", "n", "N", "r", "R", "o", "q", "Ctrl+C",
+	"/", "?", "Enter", "Ctrl+U", "Esc", "Backspace", "E", "v",
+	"n", "N", "s", "t", "c", "a", "x", "r", "R", "o", "q", "Ctrl+C",
 }
 
 // table tiers and their minimum terminal widths in cells.
@@ -167,10 +164,12 @@ type Model struct {
 	active           int
 	cursor           int
 	offset           int
+	helpOffset       int
 	width            int
 	height           int
 	filter           string
 	editing          bool
+	helpOverlay      bool
 	loading          bool
 	warning          string
 	rates            gh.RateLimits
@@ -250,6 +249,7 @@ func (m Model) Update(message tea.Msg) (tea.Model, tea.Cmd) {
 		m.width, m.height = msg.Width, msg.Height
 		m.clampCursor()
 		m.clampReviewOffset()
+		m.clampHelpOffset()
 		return m, nil
 	case snapshotMsg:
 		if msg.epoch != 0 && msg.epoch != m.epoch {
@@ -332,11 +332,17 @@ func (m Model) Update(message tea.Msg) (tea.Model, tea.Cmd) {
 		}
 		return m, nil
 	case tea.MouseMsg:
+		if m.helpOverlay {
+			return m.updateHelpMouse(msg)
+		}
 		if m.reviewPanel != nil {
 			return m.updateReviewMouse(msg)
 		}
 		return m.updateMouse(msg)
 	case tea.KeyMsg:
+		if m.helpOverlay {
+			return m.updateHelpKey(msg)
+		}
 		if m.reviewPanel != nil {
 			return m.updateReviewKey(msg)
 		}
@@ -515,6 +521,8 @@ func (m Model) updateKey(key tea.KeyMsg) (tea.Model, tea.Cmd) {
 			m.filter = ""
 			m.cursor, m.offset = 0, 0
 		}
+	case "?":
+		m.helpOverlay = true
 	case "v":
 		return m.openReviewPanel()
 	case "E":
@@ -653,6 +661,9 @@ func (m *Model) clampCursor() {
 }
 
 func (m Model) View() string {
+	if m.helpOverlay {
+		return m.renderHelpOverlay()
+	}
 	if m.reviewPanel != nil {
 		return m.renderReviewPanel()
 	}
@@ -732,29 +743,32 @@ func (m Model) renderTable(lay boardLayout) string {
 func (m Model) renderFooter() string {
 	help := m.footerHelpLines()
 
-	meta := ""
+	// Collect the meta parts, then join them. Prefixing a separator to each
+	// part leaves a leading separator when an earlier part is absent.
+	var parts []string
+	if m.monitorError != "" {
+		parts = append(parts, reviewText(m.monitorError))
+	}
 	if len(m.reviewJobs) > 0 {
-		meta = fmt.Sprintf("%d review requests · v reviews", len(m.reviewJobs))
+		parts = append(parts, fmt.Sprintf("%d review requests · v reviews", len(m.reviewJobs)))
 	}
 	freshness := m.currentView().UpdatedAt
 	if !freshness.IsZero() {
-		meta += fmt.Sprintf(" · updated %s", relativeTime(freshness))
+		parts = append(parts, "updated "+relativeTime(freshness))
 	}
 	if stale(m.currentView()) {
-		meta += " · stale"
+		parts = append(parts, "stale")
 	}
 	if m.rates.Search.Limit > 0 {
-		meta += fmt.Sprintf(" · Search %d/%d", m.rates.Search.Remaining, m.rates.Search.Limit)
+		parts = append(parts, fmt.Sprintf("Search %d/%d", m.rates.Search.Remaining, m.rates.Search.Limit))
 	}
 	if m.rates.GraphQL.Limit > 0 {
-		meta += fmt.Sprintf(" · GraphQL %d/%d", m.rates.GraphQL.Remaining, m.rates.GraphQL.Limit)
+		parts = append(parts, fmt.Sprintf("GraphQL %d/%d", m.rates.GraphQL.Remaining, m.rates.GraphQL.Limit))
 	}
 	if m.warning != "" {
-		meta += " · " + m.warning
+		parts = append(parts, m.warning)
 	}
-	if m.monitorError != "" {
-		meta = reviewText(m.monitorError) + " · " + meta
-	}
+	meta := strings.Join(parts, " · ")
 	return strings.Join(append(help, warningStyle.Render(truncate(meta, m.width))), "\n")
 }
 
@@ -763,13 +777,14 @@ func (m Model) renderFooter() string {
 // bright and actions dim so the two never blend together.
 func (m Model) footerHelpLines() []string {
 	width := max(1, m.width)
+	separator := dimStyle.Render(" · ")
 	var lines []string
 	current := ""
 	for _, entry := range keyHelp {
 		pair := keyStyle.Render(entry.keys) + " " + dimStyle.Render(entry.action)
 		candidate := pair
 		if current != "" {
-			candidate = current + "  " + pair
+			candidate = current + separator + pair
 		}
 		if lipgloss.Width(candidate) <= width {
 			current = candidate
