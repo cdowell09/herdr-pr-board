@@ -15,6 +15,24 @@ gh auth status
 
 ## Troubleshooting
 
+### The install fails during the build step
+
+Herdr runs the plugin's build commands during install. PR Board's build command runs `go build`. You must install Go 1.24 or later before this step runs.
+
+If Go is missing, the build step fails. An older Go version can also fail the build. `herdr plugin install` reports a build error and stops.
+
+Check your Go version:
+
+```sh
+go version
+```
+
+Install Go 1.24 or later. Then run the install command again:
+
+```sh
+herdr plugin install cdowell09/herdr-pr-board
+```
+
 ### GitHub CLI is not authenticated
 
 The plugin does not store a GitHub token. It uses GitHub CLI (`gh`). If searches fail with an authentication error, sign in:
