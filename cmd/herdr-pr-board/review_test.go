@@ -9,6 +9,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/cdowell09/herdr-pr-board/internal/config"
 	"github.com/cdowell09/herdr-pr-board/internal/reviewercontract"
 	"github.com/cdowell09/herdr-pr-board/internal/reviewmemory"
 	"github.com/cdowell09/herdr-pr-board/internal/testutil"
@@ -89,7 +90,8 @@ func TestReviewOptionModesRejectConflicts(t *testing.T) {
 }
 
 func TestBuiltinAdapterOptionsAreIsolated(t *testing.T) {
-	for _, name := range []string{"pi", "codex", "claude", "qwen", "omp", "qodercli", "kimi"} {
+	for _, builtin := range config.BuiltinReviewers("") {
+		name := builtin.ID
 		t.Run(name, func(t *testing.T) {
 			args := []string{"--" + name + "-reviewer", "--" + name + "-executable", "/agent with spaces", "--" + name + "-skill", "/review skill/SKILL.md", "--" + name + "-prompt", "/review prompt.md"}
 			o, err := parseOptions(args, &bytes.Buffer{})
@@ -108,7 +110,8 @@ func TestBuiltinAdapterOptionsAreIsolated(t *testing.T) {
 					t.Fatalf("accepted %v", invalid)
 				}
 			}
-			for _, other := range []string{"pi", "codex", "claude", "qwen", "omp", "qodercli", "kimi"} {
+			for _, alternate := range config.BuiltinReviewers("") {
+				other := alternate.ID
 				if other == name {
 					continue
 				}
@@ -124,7 +127,7 @@ func TestBuiltinAdapterOptionsAreIsolated(t *testing.T) {
 			}
 			t.Setenv("HERDR_PLUGIN_CONFIG_DIR", filepath.Join(t.TempDir(), "absent"))
 			var diagnostics bytes.Buffer
-			if code := runAdapter(o.adapter, strings.NewReader("{}"), &diagnostics); code != 1 || strings.Contains(diagnostics.String(), "config") {
+			if code := runAdapter(o.adapter, strings.NewReader("{}"), &diagnostics); code != 1 || strings.Contains(diagnostics.String(), "config") || strings.Contains(diagnostics.String(), "unknown review adapter") {
 				t.Fatalf("adapter must validate stdin without configuration: code=%d diagnostic=%s", code, &diagnostics)
 			}
 		})

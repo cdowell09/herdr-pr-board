@@ -1,13 +1,13 @@
 package agentadapter
 
 import (
+	"bytes"
 	"context"
 	"errors"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"runtime"
-	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -38,30 +38,28 @@ func TestAdapterDeathKeepsClaimUntilAgentExits(t *testing.T) {
 	agent := testutil.Executable(t, dir, "claim-agent")
 	adapter := exec.Command(os.Args[0], "-test.run=^TestAdapterDeathKeepsClaimUntilAgentExits$")
 	adapter.Env = append(os.Environ(), "PR_BOARD_CLAIM_HELPER="+dir, "PR_BOARD_CLAIM_AGENT="+agent)
+	var diagnostics bytes.Buffer
+	adapter.Stdout, adapter.Stderr = &diagnostics, &diagnostics
 	if err := cli.PassFile(adapter, claim, "HERDR_REVIEW_CLAIM_FD"); err != nil {
 		t.Fatal(err)
 	}
 	if err := adapter.Start(); err != nil {
 		t.Fatal(err)
 	}
-	defer func() { adapter.Process.Kill(); adapter.Wait() }()
+	done := make(chan struct{})
+	var exitErr error
+	go func() { exitErr = adapter.Wait(); close(done) }()
+	stopAdapter := func() { _ = adapter.Process.Kill(); <-done }
+	defer stopAdapter()
 	if err := claim.Close(); err != nil {
 		t.Fatal(err)
 	}
-	var pid int
-	deadline := time.Now().Add(5 * time.Second)
-	for time.Now().Before(deadline) {
-		raw, err := os.ReadFile(filepath.Join(dir, "pi.pid"))
-		if err == nil {
-			pid, _ = strconv.Atoi(strings.TrimSpace(string(raw)))
-			if pid > 0 {
-				break
-			}
-		}
-		time.Sleep(10 * time.Millisecond)
-	}
-	if pid == 0 {
-		t.Fatal("fake agent did not start")
+	startup, cancelStartup := context.WithTimeout(t.Context(), 30*time.Second)
+	defer cancelStartup()
+	pid, err := testutil.WaitForPID(startup, filepath.Join(dir, "pi.pid"), done)
+	if err != nil {
+		stopAdapter()
+		t.Fatalf("fake agent did not start: %v; adapter exit: %v; %s", err, exitErr, &diagnostics)
 	}
 	afterDeath := checkClaimAgentAfterOwnerDeath(t, pid, lockPath)
 	acquired, err := localstate.TryLock(lockPath)
@@ -74,9 +72,9 @@ func TestAdapterDeathKeepsClaimUntilAgentExits(t *testing.T) {
 	if err := adapter.Process.Kill(); err != nil {
 		t.Fatal(err)
 	}
-	_ = adapter.Wait()
+	<-done
 	afterDeath()
-	deadline = time.Now().Add(5 * time.Second)
+	deadline := time.Now().Add(5 * time.Second)
 	for time.Now().Before(deadline) {
 		acquired, err = localstate.TryLock(lockPath)
 		if err == nil {

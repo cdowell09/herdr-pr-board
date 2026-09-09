@@ -81,7 +81,7 @@ timeout = "30m"
 # id = "pi"
 # command = ["/absolute/path/to/herdr-pr-board", "--pi-reviewer"]
 # Other adapters use --codex-reviewer, --claude-reviewer, --omp-reviewer,
-# --kimi-reviewer, --qodercli-reviewer, or --qwen-reviewer.
+# --kimi-reviewer, --qodercli-reviewer, --qwen-reviewer, --copilot-reviewer, or --mastracode-reviewer.
 # See docs/agent-compatibility.md for required versions and native login requirements.
 # The default review checks standards and specification without custom files.
 # Empty fields select embedded criteria and no external skill.

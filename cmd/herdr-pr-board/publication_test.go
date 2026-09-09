@@ -87,7 +87,8 @@ func TestRepositorySettingsRevokesAutomaticPublication(t *testing.T) {
 }
 
 func TestBuiltinRepositorySetupAddsOnlySelectedReviewer(t *testing.T) {
-	for _, name := range []string{"pi", "codex", "claude", "qwen", "omp", "qodercli", "kimi"} {
+	for _, builtin := range config.BuiltinReviewers("") {
+		name := builtin.ID
 		t.Run(name, func(t *testing.T) {
 			t.Setenv("HERDR_PLUGIN_STATE_DIR", t.TempDir())
 			t.Setenv("PATH", "")
