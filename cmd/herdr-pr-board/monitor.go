@@ -7,6 +7,7 @@ import (
 	"io"
 	"os"
 	"os/signal"
+	"strings"
 	"sync"
 	"syscall"
 
@@ -37,6 +38,9 @@ func runMonitor(source *monitor.Source, cfg config.Config, dispatcher *dispatch.
 			return monitor.AcknowledgeReady(pipe)
 		})
 	}, func(event dispatch.Event) {
+		if event.Notification != "" {
+			fmt.Fprintln(stderr, "review notification:", strings.TrimSpace(event.Decision.URL+" "+event.Notification))
+		}
 		if event.Error != "" {
 			fmt.Fprintln(stderr, "automatic review:", event.Decision.URL, event.Error)
 		} else if event.Run != nil {

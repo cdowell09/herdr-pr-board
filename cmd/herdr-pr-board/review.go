@@ -109,7 +109,8 @@ func printReviewHistory(prURL string, stdout, stderr io.Writer) int {
 func printReview(o options, service reviewflow.Reviewer, publisher reviewflow.Publisher, stdout, stderr io.Writer) int {
 	ctx, cancel := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer cancel()
-	run, err := reviewflow.Run(ctx, service, publisher, review.Request{URL: o.review, Reviewer: o.reviewer, Rerun: o.rerun}, func(state string) { fmt.Fprintln(stderr, "review:", state) })
+	result, err := reviewflow.Run(ctx, service, publisher, nil, review.Request{URL: o.review, Reviewer: o.reviewer, Rerun: o.rerun}, func(state string) { fmt.Fprintln(stderr, "review:", state) })
+	run := result.Run
 	if run.ID != "" {
 		if writeErr := json.NewEncoder(stdout).Encode(struct {
 			Version int              `json:"version"`

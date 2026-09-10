@@ -36,6 +36,7 @@ const (
 	defaultSidebarReview     = ViewReview
 	defaultReviewConcurrency = 1
 	defaultReviewTimeout     = "30m"
+	defaultReviewNotify      = NotifyAll
 
 	defaultFileTemplate = `[ui]
 title = %q
@@ -56,6 +57,7 @@ review_view = %q
 auto_views = []
 max_concurrency = %d
 timeout = %q
+notify = %q
 `
 )
 
@@ -81,6 +83,7 @@ var (
 		defaultSidebarReview,
 		defaultReviewConcurrency,
 		defaultReviewTimeout,
+		defaultReviewNotify,
 	)
 	idPattern = regexp.MustCompile(`^[a-z][a-z0-9_-]*$`)
 )
@@ -258,6 +261,9 @@ func applyDefaults(cfg *Config) {
 	}
 	if cfg.Review.Timeout == "" {
 		cfg.Review.Timeout = defaultReviewTimeout
+	}
+	if cfg.Review.Notify == "" {
+		cfg.Review.Notify = defaultReviewNotify
 	}
 	if strings.TrimSpace(cfg.UI.Title) == "" {
 		cfg.UI.Title = defaultTitle

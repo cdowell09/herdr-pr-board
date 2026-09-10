@@ -20,6 +20,9 @@ func TestReviewDefaultsAndReusableReviewer(t *testing.T) {
 	if !strings.Contains(DefaultFile, "[review]") {
 		t.Fatal("default file omits review settings")
 	}
+	if cfg.Review.Notify != NotifyAll || !strings.Contains(DefaultFile, `notify = "all"`) {
+		t.Fatalf("notify default = %q", cfg.Review.Notify)
+	}
 	data := DefaultFile + `
 [[reviewers]]
 id = "agent"
@@ -70,9 +73,25 @@ reviewer = "missing"`,
 		{"max_concurrency = 1", "max_concurrency = 9"},
 		{`timeout = "30m"`, `timeout = "0"`},
 		{`timeout = "30m"`, `timeout = "25h"`},
+		{`notify = "all"`, `notify = "sometimes"`},
 	} {
 		if _, err := LoadExisting(writeConfigFile(t, strings.Replace(DefaultFile, replacement.old, replacement.new, 1))); err == nil {
 			t.Fatalf("accepted %s", replacement.new)
 		}
+	}
+}
+
+func TestReviewNotifyModes(t *testing.T) {
+	for _, mode := range []NotifyMode{NotifyAll, NotifyProblems, NotifyOff} {
+		data := strings.Replace(DefaultFile, `notify = "all"`, `notify = "`+string(mode)+`"`, 1)
+		cfg, err := LoadExisting(writeConfigFile(t, data))
+		if err != nil || cfg.Review.Notify != mode {
+			t.Fatalf("%s: %+v %v", mode, cfg.Review, err)
+		}
+	}
+	absent := strings.Replace(DefaultFile, "notify = \"all\"\n", "", 1)
+	cfg, err := LoadExisting(writeConfigFile(t, absent))
+	if err != nil || cfg.Review.Notify != NotifyAll {
+		t.Fatalf("absent notify: %+v %v", cfg.Review, err)
 	}
 }

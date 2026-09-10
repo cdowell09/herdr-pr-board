@@ -30,6 +30,8 @@ The log retains its first 1 MiB and discards further output.
 Each new background launch resets the log.
 Startup failures appear in the board.
 Use the displayed foreground command if background startup fails.
+Review notification problems also appear in the log.
+See [review notifications](reviews.md#review-notifications) for the `review.notify` setting.
 
 ## Shared observations
 

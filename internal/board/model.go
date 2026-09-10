@@ -15,6 +15,7 @@ import (
 	"github.com/cdowell09/herdr-pr-board/internal/discovery"
 	"github.com/cdowell09/herdr-pr-board/internal/dispatch"
 	gh "github.com/cdowell09/herdr-pr-board/internal/github"
+	"github.com/cdowell09/herdr-pr-board/internal/reviewflow"
 	"github.com/cdowell09/herdr-pr-board/internal/sidebar"
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
@@ -192,6 +193,8 @@ type Model struct {
 	sidebar          *sidebar.Reporter
 	reporter         func(config.SidebarConfig) *sidebar.Reporter
 	sidebarWarn      bool
+	notifier         reviewflow.Notifier
+	notifyWarn       bool
 	epoch            uint64
 	observations     map[string]time.Time
 }

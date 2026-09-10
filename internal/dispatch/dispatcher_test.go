@@ -131,7 +131,7 @@ func TestDispatchContinuesAfterFailureAndUsesConfiguredPublication(t *testing.T)
 			ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
 			defer cancel()
 			count := 0
-			err := New(path, reviews, publisher).Run(ctx, cfg, func(ctx context.Context, report func(discovery.Snapshot)) error {
+			err := New(path, reviews, publisher, nil).Run(ctx, cfg, func(ctx context.Context, report func(discovery.Snapshot)) error {
 				report(snapshot)
 				<-ctx.Done()
 				return nil
@@ -177,7 +177,7 @@ func TestNewFailedObservationDropsPendingWork(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
 	defer cancel()
 	completed := false
-	err := New(path, reviews, nil).Run(ctx, cfg, func(ctx context.Context, report func(discovery.Snapshot)) error {
+	err := New(path, reviews, nil, nil).Run(ctx, cfg, func(ctx context.Context, report func(discovery.Snapshot)) error {
 		report(snapshot)
 		select {
 		case <-started:
@@ -237,7 +237,7 @@ func TestSnapshotToRealReviewExecution(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
 	var outcome *reviewmemory.Run
-	err = New(path, reviews, nil).Run(ctx, cfg, func(ctx context.Context, report func(discovery.Snapshot)) error {
+	err = New(path, reviews, nil, nil).Run(ctx, cfg, func(ctx context.Context, report func(discovery.Snapshot)) error {
 		report(snapshot)
 		<-ctx.Done()
 		return nil
@@ -283,7 +283,7 @@ func TestDispatchBoundsConcurrencyAndKeepsMonitorResponsive(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
 	defer cancel()
 	count := 0
-	err = New(path, reviews, nil).Run(ctx, cfg, func(ctx context.Context, report func(discovery.Snapshot)) error {
+	err = New(path, reviews, nil, nil).Run(ctx, cfg, func(ctx context.Context, report func(discovery.Snapshot)) error {
 		report(snapshot)
 		for range 2 {
 			select {
@@ -329,7 +329,7 @@ func TestCancellationWaitsForMaximumActiveReviewers(t *testing.T) {
 	}}
 	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
 	defer cancel()
-	err = New(path, reviews, nil).Run(ctx, cfg, func(ctx context.Context, report func(discovery.Snapshot)) error {
+	err = New(path, reviews, nil, nil).Run(ctx, cfg, func(ctx context.Context, report func(discovery.Snapshot)) error {
 		report(snapshotWithPRs(cfg, 9))
 		for range 8 {
 			select {
@@ -354,7 +354,7 @@ func TestPublicationFailureDoesNotChangeCompletedReviewEligibility(t *testing.T)
 		return reviewmemory.Run{ID: "completed", Outcome: reviewmemory.Outcome{Status: reviewmemory.Completed}}, nil
 	}}
 	eligible := decision(candidate, cfg, reviews)
-	event := New(path, reviews, &fakePublisher{err: errors.New("posting denied")}).launch(context.Background(), candidate, eligible, cfg)
+	event := New(path, reviews, &fakePublisher{err: errors.New("posting denied")}, nil).launch(context.Background(), candidate, eligible, cfg)
 	if event.Run == nil || event.Run.Status != reviewmemory.Completed || !event.Decision.Eligible || event.Decision.Reason != eligible.Reason || !strings.Contains(event.Error, "publication failed") {
 		t.Fatalf("publication relabeled review: %+v", event)
 	}

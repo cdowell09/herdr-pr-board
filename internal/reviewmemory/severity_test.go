@@ -35,3 +35,12 @@ func TestValidOutcomeRejectsUnlistedSeverity(t *testing.T) {
 		t.Fatal("validOutcome rejected severity P3")
 	}
 }
+
+func TestSeverityCountsStringListsEveryCount(t *testing.T) {
+	if got := (SeverityCounts{1, 2, 0, 3}).String(); got != "P0:1 P1:2 P2:0 P3:3" {
+		t.Fatalf("String() = %q", got)
+	}
+	if got := (SeverityCounts{}).String(); got != "P0:0 P1:0 P2:0 P3:0" {
+		t.Fatalf("zero String() = %q", got)
+	}
+}
