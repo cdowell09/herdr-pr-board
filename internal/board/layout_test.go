@@ -552,7 +552,7 @@ func TestEmptyViewFitsShortTerminalsAndKeepsTheKeys(t *testing.T) {
 	long := config.View{ID: "team", Title: "Team", Scope: config.ScopeGlobal,
 		Query: "is:open " + strings.Repeat("label:needs-a-very-long-triage-label ", 8)}
 	for _, width := range []int{30, 40, 60, 80} {
-		for _, height := range []int{15, 20, 24, 30} {
+		for height := 10; height <= 30; height++ {
 			model := emptyViewModel(t, width, long, defaultView(t, config.ViewAll))
 			model.height = height
 			rendered := stripANSI(model.View())
@@ -560,24 +560,43 @@ func TestEmptyViewFitsShortTerminalsAndKeepsTheKeys(t *testing.T) {
 			if len(lines) > height {
 				t.Fatalf("width %d height %d: rendered %d lines:\n%s", width, height, len(lines), rendered)
 			}
-			for _, pair := range []string{"Tab next view", "E edit config", "r refresh"} {
-				if !strings.Contains(rendered, pair) {
-					t.Fatalf("width %d height %d: missing %q:\n%s", width, height, pair, rendered)
-				}
-			}
 			for _, line := range lines {
 				if got := lipgloss.Width(line); got > width {
 					t.Fatalf("width %d height %d: line is %d cells wide:\n%q", width, height, got, line)
 				}
 			}
-			tabs := stripANSI(strings.Split(model.View(), "\n")[tabRowY])
 			label := model.tabLabel(0, model.views[0])
-			if !strings.Contains(tabs, label) {
+			tabs := stripANSI(lines[tabRowY])
+			start := strings.Index(tabs, label)
+			if start < 0 {
 				t.Fatalf("width %d height %d: tab row %q lost label %q", width, height, tabs, label)
 			}
-			if index, ok := model.tabAtX(lipgloss.Width(tabs[:strings.Index(tabs, label)])); !ok || index != 0 {
+			if index, ok := model.tabAtX(lipgloss.Width(tabs[:start])); !ok || index != 0 {
 				t.Fatalf("width %d height %d: tabAtX = %d, %v, want 0", width, height, index, ok)
 			}
+			if height < 15 {
+				// A short pane drops the actions, then the keys.
+				continue
+			}
+			for _, pair := range []string{"Tab next view", "E edit config", "r refresh"} {
+				if !strings.Contains(rendered, pair) {
+					t.Fatalf("width %d height %d: missing %q:\n%s", width, height, pair, rendered)
+				}
+			}
 		}
+	}
+}
+
+// TestEmptyViewKeepsTheKeysWithoutTheActions covers the pane that holds the
+// keys but not the actions next to them.
+func TestEmptyViewKeepsTheKeysWithoutTheActions(t *testing.T) {
+	model := emptyViewModel(t, 30, defaultView(t, config.ViewAll), defaultView(t, config.ViewAuthored))
+	model.height = 13
+	rendered := stripANSI(model.View())
+	if !strings.Contains(rendered, "Tab · E · r") {
+		t.Fatalf("a short pane dropped the keys:\n%s", rendered)
+	}
+	if lines := strings.Split(rendered, "\n"); len(lines) > model.height {
+		t.Fatalf("rendered %d lines in a %d-line terminal:\n%s", len(lines), model.height, rendered)
 	}
 }

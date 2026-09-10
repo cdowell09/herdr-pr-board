@@ -787,7 +787,7 @@ func (m Model) renderFooter() string {
 // bright and actions dim so the two never blend together.
 func (m Model) footerHelpLines() []string {
 	width := max(1, m.width)
-	lines := packKeyPairs(keyHelp, width)
+	lines := packLines(keyPairs(keyHelp), width)
 
 	if m.editing {
 		lines = append(lines, dimStyle.Render("filter: ")+truncate(m.filter+"▌", max(1, width-8)))
@@ -797,18 +797,35 @@ func (m Model) footerHelpLines() []string {
 	return lines
 }
 
-// packKeyPairs renders each control as a bright key and a dim action, then
-// puts as many pairs on each line as the width holds. A pair never breaks, so
-// no width separates a key from its action.
-func packKeyPairs(entries []keyHelpEntry, width int) []string {
+// keyPairs renders each control as a bright key and a dim action.
+func keyPairs(entries []keyHelpEntry) []string {
+	parts := make([]string, 0, len(entries))
+	for _, entry := range entries {
+		parts = append(parts, keyStyle.Render(entry.keys)+" "+dimStyle.Render(entry.action))
+	}
+	return parts
+}
+
+// keyLabels renders only the key literals. A pane that is too short for the
+// actions keeps every key this way.
+func keyLabels(entries []keyHelpEntry) []string {
+	parts := make([]string, 0, len(entries))
+	for _, entry := range entries {
+		parts = append(parts, keyStyle.Render(entry.keys))
+	}
+	return parts
+}
+
+// packLines puts as many parts on each line as the width holds. A part never
+// breaks, so no width separates a key from its action.
+func packLines(parts []string, width int) []string {
 	separator := dimStyle.Render(" · ")
 	var lines []string
 	current := ""
-	for _, entry := range entries {
-		pair := keyStyle.Render(entry.keys) + " " + dimStyle.Render(entry.action)
-		candidate := pair
+	for _, part := range parts {
+		candidate := part
 		if current != "" {
-			candidate = current + separator + pair
+			candidate = current + separator + part
 		}
 		if lipgloss.Width(candidate) <= width {
 			current = candidate
@@ -817,7 +834,7 @@ func packKeyPairs(entries []keyHelpEntry, width int) []string {
 		if current != "" {
 			lines = append(lines, current)
 		}
-		current = pair
+		current = part
 	}
 	if current != "" {
 		lines = append(lines, current)

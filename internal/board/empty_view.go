@@ -35,22 +35,31 @@ func emptyViewMessage(view config.View) string {
 }
 
 // renderEmptyView explains the empty view and names the next keys. The text
-// wraps at the terminal width, so no width removes a key. The message keeps
-// only the rows that the table area holds, so a long query cannot push the
-// tabs off the screen and invalidate the mouse rows.
+// wraps at the terminal width, so no width removes a key. The whole state
+// keeps only the rows that the table area holds, so neither a long query nor a
+// short pane can push the tabs off the screen and invalidate the mouse rows.
 func (m Model) renderEmptyView(lay boardLayout) string {
-	width := max(1, m.width)
+	width, budget := max(1, m.width), max(1, lay.visibleRows)
 	steps := emptyViewSteps
 	if len(m.views) < 2 {
 		// One view has no next view, so Tab does nothing.
 		steps = steps[1:]
 	}
-	stepLines := packKeyPairs(steps, width)
+
+	// One row always explains the view. The keys take the rows that remain.
+	// A pane that is too short for the actions keeps the keys alone.
+	stepLines := packLines(keyPairs(steps), width)
+	if len(stepLines) > budget-1 {
+		stepLines = packLines(keyLabels(steps), width)
+	}
+	if len(stepLines) > budget-1 {
+		stepLines = stepLines[:max(0, budget-1)]
+	}
 
 	message := strings.Split(ansi.Wrap(emptyViewMessage(m.currentView().View), width, ""), "\n")
-	if budget := max(1, lay.visibleRows-len(stepLines)); len(message) > budget {
-		// Keep every key. Compress the rest of the message into one row.
-		message = append(message[:budget-1], truncate(strings.Join(message[budget-1:], " "), width))
+	if room := budget - len(stepLines); len(message) > room {
+		// Compress the rest of the message into the last row it keeps.
+		message = append(message[:room-1], truncate(strings.Join(message[room-1:], " "), width))
 	}
 
 	lines := make([]string, 0, len(message)+len(stepLines))

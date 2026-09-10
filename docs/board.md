@@ -22,7 +22,7 @@ A default view with a changed query or scope names the query.
 Each empty view names `Tab` for the next view, `E` to edit the configuration, and `r` to refresh.
 The board omits `Tab` when the configuration has one view.
 The text wraps on narrow terminals. No width removes a key.
-A short terminal makes the text shorter. It keeps every key.
+A short terminal makes the text shorter. Then it shows the keys without the actions.
 The filter, loading, and error messages replace this text.
 
 The board shows the URL of the selected PR.

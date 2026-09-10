@@ -32,7 +32,6 @@ func resolveEditor() string {
 // resolution builds both, so the notice always names the launched executable.
 type editorLaunch struct {
 	command *exec.Cmd
-	output  io.Writer
 	notice  string
 }
 
@@ -49,30 +48,17 @@ func newEditorLaunch(path string) *editorLaunch {
 // screen before this call, so the footer frame is gone. The written line stays
 // above the editor and in the terminal history.
 func (e *editorLaunch) Run() error {
-	if e.output != nil {
-		fmt.Fprintln(e.output, e.notice)
+	if e.command.Stdout != nil {
+		fmt.Fprintln(e.command.Stdout, e.notice)
 	}
 	return e.command.Run()
 }
 
-func (e *editorLaunch) SetStdin(reader io.Reader) {
-	if e.command.Stdin == nil {
-		e.command.Stdin = reader
-	}
-}
+func (e *editorLaunch) SetStdin(reader io.Reader) { e.command.Stdin = reader }
 
-func (e *editorLaunch) SetStdout(writer io.Writer) {
-	e.output = writer
-	if e.command.Stdout == nil {
-		e.command.Stdout = writer
-	}
-}
+func (e *editorLaunch) SetStdout(writer io.Writer) { e.command.Stdout = writer }
 
-func (e *editorLaunch) SetStderr(writer io.Writer) {
-	if e.command.Stderr == nil {
-		e.command.Stderr = writer
-	}
-}
+func (e *editorLaunch) SetStderr(writer io.Writer) { e.command.Stderr = writer }
 
 // editConfigCmd returns the footer notice and the command that opens the
 // configuration file. The notice is empty when no editor starts.
