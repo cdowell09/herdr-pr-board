@@ -38,6 +38,22 @@ Install Go 1.24 or later. Then run the install command again:
 herdr plugin install cdowell09/herdr-pr-board
 ```
 
+### The board tab does not open on macOS or Linux
+
+Herdr 0.8 finds pane commands on `PATH` only. An earlier PR Board named the plugin binary in the pane command. The open action then fails with this message:
+
+```text
+plugin_pane_open_failed: Unable to spawn bin/herdr-pr-board because: No viable candidates found in PATH
+```
+
+PR Board now starts the macOS and Linux pane with `bash bin/run`. Bash must be on `PATH`.
+
+Reinstall the plugin to get the current pane command:
+
+```sh
+herdr plugin install cdowell09/herdr-pr-board
+```
+
 ### GitHub CLI is not authenticated
 
 The plugin does not store a GitHub token. It uses GitHub CLI (`gh`). If searches fail with an authentication error, the board footer, the JSON output, and CLI standard error show this message:

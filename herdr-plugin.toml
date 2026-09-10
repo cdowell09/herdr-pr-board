@@ -19,8 +19,19 @@ title = "Open PR board"
 contexts = ["workspace"]
 command = ["bin/herdr-pr-board", "--plugin-action", "open"]
 
+# Herdr 0.8 on macOS and Linux resolves pane commands through PATH only, so
+# Unix panes start through the bash wrapper. Windows panes resolve relative
+# commands from the plugin root and run the binary directly.
 [[panes]]
 id = "board"
 title = "PR Board"
 placement = "tab"
-command = ["bin/herdr-pr-board", "--plugin-action", "run"]
+platforms = ["macos", "linux"]
+command = ["bash", "bin/run"]
+
+[[panes]]
+id = "board-windows"
+title = "PR Board"
+placement = "tab"
+platforms = ["windows"]
+command = ["bin/herdr-pr-board.exe", "--plugin-action", "run"]
