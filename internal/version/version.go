@@ -8,7 +8,7 @@ import "runtime/debug"
 // link-time variables, so the binary carries the version in this constant.
 // TestCurrentMatchesThePluginManifest keeps the two values equal. Pull-request
 // CI and the release workflow both run that test.
-const Current = "0.7.1"
+const Current = "0.8.0"
 
 // revisionLength is the number of leading characters kept from a VCS revision.
 const revisionLength = 7
