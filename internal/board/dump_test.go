@@ -10,6 +10,7 @@ import (
 	"github.com/cdowell09/herdr-pr-board/internal/discovery"
 	"github.com/cdowell09/herdr-pr-board/internal/dispatch"
 	gh "github.com/cdowell09/herdr-pr-board/internal/github"
+	"github.com/cdowell09/herdr-pr-board/internal/reviewmemory"
 	"github.com/charmbracelet/lipgloss"
 	"github.com/muesli/termenv"
 )
@@ -59,9 +60,9 @@ func dumpModel(t *testing.T, width, height int) Model {
 	}
 	model.reviewRows = map[string]reviewOverviewRow{}
 	summaries := []reviewRowSummary{
-		{state: "completed", detail: "Completed locally", posted: "Both", postedDetail: "GitHub · current revision; PR Board · older revision"},
+		{state: "completed", detail: "Completed locally · P0:1 P1:2 P2:0 P3:3", posted: "Both", postedDetail: "GitHub · current revision; PR Board · older revision", findings: reviewmemory.SeverityCounts{1, 2, 0, 3}},
 		{state: "running", detail: "Running", posted: "PR Board", postedDetail: "PR Board · older revision"},
-		{state: "waiting", detail: "Waiting for review slot", posted: "GitHub", postedDetail: "GitHub · current revision"},
+		{state: "completed", detail: "Completed locally · no findings", posted: "GitHub", postedDetail: "GitHub · current revision"},
 		{state: "blocked", detail: "blocked · explicit retry required", posted: "–", postedDetail: "No submitted reviews"},
 	}
 	for i, pr := range model.views[0].PRs {

@@ -54,7 +54,7 @@ The board refreshes every five minutes by default.
 | `q` | Close the board. |
 
 The CI column shows check status.
-REV shows local review progress for the current revision.
+REVIEW shows local review progress and finding counts for the current revision.
 POSTED shows reviews submitted through GitHub, this PR Board installation, or both.
 Select a PR to inspect its revision details.
 See [board controls and status](docs/board.md) for all controls, symbols, and layouts.

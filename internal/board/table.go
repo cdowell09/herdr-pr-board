@@ -2,9 +2,11 @@ package board
 
 import (
 	"fmt"
+	"strconv"
 	"strings"
 
 	gh "github.com/cdowell09/herdr-pr-board/internal/github"
+	"github.com/cdowell09/herdr-pr-board/internal/reviewmemory"
 	"github.com/charmbracelet/lipgloss"
 	"github.com/charmbracelet/x/ansi"
 )
@@ -40,7 +42,7 @@ func (m Model) tableLayout() tableLayout {
 
 // fixedWidth returns the cell width of every column except the title.
 func (l tableLayout) fixedWidth() int {
-	width := 6 + 2 + 3 + 2 + 3 + 2 // PR, CI, REV, and separators
+	width := 6 + 2 + 3 + 2 + reviewColumnWidth + 2 // PR, CI, REVIEW, and separators
 	if l.posted {
 		width += 8 + 2
 	}
@@ -66,7 +68,8 @@ func (m Model) renderHeader(layout tableLayout) string {
 	b.WriteString("  ")
 	b.WriteString("CI ")
 	b.WriteString("  ")
-	b.WriteString("REV  ")
+	b.WriteString(padCells("REVIEW", reviewColumnWidth))
+	b.WriteString("  ")
 	if layout.posted {
 		b.WriteString("POSTED    ")
 	}
@@ -93,7 +96,7 @@ func (m Model) renderPRRow(pr gh.PullRequest, layout tableLayout) string {
 	b.WriteString(renderCI(pr.CI))
 	b.WriteString("  ")
 	summary := m.rowReviewSummary(pr)
-	b.WriteString(renderReviewState(summary.state))
+	b.WriteString(renderReviewCell(summary))
 	b.WriteString("  ")
 	if layout.posted {
 		b.WriteString(padCells(truncate(summary.posted, 8), 8))
@@ -115,18 +118,66 @@ func (m Model) renderPRRow(pr gh.PullRequest, layout tableLayout) string {
 	return truncate(b.String(), m.width)
 }
 
+// reviewColumnWidth fits four capped counts: "P0:0 P1:+ P2:0 P3:9".
+const reviewColumnWidth = 19
+
+// severityStyles color the counts that deserve a glance: P0 red, P1 yellow.
+var severityStyles = [len(reviewmemory.Severities)]lipgloss.Style{
+	lipgloss.NewStyle().Foreground(lipgloss.Color("210")),
+	lipgloss.NewStyle().Foreground(lipgloss.Color("214")),
+	lipgloss.NewStyle(),
+	lipgloss.NewStyle(),
+}
+
+// renderReviewCell shows finding counts for a completed review and the review
+// state symbol otherwise, padded to the REVIEW column width.
+func renderReviewCell(summary reviewRowSummary) string {
+	if summary.state != "completed" || summary.findings == (reviewmemory.SeverityCounts{}) {
+		return padCells(renderReviewState(summary.state), reviewColumnWidth)
+	}
+	tokens := make([]string, len(summary.findings))
+	for i, count := range summary.findings {
+		style := severityStyles[i]
+		if count == 0 {
+			style = dimStyle
+		}
+		tokens[i] = style.Render(reviewmemory.Severities[i] + ":" + cappedCount(count))
+	}
+	return padCells(strings.Join(tokens, " "), reviewColumnWidth)
+}
+
+// cappedCount keeps every count to one cell; the detail line shows the exact number.
+func cappedCount(count int) string {
+	if count > 9 {
+		return "+"
+	}
+	return strconv.Itoa(count)
+}
+
+// findingsDetail lists the exact count at every severity for the selected detail line.
+func findingsDetail(counts reviewmemory.SeverityCounts) string {
+	if counts == (reviewmemory.SeverityCounts{}) {
+		return "no findings"
+	}
+	tokens := make([]string, len(counts))
+	for i, count := range counts {
+		tokens[i] = fmt.Sprintf("%s:%d", reviewmemory.Severities[i], count)
+	}
+	return strings.Join(tokens, " ")
+}
+
 func renderReviewState(state string) string {
 	switch state {
 	case "running", "waiting", "queued", "ready":
-		return renderCI(gh.CIPending)
+		return ciSymbol(gh.CIPending)
 	case "completed":
-		return renderCI(gh.CISuccess)
+		return ciSymbol(gh.CISuccess)
 	case "failed", "blocked", "abandoned":
-		return renderCI(gh.CIFailure)
+		return ciSymbol(gh.CIFailure)
 	case "none":
-		return renderCI(gh.CINone)
+		return ciSymbol(gh.CINone)
 	default:
-		return renderCI(gh.CIUnknown)
+		return ciSymbol(gh.CIUnknown)
 	}
 }
 
@@ -145,20 +196,22 @@ func (m Model) renderSelected() string {
 }
 
 func renderCI(state gh.CIState) string {
-	var icon string
+	return " " + ciSymbol(state) + " "
+}
+
+func ciSymbol(state gh.CIState) string {
 	switch state {
 	case gh.CISuccess:
-		icon = lipgloss.NewStyle().Foreground(lipgloss.Color("42")).Render("✓")
+		return lipgloss.NewStyle().Foreground(lipgloss.Color("42")).Render("✓")
 	case gh.CIPending:
-		icon = lipgloss.NewStyle().Foreground(lipgloss.Color("214")).Render("●")
+		return lipgloss.NewStyle().Foreground(lipgloss.Color("214")).Render("●")
 	case gh.CIFailure, gh.CIError:
-		icon = lipgloss.NewStyle().Foreground(lipgloss.Color("210")).Render("✗")
+		return lipgloss.NewStyle().Foreground(lipgloss.Color("210")).Render("✗")
 	case gh.CINone:
-		icon = dimStyle.Foreground(lipgloss.Color("248")).Render("–")
+		return dimStyle.Foreground(lipgloss.Color("248")).Render("–")
 	default:
-		icon = dimStyle.Foreground(lipgloss.Color("248")).Render("?")
+		return dimStyle.Foreground(lipgloss.Color("248")).Render("?")
 	}
-	return " " + icon + " "
 }
 
 // truncate shortens value to at most width terminal cells, adding an

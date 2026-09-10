@@ -5,6 +5,7 @@ import (
 	"testing"
 
 	gh "github.com/cdowell09/herdr-pr-board/internal/github"
+	"github.com/cdowell09/herdr-pr-board/internal/reviewmemory"
 	"github.com/charmbracelet/lipgloss"
 	"github.com/charmbracelet/x/ansi"
 )
@@ -18,9 +19,43 @@ func TestReviewStateUsesCISymbols(t *testing.T) {
 		{"completed", gh.CISuccess}, {"failed", gh.CIFailure}, {"blocked", gh.CIFailure}, {"abandoned", gh.CIFailure},
 		{"none", gh.CINone}, {"unknown", gh.CIUnknown},
 	} {
-		if got, want := renderReviewState(tc.state), renderCI(tc.ci); got != want {
+		if got, want := renderReviewState(tc.state), ciSymbol(tc.ci); got != want {
 			t.Fatalf("%s marker = %q, want CI marker %q", tc.state, got, want)
 		}
+	}
+}
+
+func TestReviewCellShowsSeverityCounts(t *testing.T) {
+	completed := func(counts reviewmemory.SeverityCounts) reviewRowSummary {
+		return reviewRowSummary{state: "completed", findings: counts}
+	}
+	for _, tc := range []struct {
+		name    string
+		summary reviewRowSummary
+		want    string
+	}{
+		{"counts in severity order", completed(reviewmemory.SeverityCounts{1, 2, 0, 3}), "P0:1 P1:2 P2:0 P3:3"},
+		{"counts above nine are capped", completed(reviewmemory.SeverityCounts{12, 0, 10, 9}), "P0:+ P1:0 P2:+ P3:9"},
+		{"clean review keeps the symbol", completed(reviewmemory.SeverityCounts{}), "✓"},
+		{"counts never leak into other states", reviewRowSummary{state: "running", findings: reviewmemory.SeverityCounts{1, 0, 0, 0}}, "●"},
+		{"failed rerun hides older counts", reviewRowSummary{state: "failed", findings: reviewmemory.SeverityCounts{1, 0, 0, 0}}, "✗"},
+	} {
+		cell := renderReviewCell(tc.summary)
+		if got := strings.TrimSpace(stripANSI(cell)); got != tc.want {
+			t.Fatalf("%s: cell = %q, want %q", tc.name, got, tc.want)
+		}
+		if width := lipgloss.Width(stripANSI(cell)); width != reviewColumnWidth {
+			t.Fatalf("%s: cell is %d cells, want %d", tc.name, width, reviewColumnWidth)
+		}
+	}
+}
+
+func TestFindingsDetailListsExactCounts(t *testing.T) {
+	if got := findingsDetail(reviewmemory.SeverityCounts{12, 1, 0, 3}); got != "P0:12 P1:1 P2:0 P3:3" {
+		t.Fatalf("findingsDetail = %q", got)
+	}
+	if got := findingsDetail(reviewmemory.SeverityCounts{}); got != "no findings" {
+		t.Fatalf("findingsDetail of no findings = %q", got)
 	}
 }
 
@@ -32,12 +67,15 @@ func TestReviewOverviewLayouts(t *testing.T) {
 		layout := model.tableLayout()
 		header := stripANSI(model.renderHeader(layout))
 		row := stripANSI(model.renderPRRow(pr, layout))
-		markerX := strings.Index(header, "REV")
+		markerX := strings.Index(header, "REVIEW")
 		cellsBeforeMarker := lipgloss.Width(header[:markerX])
-		if got := ansi.Cut(row, cellsBeforeMarker, cellsBeforeMarker+3); !strings.HasPrefix(got, stripANSI(renderReviewState(summary.state))) {
-			t.Fatalf("width %d: review marker does not align: %q / %q", width, header, row)
+		if got, want := ansi.Cut(row, cellsBeforeMarker, cellsBeforeMarker+reviewColumnWidth), stripANSI(renderReviewCell(summary)); got != want {
+			t.Fatalf("width %d: review cell does not align: %q / %q", width, header, row)
 		}
-		if layout.title < 16 {
+		if layout.fixedWidth() > width {
+			t.Fatalf("width %d: fixed columns need %d cells", width, layout.fixedWidth())
+		}
+		if layout.title < 1 || (width >= tierWide && layout.title < 15) {
 			t.Fatalf("width %d: title has only %d cells", width, layout.title)
 		}
 		selected := stripANSI(model.renderSelected())
