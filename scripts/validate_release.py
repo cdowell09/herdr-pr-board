@@ -6,7 +6,7 @@ import tomllib
 from pathlib import Path
 
 VERSION_PATTERN = re.compile(r"^(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$")
-CONSTANT_PATTERN = re.compile(r'^const\s+Current(?:\s+string)?\s*=\s*"([^"]*)"\s*$', re.MULTILINE)
+CONSTANT_PATTERN = re.compile(r'^const\s+Current(?:\s+string)?\s*=\s*"([^"]*)"\s*(?://.*)?$', re.MULTILINE)
 COMMENT_PATTERN = re.compile(r"/\*.*?\*/", re.DOTALL)
 GO_VERSION_NAME = "internal/version/version.go"
 
