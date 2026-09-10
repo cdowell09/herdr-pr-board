@@ -236,22 +236,6 @@ func NewModelWithConfigPath(cfg config.Config, configPath string, loader discove
 	}, nil
 }
 
-// WithVersion shows the version in the title bar. The caller supplies the
-// version, which keeps build information out of the board.
-func (m Model) WithVersion(version string) Model {
-	m.version = version
-	return m
-}
-
-// titleText returns the title bar text. The version needs space, so the medium
-// and wide tiers show it and the narrow tier omits it.
-func (m Model) titleText() string {
-	if m.version == "" || m.width < tierMedium {
-		return m.cfg.UI.Title
-	}
-	return m.cfg.UI.Title + " v" + m.version
-}
-
 func (m Model) Init() tea.Cmd {
 	commands := []tea.Cmd{m.afterMonitorStart(m.observationCmd()), m.reviewOverviewCmd()}
 	if m.tickInterval() > 0 {
@@ -709,11 +693,7 @@ func (m Model) View() string {
 		return "Loading PR board…"
 	}
 	var output strings.Builder
-	status := ""
-	if m.loading {
-		status = warningStyle.Render("  refreshing…")
-	}
-	output.WriteString(titleStyle.Render(truncate(m.titleText(), m.width)) + status + "\n")
+	output.WriteString(m.renderTitle() + "\n")
 	output.WriteString(m.renderTabs() + "\n")
 	if notice := m.renderStaleNotice(); notice != "" {
 		output.WriteString(notice + "\n")

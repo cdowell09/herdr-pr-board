@@ -43,7 +43,7 @@ func TestDescribeReportsTheShortRevision(t *testing.T) {
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
-			got := describe(func() (*debug.BuildInfo, bool) { return tc.info, tc.ok })
+			got := describe(tc.info, tc.ok)
 			if got != tc.want {
 				t.Fatalf("describe() = %q, want %q", got, tc.want)
 			}

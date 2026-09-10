@@ -6,7 +6,7 @@ import validate_release
 
 
 class ValidateReleaseTest(unittest.TestCase):
-    def validate(self, manifest: str, tag: str, version_go: "str | None" = None) -> str:
+    def validate(self, manifest: str, tag: str, version_go: str | None = None) -> str:
         """Validate manifest against tag.
 
         version_go is the internal/version/version.go text. None writes a file

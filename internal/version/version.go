@@ -17,12 +17,11 @@ const revisionLength = 7
 // "0.6.0 (e633d4f)". It returns only the version when the build carries no
 // revision.
 func String() string {
-	return describe(debug.ReadBuildInfo)
+	return describe(debug.ReadBuildInfo())
 }
 
-// describe formats the version from the build information that read returns.
-func describe(read func() (*debug.BuildInfo, bool)) string {
-	info, ok := read()
+// describe formats the version from build information.
+func describe(info *debug.BuildInfo, ok bool) string {
 	if !ok || info == nil {
 		return Current
 	}
