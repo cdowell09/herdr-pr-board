@@ -80,6 +80,9 @@ func (m Model) repositoryContent() []repositoryLine {
 			row = label + left + "▏" + right
 		}
 		add(prefix+row, i)
+		if i == repositoryReviewerRow && s.noAgentInstalled() {
+			add("No agent CLI found on PATH. Install one, then reopen settings.", -1)
+		}
 		if i == skillRow && s.selectedReviewer().Builtin() != "" {
 			add("A custom prompt replaces default criteria. A skill adds requirements.", -1)
 			add("New relative paths start in the configuration directory.", -1)
@@ -226,7 +229,7 @@ func (m Model) updateRepositoryMouse(message tea.MouseMsg) (tea.Model, tea.Cmd) 
 		index := event.Y - len(header)
 		if index >= 0 && index < size && start+index < len(lines) && lines[start+index].row >= 0 {
 			s.row = lines[start+index].row
-			s.toggle()
+			s.toggle(1)
 		}
 	}
 	m.clampRepositoryOffset()
@@ -234,7 +237,7 @@ func (m Model) updateRepositoryMouse(message tea.MouseMsg) (tea.Model, tea.Cmd) 
 }
 
 func (m Model) repositoryHelp() []string {
-	text := "↑↓ select · Space change · Enter save · PgUp/Dn scroll · Esc cancel"
+	text := "↑↓ select · ←→ Space change · Enter save · PgUp/Dn scroll · Esc cancel"
 	if m.reviewPanel.setup.editing != nil {
 		text = "Type or paste path · Enter use · Ctrl+U clear · Esc discard"
 	}

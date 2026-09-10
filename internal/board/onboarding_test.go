@@ -78,7 +78,7 @@ func onboardingModel(t *testing.T, width, height, views int) Model {
 	for i := len(m.cfg.Views); i < views; i++ {
 		m.cfg.Views = append(m.cfg.Views, config.View{ID: fmt.Sprintf("view-%02d", i), Title: "A configured view with a descriptive title", Query: "is:open", Scope: config.ScopeGlobal})
 	}
-	setup, err := newRepositorySetup(m.cfg, "acme/repo")
+	setup, err := newRepositorySetup(m.cfg, "acme/repo", installedAgents(fakeLookPath("pi")))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -255,7 +255,7 @@ func TestOnboardingSaveAndStatusRefresh(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	setup, err := newRepositorySetup(cfg, m.reviewPanel.pr.Repository)
+	setup, err := newRepositorySetup(cfg, m.reviewPanel.pr.Repository, installedAgents(fakeLookPath("pi")))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -263,7 +263,7 @@ func TestOnboardingSaveAndStatusRefresh(t *testing.T) {
 	setup.repo.AutoLaunch = true
 	setup.repo.PublishActions = []config.PublicationAction{config.PublishComment}
 	setup.row = repositoryViewsRow + 1
-	setup.toggle() // The explicitly selected existing review view.
+	setup.toggle(1) // The explicitly selected existing review view.
 	updated, save := m.Update(tea.KeyMsg{Type: tea.KeyEnter})
 	m = updated.(Model)
 	updated, _ = m.Update(save())

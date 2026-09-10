@@ -7,23 +7,88 @@ import (
 	"strings"
 )
 
+// builtins is the single source for built-in reviewer IDs and for the agent
+// program repository setup must find on PATH.
+//
+// Executable is the program the adapter needs on PATH when the user selects no
+// --<id>-executable. The adapter packages do not export that name. Most adapters
+// pass their ID as agentadapter.Options.Name, and agentadapter.Run uses Name as
+// the binary when Binary is empty. Three entries below differ from that rule.
+// Keep this table equal to these sources, and add one row with each new adapter:
+//
+//   - internal/antigravityadapter/run.go defaults its binary to "agy".
+//   - internal/hermesadapter/run.go runs an embedded bridge with "python3".
+//   - internal/cursoradapter/run.go runs an embedded bridge with "node".
+//
+// An empty Executable means PATH cannot show whether the reviewer is available.
+// The Hermes and Cursor adapters start a shared language runtime, and that
+// runtime does not prove the agent is installed. Setup does not probe for these
+// reviewers, and it does not select one of them as the default.
+//
+// internal/mastraadapter/run.go still needs "mastracode" on PATH. It resolves
+// that program first, then starts it with Node.
+var builtins = []struct{ ID, Executable string }{
+	{"pi", "pi"},
+	{"codex", "codex"},
+	{"claude", "claude"},
+	{"qwen", "qwen"},
+	{"omp", "omp"},
+	{"kimi", "kimi"},
+	{"qodercli", "qodercli"},
+	{"copilot", "copilot"},
+	{"mastracode", "mastracode"},
+	{"hermes", ""},
+	{"cursor", ""},
+	{"antigravity", "agy"},
+	{"grok", "grok"},
+}
+
+// DetectableExecutables returns each agent program repository setup probes on
+// PATH, in table order.
+func DetectableExecutables() []string {
+	executables := make([]string, 0, len(builtins))
+	for _, builtin := range builtins {
+		if builtin.Executable != "" {
+			executables = append(executables, builtin.Executable)
+		}
+	}
+	return executables
+}
+
 // BuiltinReviewers returns the commands available during repository setup.
 func BuiltinReviewers(binary string) []Reviewer {
-	return []Reviewer{
-		{ID: "pi", Command: []string{binary, "--pi-reviewer"}},
-		{ID: "codex", Command: []string{binary, "--codex-reviewer"}},
-		{ID: "claude", Command: []string{binary, "--claude-reviewer"}},
-		{ID: "qwen", Command: []string{binary, "--qwen-reviewer"}},
-		{ID: "omp", Command: []string{binary, "--omp-reviewer"}},
-		{ID: "kimi", Command: []string{binary, "--kimi-reviewer"}},
-		{ID: "qodercli", Command: []string{binary, "--qodercli-reviewer"}},
-		{ID: "copilot", Command: []string{binary, "--copilot-reviewer"}},
-		{ID: "mastracode", Command: []string{binary, "--mastracode-reviewer"}},
-		{ID: "hermes", Command: []string{binary, "--hermes-reviewer"}},
-		{ID: "cursor", Command: []string{binary, "--cursor-reviewer"}},
-		{ID: "antigravity", Command: []string{binary, "--antigravity-reviewer"}},
-		{ID: "grok", Command: []string{binary, "--grok-reviewer"}},
+	reviewers := make([]Reviewer, 0, len(builtins))
+	for _, builtin := range builtins {
+		reviewers = append(reviewers, Reviewer{ID: builtin.ID, Command: []string{binary, "--" + builtin.ID + "-reviewer"}})
 	}
+	return reviewers
+}
+
+// Executable returns the agent program repository setup must find on PATH for
+// this reviewer. An empty result means setup must not probe PATH, and setup
+// then reports no install status and does not select the reviewer as the
+// default. Setup does not probe three kinds of reviewer:
+//
+//   - A custom command, because it names its own program.
+//   - A nonempty --<id>-executable path, because it names its own program.
+//   - A reviewer whose adapter starts a shared language runtime.
+//
+// An empty --<id>-executable value keeps the adapter default, so setup probes
+// that default.
+func (r Reviewer) Executable() string {
+	builtin := r.Builtin()
+	if builtin == "" {
+		return ""
+	}
+	if selected, _ := commandOption(r.Command, builtin+"-executable", false); selected != "" {
+		return ""
+	}
+	for _, entry := range builtins {
+		if entry.ID == builtin {
+			return entry.Executable
+		}
+	}
+	return ""
 }
 
 // Builtin identifies the selected native adapter without changing command arguments.

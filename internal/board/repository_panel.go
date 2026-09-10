@@ -2,7 +2,9 @@ package board
 
 import (
 	"context"
+	"fmt"
 	"os"
+	"os/exec"
 	"slices"
 	"time"
 
@@ -34,12 +36,40 @@ type repositorySetup struct {
 	reviewers []config.Reviewer
 	original  []config.Reviewer
 	files     map[string]reviewinstructions.Files
+	installed map[string]bool
 	editing   *instructionEditor
 	row       int
 	saving    bool
 	views     []config.View
 	automatic config.AutomaticViewsEdit
 	offset    int
+}
+
+// missing reports that the agent program of a reviewer is absent from PATH.
+// A reviewer that names its own program reports no probe and stays available.
+func (s *repositorySetup) missing(reviewer config.Reviewer) bool {
+	executable := reviewer.Executable()
+	return executable != "" && !s.installed[executable]
+}
+
+// available reports that setup can select a reviewer as the default. A custom
+// command names its own program, so it always counts as available. A built-in
+// reviewer needs its agent program on PATH. A built-in reviewer that setup
+// cannot probe stays unavailable, because PATH cannot prove that it runs.
+func (s *repositorySetup) available(reviewer config.Reviewer) bool {
+	if reviewer.Builtin() == "" {
+		return true
+	}
+	executable := reviewer.Executable()
+	return executable != "" && s.installed[executable]
+}
+
+// noAgentInstalled reports that PATH holds no built-in agent program while the
+// selected reviewer needs one. Setup stays silent for a reviewer it does not
+// probe, because it cannot know whether that reviewer runs. A custom command, a
+// shared language runtime, and a selected --<id>-executable all stay silent.
+func (s *repositorySetup) noAgentInstalled() bool {
+	return len(s.installed) == 0 && s.missing(*s.selectedReviewer())
 }
 
 // Monitor state matters only when this repository or the global views ask for
@@ -62,10 +92,12 @@ func (s *repositorySetup) globalView(row int) (config.View, bool) {
 }
 
 type repositorySettingsMsg struct {
-	url   string
-	cfg   config.Config
-	force bool
-	err   error
+	url string
+	cfg config.Config
+	// installed holds each built-in agent program found on PATH.
+	installed map[string]bool
+	force     bool
+	err       error
 }
 type repositorySavedMsg struct {
 	url string
@@ -73,17 +105,33 @@ type repositorySavedMsg struct {
 	err error
 }
 
+// installedAgents reports each built-in agent program that PATH holds. The
+// probe reads no configuration and sends no GitHub request.
+func installedAgents(lookPath func(string) (string, error)) map[string]bool {
+	if lookPath == nil {
+		lookPath = exec.LookPath
+	}
+	installed := map[string]bool{}
+	for _, executable := range config.DetectableExecutables() {
+		if _, err := lookPath(executable); err == nil {
+			installed[executable] = true
+		}
+	}
+	return installed
+}
+
+// The PATH probe runs in this command, never on the update or render path.
 func (m Model) repositorySettingsCmd(force bool) tea.Cmd {
-	path, url := m.configPath, m.reviewPanel.pr.URL
+	path, url, lookPath := m.configPath, m.reviewPanel.pr.URL, m.lookPath
 	return func() tea.Msg {
 		cfg, err := config.LoadExisting(path)
-		return repositorySettingsMsg{url, cfg, force, err}
+		return repositorySettingsMsg{url: url, cfg: cfg, installed: installedAgents(lookPath), force: force, err: err}
 	}
 }
 
-func newRepositorySetup(cfg config.Config, name string) (*repositorySetup, error) {
+func newRepositorySetup(cfg config.Config, name string, installed map[string]bool) (*repositorySetup, error) {
 	repo, exists := cfg.RepositoryFor(name)
-	s := &repositorySetup{repo: repo, original: slices.Clone(cfg.Reviewers), views: cfg.Views, automatic: config.AutomaticViewsEdit{Selected: slices.Clone(cfg.Review.AutoViews), Expected: cfg}}
+	s := &repositorySetup{repo: repo, original: slices.Clone(cfg.Reviewers), installed: installed, views: cfg.Views, automatic: config.AutomaticViewsEdit{Selected: slices.Clone(cfg.Review.AutoViews), Expected: cfg}}
 	if exists {
 		s.expected = &repo
 	}
@@ -106,8 +154,17 @@ func newRepositorySetup(cfg config.Config, name string) (*repositorySetup, error
 		}
 		s.files[reviewer.ID] = reviewinstructions.Files{Prompt: prompt, Skill: skill}
 	}
+	// A saved selection stays, even when its program is absent. Only a repository
+	// with no saved reviewer takes the first available reviewer, in configuration
+	// order. The first reviewer stays the default when none is available.
 	if s.repo.Reviewer == "" {
 		s.repo.Reviewer = s.reviewers[0].ID
+		for _, reviewer := range s.reviewers {
+			if s.available(reviewer) {
+				s.repo.Reviewer = reviewer.ID
+				break
+			}
+		}
 	}
 	return s, nil
 }
@@ -127,7 +184,7 @@ func (m Model) updateRepository(message tea.Msg) (Model, tea.Cmd, bool) {
 		m.cfg.Review.AutoViews = slices.Clone(msg.cfg.Review.AutoViews)
 		_, exists := msg.cfg.RepositoryFor(m.reviewPanel.pr.Repository)
 		if msg.force || !exists {
-			setup, err := newRepositorySetup(msg.cfg, m.reviewPanel.pr.Repository)
+			setup, err := newRepositorySetup(msg.cfg, m.reviewPanel.pr.Repository, msg.installed)
 			if err != nil {
 				m.reviewPanel.message = err.Error()
 			} else {
@@ -195,8 +252,10 @@ func (m Model) updateRepositoryKey(key tea.KeyMsg) (tea.Model, tea.Cmd) {
 		s.offset = len(m.repositoryContent())
 		m.clampRepositoryOffset()
 		return m, nil
-	case "left", "right", " ":
-		s.toggle()
+	case "left":
+		s.toggle(-1)
+	case "right", " ":
+		s.toggle(1)
 	case "enter":
 		s.saving = true
 		automatic := s.automatic
@@ -213,7 +272,10 @@ func (m Model) updateRepositoryKey(key tea.KeyMsg) (tea.Model, tea.Cmd) {
 	return m, nil
 }
 
-func (s *repositorySetup) toggle() {
+// toggle changes the selected row. Only the reviewer row has an order, so step
+// selects the next reviewer for 1 and the previous reviewer for -1. Every other
+// row ignores step and keeps one action for the left, right, and Space keys.
+func (s *repositorySetup) toggle(step int) {
 	if view, ok := s.globalView(s.row); ok {
 		if i := slices.Index(s.automatic.Selected, view.ID); i >= 0 {
 			s.automatic.Selected = slices.Delete(s.automatic.Selected, i, i+1)
@@ -224,11 +286,9 @@ func (s *repositorySetup) toggle() {
 	}
 	switch s.row {
 	case repositoryReviewerRow:
-		for i, r := range s.reviewers {
-			if r.ID == s.repo.Reviewer {
-				s.repo.Reviewer = s.reviewers[(i+1)%len(s.reviewers)].ID
-				break
-			}
+		count := len(s.reviewers)
+		if i := s.reviewerIndex(); i >= 0 {
+			s.repo.Reviewer = s.reviewers[((i+step)%count+count)%count].ID
 		}
 	case repositoryAutomaticRow:
 		s.repo.AutoLaunch = !s.repo.AutoLaunch
@@ -264,7 +324,7 @@ func (s *repositorySetup) toggle() {
 }
 
 func (s *repositorySetup) rows() []string {
-	rows := []string{"Reviewer: " + s.repo.Reviewer, repositoryToggleLabel("Automatic launches", s.repo.AutoLaunch)}
+	rows := []string{s.reviewerLabel(), repositoryToggleLabel("Automatic launches", s.repo.AutoLaunch)}
 	for _, action := range config.PublicationActions() {
 		label := ""
 		switch action {
@@ -301,6 +361,21 @@ func (s *repositorySetup) rows() []string {
 		prompt, skill = "Custom command", "Custom command"
 	}
 	return append(rows, "Prompt file: "+prompt, "Skill file: "+skill)
+}
+
+// reviewerIndex reports the position of the selected reviewer in the cycle.
+func (s *repositorySetup) reviewerIndex() int {
+	return slices.IndexFunc(s.reviewers, func(r config.Reviewer) bool { return r.ID == s.repo.Reviewer })
+}
+
+// The reviewer row names the selection, its position in the cycle, and its
+// install status. The position tells the user how many reviewers remain.
+func (s *repositorySetup) reviewerLabel() string {
+	label := fmt.Sprintf("Reviewer: %s (%d/%d)", s.repo.Reviewer, s.reviewerIndex()+1, len(s.reviewers))
+	if s.missing(*s.selectedReviewer()) {
+		label += " · not installed"
+	}
+	return label
 }
 
 func repositoryToggleLabel(label string, enabled bool) string {

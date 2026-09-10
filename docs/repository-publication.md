@@ -11,6 +11,13 @@ The first review action opens repository settings when the repository has no sav
 The panel groups settings under Reviews, GitHub permissions, Automatic posting, Global views, and Advanced.
 The rows keep that order.
 Select a reviewer under Reviews with the arrow keys or Space.
+The reviewer row shows the selection, its position, and the total.
+`Reviewer: claude (3/13)` selects the third reviewer of 13.
+Press Right or Space to select the next reviewer.
+Press Left to select the previous reviewer.
+Setup starts at the first available reviewer and keeps a saved selection.
+The reviewer row shows `not installed` for an absent agent CLI.
+See [detect installed agent CLIs](reviews.md#detect-installed-agent-clis) for the PATH rules and the install hint.
 Enable automatic launches only when you want unattended reviews.
 Enable Comments under GitHub permissions to allow comments.
 Permission allows publication but does not schedule publication.

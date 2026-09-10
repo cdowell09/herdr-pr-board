@@ -104,11 +104,43 @@ A bare agent CLI command does not implement the PR Board reviewer contract autom
 A custom adapter must read the input and write the validated result described below.
 Custom programs keep their own instruction interface.
 
+## Detect installed agent CLIs
+
+Repository setup looks for each built-in agent CLI on PATH when it opens.
+This check reads PATH only. It sends no GitHub request.
+
+Setup starts at the first available reviewer, in configuration order.
+A custom reviewer command is always available, because it names its own program.
+A built-in reviewer is available when its agent CLI is on PATH.
+Configured reviewers come before the built-in reviewers that your configuration omits.
+Setup keeps a saved reviewer, even when its agent CLI is absent.
+
+The reviewer row shows `not installed` for an absent built-in agent CLI.
+Each missing reviewer still cycles normally, so you can select one before you install it.
+Setup shows this hint below the row when it finds no built-in agent CLI.
+The hint appears only while a built-in reviewer is selected:
+
+```text
+No agent CLI found on PATH. Install one, then reopen settings.
+```
+
+Setup does not check two kinds of reviewer.
+It does not check a custom reviewer command.
+It also does not check the Hermes and Cursor reviewers.
+Those adapters start a shared language runtime, which does not prove the agent is installed.
+Setup shows no install status for an unchecked reviewer.
+It also does not select an unchecked built-in reviewer as the default.
+
 ## Use the review panel
 
 Press `v` to open the selected PR's review history.
 The panel opens repository setup when the repository has no saved settings.
 Choose a reviewer and save the settings.
+The reviewer row shows the selection, its position, and the total.
+`Reviewer: claude (3/13)` selects the third reviewer of 13.
+Press Right or Space to select the next reviewer.
+Press Left to select the previous reviewer.
+See [detect installed agent CLIs](#detect-installed-agent-clis) for the default selection and the install status.
 The setup header shows that manual reviews are ready when automatic launches are off.
 It names Enter to save the settings and `n` to run the review.
 Press `n` in the review panel to start the review.
@@ -156,6 +188,8 @@ An older or unavailable owner cannot accept the request.
 
 Press `s` in the panel to edit repository settings.
 Use the arrow keys and Space to change settings.
+On the reviewer row, Left selects the previous reviewer.
+Right and Space select the next reviewer.
 
 The settings panel separates reviews, GitHub permissions, automatic posting, global views, and advanced files.
 The rows keep that order.

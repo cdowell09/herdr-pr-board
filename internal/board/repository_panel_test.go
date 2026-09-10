@@ -115,7 +115,7 @@ func TestPublicationControlsTargetLatestCompletion(t *testing.T) {
 func TestNarrowSetupKeepsEveryPermissionIndicatorVisible(t *testing.T) {
 	m := panelModel(t)
 	m.width = 30
-	setup, err := newRepositorySetup(m.cfg, "acme/repo")
+	setup, err := newRepositorySetup(m.cfg, "acme/repo", installedAgents(fakeLookPath("pi")))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -311,7 +311,7 @@ func TestInstructionEditorKeepsCursorVisibleAndCancelsDraft(t *testing.T) {
 	s := m.reviewPanel.setup
 	s.repo.Reviewer = "pi"
 	s.row = s.promptRow()
-	s.toggle()
+	s.toggle(1)
 	path := strings.Repeat("日本語/", 30) + "left"
 	for _, key := range []tea.KeyMsg{{Type: tea.KeyRunes, Runes: []rune(path)}, {Type: tea.KeyRunes, Runes: []rune("q")}, {Type: tea.KeySpace}} {
 		next, _ := m.Update(key)

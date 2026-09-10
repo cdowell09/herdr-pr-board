@@ -102,6 +102,13 @@ The panel opens repository setup when the repository has no saved settings.
 The panel groups settings under Reviews, GitHub permissions, Automatic posting, Global views, and Advanced.
 Choose a reviewer and save the settings.
 The setup header shows that manual reviews are ready when automatic launches are off.
+
+The reviewer row shows the selection, its position, and the total.
+`Reviewer: claude (3/13)` selects the third reviewer of 13.
+Press Right or Space to select the next reviewer. Press Left to go back.
+Setup starts at the first available reviewer and keeps a saved selection.
+See [reviewer detection](docs/reviews.md#detect-installed-agent-clis) for the PATH rules and the install hint.
+
 Press `n` in the review panel to run the review.
 Press `s` in the review panel to change settings later.
 

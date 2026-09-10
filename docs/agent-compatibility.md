@@ -69,6 +69,9 @@ The Qoder adapter does not import custom provider settings.
 Qwen and Oh My Pi retain their native configured authentication.
 
 Select these agents in repository settings.
+Install the agent CLI before you select it.
+Setup starts at the first available reviewer and shows `not installed` for an absent agent CLI.
+See [detect installed agent CLIs](reviews.md#detect-installed-agent-clis) for the PATH rules and the exceptions.
 Alternatively, use a setup command:
 
 ```sh
