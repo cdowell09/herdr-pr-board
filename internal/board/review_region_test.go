@@ -19,7 +19,6 @@ type reviewFake struct{ request review.Request }
 
 func (*reviewFake) Stop(string) error { return nil }
 
-func (*reviewFake) History(string) ([]reviewmemory.Run, error) { return nil, nil }
 func (f *reviewFake) Review(_ context.Context, request review.Request, _ func(string)) (reviewmemory.Run, error) {
 	f.request = request
 	return reviewmemory.Run{ID: "attempt", Outcome: reviewmemory.Outcome{Status: reviewmemory.Completed, Message: "done", Findings: []reviewmemory.Finding{}}}, nil
@@ -38,9 +37,10 @@ func panelModel(t *testing.T) Model {
 	m.width, m.height = 100, 35
 	m.loading = false
 	m.views[0].PRs = []gh.PullRequest{{Repository: "acme/repo", Number: 1, URL: "https://github.com/acme/repo/pull/1", HeadOID: strings.Repeat("a", 40), BaseRefName: "main", MetadataObservedAt: time.Now()}}
-	next, _ := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("v")})
-	loaded, _ := next.(Model).Update(repositorySettingsMsg{url: m.views[0].PRs[0].URL, cfg: m.cfg})
-	return loaded.(Model)
+	// The first update binds the region to the selected PR; v zooms it.
+	next, _ := m.Update(tea.WindowSizeMsg{Width: m.width, Height: m.height})
+	zoomed, _ := next.(Model).Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("v")})
+	return zoomed.(Model)
 }
 
 func TestReviewPanelHistoryCoordinatesAndControls(t *testing.T) {
@@ -49,24 +49,24 @@ func TestReviewPanelHistoryCoordinatesAndControls(t *testing.T) {
 	old := current
 	old.ID = "old"
 	old.Identity.HeadOID = strings.Repeat("b", 40)
-	m.reviewPanel.runs = []reviewmemory.Run{old, current}
+	m.setRegionRuns(old, current)
 	view := stripANSI(m.View())
 	for _, value := range []string{"current observed revision", "older revision", "P2 Finding", "Diagnostic details", "main.go:2"} {
 		if !strings.Contains(view, value) {
 			t.Fatalf("missing %q:\n%s", value, view)
 		}
 	}
-	if !strings.Contains(stripANSI(strings.Join(m.reviewLines(), "\n")), "Diagnostics:") {
+	if !strings.Contains(stripANSI(strings.Join(m.regionLines(true), "\n")), "Diagnostics:") {
 		t.Fatal("diagnostics not reachable by scrolling")
 	}
 	lines := strings.Split(view, "\n")
-	if lines[1] != m.reviewPanel.pr.URL {
+	if lines[1] != m.region.pr.URL {
 		t.Fatalf("URL coordinate drift: %q", lines[1])
 	}
 	opened := ""
 	m.openBrowser = func(url string) tea.Cmd { opened = url; return nil }
 	m.Update(tea.MouseMsg{X: 0, Y: 1, Button: tea.MouseButtonLeft, Action: tea.MouseActionPress})
-	if opened != m.reviewPanel.pr.URL {
+	if opened != m.region.pr.URL {
 		t.Fatal("click did not open rendered URL")
 	}
 	for _, width := range []int{30, 60, 100} {
@@ -91,8 +91,8 @@ func TestReviewPanelQueuesWithoutBlockingAndExplicitlyReruns(t *testing.T) {
 	}
 	next, _ = m.Update(tea.KeyMsg{Type: tea.KeyEsc})
 	m = next.(Model)
-	if m.reviewPanel != nil || len(m.reviewJobs) != 1 {
-		t.Fatal("closing panel stopped the request")
+	if m.zoom || m.region == nil || len(m.reviewJobs) != 1 {
+		t.Fatal("leaving zoom stopped the request")
 	}
 	msg := command()
 	next, _ = m.Update(msg)
@@ -104,24 +104,20 @@ func TestReviewPanelQueuesWithoutBlockingAndExplicitlyReruns(t *testing.T) {
 
 func TestReviewPanelDoesNotMultiplyPollingAndStripsControlText(t *testing.T) {
 	m := panelModel(t)
-	url := m.reviewPanel.pr.URL
-	next, cmd := m.Update(reviewHistoryMsg{url: url})
+	next, cmd := m.Update(reviewOverviewMsg{epoch: m.epoch})
 	if cmd != nil {
-		t.Fatal("history response created another polling loop")
+		t.Fatal("an ad hoc region read created another polling loop")
 	}
 	m = next.(Model)
-	if _, cmd := m.Update(reviewTickMsg{url: url, generation: m.reviewGeneration - 1}); cmd != nil {
-		t.Fatal("old panel poll survived")
-	}
-	m.reviewPanel.message = "untrusted\x1b]52;c;payload\a\x1b[2Jtext"
-	if strings.Contains(reviewText(m.reviewPanel.message), "\x1b") {
+	m.region.message = "untrusted\x1b]52;c;payload\a\x1b[2Jtext"
+	if strings.Contains(reviewText(m.region.message), "\x1b") {
 		t.Fatal("terminal control text survived")
 	}
 }
 
 func TestReviewPanelUsesLatestSuccessfulBoardRevision(t *testing.T) {
 	m := panelModel(t)
-	m.reviewPanel.runs = []reviewmemory.Run{{Identity: reviewmemory.Identity{HeadOID: strings.Repeat("a", 40), BaseRefName: "main"}, Outcome: reviewmemory.Outcome{Status: reviewmemory.Completed}}}
+	m.setRegionRuns(reviewmemory.Run{Identity: reviewmemory.Identity{HeadOID: strings.Repeat("a", 40), BaseRefName: "main"}, Outcome: reviewmemory.Outcome{Status: reviewmemory.Completed}})
 	if !strings.Contains(m.View(), "current observed revision") {
 		t.Fatal("current revision missing")
 	}
@@ -138,52 +134,49 @@ func TestReviewPanelUsesLatestSuccessfulBoardRevision(t *testing.T) {
 func TestReviewPanelScrollBoundariesRemainResponsive(t *testing.T) {
 	m := panelModel(t)
 	m.height = 12
-	m.reviewPanel.message = strings.Repeat("History line\n", 40)
+	m.region.message = strings.Repeat("History line\n", 40)
 	update := func(message tea.Msg) {
 		next, _ := m.Update(message)
 		m = next.(Model)
 	}
 	key := func(value string) { update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune(value)}) }
 	key("G")
-	_, visible := m.reviewViewport()
-	bottom := len(m.reviewLines()) - visible
-	if m.reviewPanel.offset != bottom {
-		t.Fatalf("stored end offset = %d, want %d", m.reviewPanel.offset, bottom)
+	_, visible := m.zoomViewport()
+	bottom := len(m.regionLines(true)) - visible
+	if m.region.offset != bottom {
+		t.Fatalf("stored end offset = %d, want %d", m.region.offset, bottom)
 	}
 	endView := m.View()
 	key("k")
-	if m.reviewPanel.offset != bottom-1 || m.View() == endView {
+	if m.region.offset != bottom-1 || m.View() == endView {
 		t.Fatal("G then k did not scroll immediately")
 	}
 	key("G")
 	key("j")
 	key("k")
-	if m.reviewPanel.offset != bottom-1 {
+	if m.region.offset != bottom-1 {
 		t.Fatal("down at the bottom accumulated hidden overscroll")
 	}
 	key("G")
 	update(tea.MouseMsg{Button: tea.MouseButtonWheelDown})
 	update(tea.MouseMsg{Button: tea.MouseButtonWheelUp})
-	if m.reviewPanel.offset != bottom-mouseStep {
+	if m.region.offset != bottom-mouseStep {
 		t.Fatal("wheel at the bottom accumulated hidden overscroll")
 	}
 	key("G")
 	update(tea.WindowSizeMsg{Width: 100, Height: 100})
-	if m.reviewPanel.offset != 0 {
+	if m.region.offset != 0 {
 		t.Fatal("resize retained an invisible offset")
 	}
 	update(tea.WindowSizeMsg{Width: 100, Height: 12})
-	m.reviewPanel.message = ""
-	m.reviewPanel.runs = []reviewmemory.Run{{Outcome: reviewmemory.Outcome{Message: strings.Repeat("History line\n", 40)}}}
+	m.region.message = ""
+	m.setRegionRuns(reviewmemory.Run{Outcome: reviewmemory.Outcome{Message: strings.Repeat("History line\n", 40)}})
 	key("G")
-	update(reviewHistoryMsg{url: m.reviewPanel.pr.URL})
-	if m.reviewPanel.offset != 0 {
-		t.Fatal("shorter history retained an invisible offset")
+	update(reviewOverviewMsg{epoch: m.epoch})
+	_, visible = m.zoomViewport()
+	if want := max(0, len(m.regionLines(true))-visible); m.region.offset != want {
+		t.Fatalf("shorter history kept offset %d, want %d", m.region.offset, want)
 	}
 }
 
 func (*reviewFake) Snapshot() (reviewmemory.Snapshot, error) { return reviewmemory.Snapshot{}, nil }
-
-func (*reviewFake) ReviewCapacity() error { return nil }
-
-func (*reviewFake) ReviewStatus(reviewmemory.Identity) error { return nil }

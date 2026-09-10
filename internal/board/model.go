@@ -39,6 +39,9 @@ type boardLayout struct {
 	selectedURLRow int
 	visibleRows    int
 	emptyRows      int
+	// regionRows is the height of the review region under the URL row. It is
+	// zero when the region collapses to the one-line summary.
+	regionRows int
 }
 
 func (m Model) boardLayout() boardLayout {
@@ -46,15 +49,24 @@ func (m Model) boardLayout() boardLayout {
 	if stale(m.currentView()) {
 		firstPRRow++
 	}
-	detailRows := 0
-	if pr, ok := m.selectedPR(); ok {
-		detailRows = len(m.selectedReviewLines(pr))
-	}
-	// budget is the space between the first PR row and the footer. A view with
-	// no rows renders no table header, so it keeps those rows too.
-	budget := m.height - firstPRRow - 3 - len(m.footerHelpLines()) - detailRows
-	visibleRows := max(1, budget)
 	rows := m.filteredPRs()
+	// available is the space between the first PR row and the footer. A view
+	// with no rows renders no table header, so it keeps those rows too.
+	available := m.height - firstPRRow - 3 - len(m.footerHelpLines())
+	detailRows, regionRows := 0, 0
+	visibleRows := max(1, available)
+	if pr, ok := m.selectedPR(); ok {
+		if m.regionSplit() {
+			// The table keeps its rows up to half the screen. The region takes
+			// the rest and never drops under its minimum.
+			tableCap := max(1, m.height/2-firstPRRow)
+			visibleRows = max(1, min(len(rows), tableCap, available-regionMinRows))
+			regionRows = max(0, available-visibleRows)
+		} else {
+			detailRows = len(m.selectedReviewLines(pr))
+			visibleRows = max(1, available-detailRows)
+		}
+	}
 	selectedURLRow := firstPRRow
 	if len(rows) > 0 {
 		selectedURLRow = firstPRRow + 1 + min(visibleRows, max(0, len(rows)-m.offset))
@@ -63,7 +75,8 @@ func (m Model) boardLayout() boardLayout {
 		firstPRRow:     firstPRRow,
 		selectedURLRow: selectedURLRow,
 		visibleRows:    visibleRows,
-		emptyRows:      max(1, budget+tableHeaderRows),
+		emptyRows:      max(1, available-detailRows+tableHeaderRows),
+		regionRows:     regionRows,
 	}
 }
 
@@ -78,6 +91,9 @@ var (
 	warningStyle  = lipgloss.NewStyle().Foreground(lipgloss.Color("214"))
 	errorStyle    = lipgloss.NewStyle().Foreground(lipgloss.Color("196"))
 	urlStyle      = lipgloss.NewStyle().Foreground(lipgloss.Color("81")).Underline(true)
+	// separatorStyle matches the table header border, so the rule under the
+	// last row closes the table the way the header opens it.
+	separatorStyle = lipgloss.NewStyle().Foreground(lipgloss.Color("238"))
 )
 
 // tabPadding is the horizontal padding the tab styles add to every label.
@@ -122,33 +138,6 @@ type sidebarMsg struct {
 	err error
 }
 
-type keyHelpEntry struct {
-	keys   string
-	action string
-}
-
-// keyHelp is the single source of truth for the footer control list.
-// The footer shows the most useful keys. The ? overlay shows all of them.
-var keyHelp = []keyHelpEntry{
-	{"Tab", "view"},
-	{"↑↓", "select"},
-	{"Enter", "open"},
-	{"v", "reviews"},
-	{"E", "config"},
-	{"?", "help"},
-}
-
-// documentedKeys lists every key literal the board and review guides must document.
-// The documentation drift test fails when one is missing. Add new bindings from
-// updateKey, updateFilter, or updateReviewKey here, to helpSections, and to the
-// corresponding guide.
-var documentedKeys = []string{
-	"1", "9", "Tab", "Shift+Tab", "h", "l", "←", "→",
-	"j", "k", "↑", "↓", "g", "G", "Home", "End",
-	"/", "?", "Enter", "Ctrl+U", "Esc", "Backspace", "E", "v",
-	"n", "N", "s", "t", "c", "a", "x", "r", "R", "o", "q", "Ctrl+C",
-}
-
 // table tiers and their minimum terminal widths in cells.
 const (
 	tierWide   = 100
@@ -158,6 +147,9 @@ const (
 
 type Model struct {
 	reviewRows       map[string]reviewOverviewRow
+	overview         overviewRead // the latest local read; the region binds from it
+	overviewReading  bool         // a local read is in flight
+	overviewQueued   bool         // a read was requested during the in-flight one
 	monitorStart     func() error
 	monitorError     string
 	autoCandidates   []dispatch.Candidate
@@ -165,9 +157,12 @@ type Model struct {
 	publications     PublicationBackend
 	stateDir         string
 	reviewContext    context.Context
-	reviewPanel      *reviewPanel
+	region           *reviewRegion
+	zoom             bool
 	reviewJobs       map[string]string
-	reviewGeneration uint64
+	publishing       map[string]bool   // PR URL -> a publication is in flight
+	stopping         map[string]string // PR URL -> run ID with a stop request pending
+	settingsRequests uint64            // counts settings requests; the region keeps the one it awaits
 	cfg              config.Config
 	configPath       string
 	version          string
@@ -240,14 +235,22 @@ func NewModelWithConfigPath(cfg config.Config, configPath string, loader discove
 }
 
 func (m Model) Init() tea.Cmd {
-	commands := []tea.Cmd{m.afterMonitorStart(m.observationCmd()), m.reviewOverviewCmd()}
+	// The first overview tick fires at once, so startup takes the same
+	// guarded read path as every later tick.
+	commands := []tea.Cmd{m.afterMonitorStart(m.observationCmd()), func() tea.Msg { return reviewOverviewTickMsg{} }}
 	if m.tickInterval() > 0 {
 		commands = append(commands, m.tickCmd())
 	}
 	return tea.Batch(commands...)
 }
 
+// Update handles one message, then keeps the review region on the selected PR.
 func (m Model) Update(message tea.Msg) (tea.Model, tea.Cmd) {
+	next, cmd := m.update(message)
+	return next.(Model).syncRegion(message, cmd)
+}
+
+func (m Model) update(message tea.Msg) (tea.Model, tea.Cmd) {
 	if next, cmd, handled := m.updateReviewOverview(message); handled {
 		return next, cmd
 	}
@@ -267,7 +270,7 @@ func (m Model) Update(message tea.Msg) (tea.Model, tea.Cmd) {
 	case tea.WindowSizeMsg:
 		m.width, m.height = msg.Width, msg.Height
 		m.clampCursor()
-		m.clampReviewOffset()
+		m.clampRegionOffset()
 		m.clampHelpOffset()
 		return m, nil
 	case snapshotMsg:
@@ -351,21 +354,24 @@ func (m Model) Update(message tea.Msg) (tea.Model, tea.Cmd) {
 		}
 		return m, nil
 	case tea.MouseMsg:
-		if m.helpOverlay {
+		switch {
+		case m.helpOverlay:
 			return m.updateHelpMouse(msg)
-		}
-		if m.reviewPanel != nil {
-			return m.updateReviewMouse(msg)
+		case m.region != nil && m.region.setup != nil:
+			return m.updateRepositoryMouse(msg)
+		case m.zoom && m.region != nil:
+			return m.updateZoomMouse(msg)
 		}
 		return m.updateMouse(msg)
 	case tea.KeyMsg:
-		if m.helpOverlay {
+		switch {
+		case m.helpOverlay:
 			return m.updateHelpKey(msg)
-		}
-		if m.reviewPanel != nil {
-			return m.updateReviewKey(msg)
-		}
-		if m.editing {
+		case m.region != nil && m.region.setup != nil:
+			return m.updateRepositoryKey(msg)
+		case m.zoom && m.region != nil:
+			return m.updateZoomKey(msg)
+		case m.editing:
 			return m.updateFilter(msg)
 		}
 		return m.updateKey(msg)
@@ -503,20 +509,26 @@ func (m Model) applyConfig(cfg config.Config, loader discovery.Loader, refresh t
 	return m
 }
 
-func (m *Model) restoreSelection(url string) {
+// restoreSelection moves the selection to the PR with this URL and reports
+// whether the PR is still in the view.
+func (m *Model) restoreSelection(url string) bool {
 	if url != "" {
 		for i, pr := range m.filteredPRs() {
 			if pr.URL == url {
 				m.cursor = i
 				m.clampCursor()
-				return
+				return true
 			}
 		}
 	}
 	m.clampCursor()
+	return false
 }
 
 func (m Model) updateKey(key tea.KeyMsg) (tea.Model, tea.Cmd) {
+	if next, cmd, handled := m.updateReviewAction(key); handled {
+		return next, cmd
+	}
 	switch key.String() {
 	case "q", "ctrl+c":
 		return m, tea.Quit
@@ -524,17 +536,19 @@ func (m Model) updateKey(key tea.KeyMsg) (tea.Model, tea.Cmd) {
 		m.selectView((m.active + 1) % len(m.views))
 	case "shift+tab", "left", "h":
 		m.selectView((m.active - 1 + len(m.views)) % len(m.views))
-	case "j", "down":
+	case "down":
 		m.cursor++
 		m.clampCursor()
-	case "k", "up":
+	case "up":
 		m.cursor--
 		m.clampCursor()
-	case "g", "home":
+	case "home":
 		m.cursor, m.offset = 0, 0
-	case "G", "end":
+	case "end":
 		m.cursor = len(m.filteredPRs()) - 1
 		m.clampCursor()
+	case "j", "k", "g", "G", "pgup", "pgdown":
+		m.scrollRegionKey(key.String())
 	case "/":
 		m.editing = true
 	case "esc":
@@ -545,7 +559,7 @@ func (m Model) updateKey(key tea.KeyMsg) (tea.Model, tea.Cmd) {
 	case "?":
 		m.helpOverlay = true
 	case "v":
-		return m.openReviewPanel()
+		return m.zoomIn(), nil
 	case "E":
 		if m.loading {
 			return m, nil
@@ -584,20 +598,23 @@ func (m Model) updateKey(key tea.KeyMsg) (tea.Model, tea.Cmd) {
 
 func (m Model) updateMouse(message tea.MouseMsg) (tea.Model, tea.Cmd) {
 	event := tea.MouseEvent(message)
+	step := 0
 	switch event.Button {
 	case tea.MouseButtonWheelUp:
-		m.cursor -= mouseStep
-		m.clampCursor()
-		return m, nil
+		step = -mouseStep
 	case tea.MouseButtonWheelDown:
-		m.cursor += mouseStep
-		m.clampCursor()
-		return m, nil
-	case tea.MouseButtonLeft:
-		if event.Action != tea.MouseActionPress {
-			return m, nil
+		step = mouseStep
+	}
+	if step != 0 {
+		if m.boardLayout().regionRows > 0 {
+			m.scrollRegion(step)
+		} else {
+			m.cursor += step
+			m.clampCursor()
 		}
-	default:
+		return m, nil
+	}
+	if event.Button != tea.MouseButtonLeft || event.Action != tea.MouseActionPress {
 		return m, nil
 	}
 
@@ -689,12 +706,16 @@ func (m Model) View() string {
 	if m.helpOverlay {
 		return m.renderHelpOverlay()
 	}
-	if m.reviewPanel != nil {
-		return m.renderReviewPanel()
+	if m.region != nil && m.region.setup != nil {
+		return m.renderRepositoryPanel()
+	}
+	if m.zoom && m.region != nil {
+		return m.renderZoom()
 	}
 	if m.width == 0 || m.height == 0 {
 		return "Loading PR board…"
 	}
+	lay := m.boardLayout()
 	var output strings.Builder
 	output.WriteString(m.renderTitle() + "\n")
 	output.WriteString(m.renderTabs() + "\n")
@@ -702,10 +723,24 @@ func (m Model) View() string {
 		output.WriteString(notice + "\n")
 	}
 	output.WriteString("\n")
-	output.WriteString(m.renderTable(m.boardLayout()))
-	output.WriteString("\n" + m.renderSelected())
-	output.WriteString("\n" + m.renderFooter())
+	output.WriteString(m.renderTable(lay))
+	output.WriteString(m.renderSeparator() + "\n" + m.renderSelected(lay))
+	if lay.regionRows > 0 {
+		output.WriteString("\n" + m.renderRegion(lay))
+	}
+	output.WriteString("\n" + m.renderFooter(m.footerHelpLines()))
 	return output.String()
+}
+
+// renderSeparator closes the table with a rule above the selected PR, so the
+// table and the review region read as two areas. It takes the row that was
+// blank, so the geometry does not change. A view without a selection keeps
+// the blank row.
+func (m Model) renderSeparator() string {
+	if _, ok := m.selectedPR(); !ok {
+		return ""
+	}
+	return separatorStyle.Render(strings.Repeat("─", max(0, m.width)))
 }
 
 func (m Model) renderTabs() string {
@@ -759,102 +794,6 @@ func (m Model) renderTable(lay boardLayout) string {
 		output.WriteString(line + "\n")
 	}
 	return output.String()
-}
-
-func (m Model) renderFooter() string {
-	help := m.footerHelpLines()
-
-	// Collect the meta parts, then join them. Prefixing a separator to each
-	// part leaves a leading separator when an earlier part is absent.
-	var parts []string
-	if m.editorNotice != "" {
-		// Keep the notice first. A narrow terminal truncates the tail.
-		parts = append(parts, m.editorNotice)
-	}
-	if m.monitorError != "" {
-		parts = append(parts, reviewText(m.monitorError))
-	}
-	if len(m.reviewJobs) > 0 {
-		parts = append(parts, fmt.Sprintf("%d review requests · v reviews", len(m.reviewJobs)))
-	}
-	freshness := m.currentView().UpdatedAt
-	if !freshness.IsZero() {
-		parts = append(parts, "updated "+relativeTime(freshness))
-	}
-	if stale(m.currentView()) {
-		parts = append(parts, "stale")
-	}
-	if m.rates.Search.Limit > 0 {
-		parts = append(parts, fmt.Sprintf("Search %d/%d", m.rates.Search.Remaining, m.rates.Search.Limit))
-	}
-	if m.rates.GraphQL.Limit > 0 {
-		parts = append(parts, fmt.Sprintf("GraphQL %d/%d", m.rates.GraphQL.Remaining, m.rates.GraphQL.Limit))
-	}
-	if m.warning != "" {
-		parts = append(parts, m.warning)
-	}
-	meta := strings.Join(parts, " · ")
-	return strings.Join(append(help, warningStyle.Render(truncate(meta, m.width))), "\n")
-}
-
-// footerHelpLines wraps the control reference at pair boundaries so each
-// keybinding stays next to its action on narrow terminals. Keys render
-// bright and actions dim so the two never blend together.
-func (m Model) footerHelpLines() []string {
-	width := max(1, m.width)
-	lines := packLines(keyPairs(keyHelp), width)
-
-	if m.editing {
-		lines = append(lines, dimStyle.Render("filter: ")+truncate(m.filter+"▌", max(1, width-8)))
-	} else if m.filter != "" {
-		lines = append(lines, dimStyle.Render("filter: ")+truncate(m.filter, max(1, width-8)))
-	}
-	return lines
-}
-
-// keyPairs renders each control as a bright key and a dim action.
-func keyPairs(entries []keyHelpEntry) []string {
-	parts := make([]string, 0, len(entries))
-	for _, entry := range entries {
-		parts = append(parts, keyStyle.Render(entry.keys)+" "+dimStyle.Render(entry.action))
-	}
-	return parts
-}
-
-// keyLabels renders only the key literals. A pane that is too short for the
-// actions keeps every key this way.
-func keyLabels(entries []keyHelpEntry) []string {
-	parts := make([]string, 0, len(entries))
-	for _, entry := range entries {
-		parts = append(parts, keyStyle.Render(entry.keys))
-	}
-	return parts
-}
-
-// packLines puts as many parts on each line as the width holds. A part never
-// breaks, so no width separates a key from its action.
-func packLines(parts []string, width int) []string {
-	separator := dimStyle.Render(" · ")
-	var lines []string
-	current := ""
-	for _, part := range parts {
-		candidate := part
-		if current != "" {
-			candidate = current + separator + part
-		}
-		if lipgloss.Width(candidate) <= width {
-			current = candidate
-			continue
-		}
-		if current != "" {
-			lines = append(lines, current)
-		}
-		current = part
-	}
-	if current != "" {
-		lines = append(lines, current)
-	}
-	return lines
 }
 
 func (m Model) currentView() discovery.ViewData {

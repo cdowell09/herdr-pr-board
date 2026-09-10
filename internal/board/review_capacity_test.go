@@ -2,7 +2,6 @@ package board
 
 import (
 	"context"
-	"errors"
 	"os"
 	"path/filepath"
 	"strings"
@@ -18,7 +17,7 @@ import (
 func TestReviewPanelWaitsForSharedSlotAndReloadsLimit(t *testing.T) {
 	m := autoPanel(t)
 	m.width, m.height = 80, 24
-	m.reviewPanel.monitor = monitor.Status{State: monitor.Running, ObservationOK: true}
+	status := monitor.Status{State: monitor.Running, ObservationOK: true}
 	m.cfg.Review.MaxConcurrency = 1
 	m.cfg.GitHub.Scopes = []string{"user:@me"}
 	m.configPath = filepath.Join(t.TempDir(), "config.toml")
@@ -54,23 +53,25 @@ func TestReviewPanelWaitsForSharedSlotAndReloadsLimit(t *testing.T) {
 	defer claim.Close()
 	check := func(waiting bool) {
 		t.Helper()
-		next, _ := m.Update(m.reviewHistoryCmd(m.reviewPanel.pr.URL)())
+		next, _ := m.Update(m.reviewOverviewCmd()())
 		m = next.(Model)
+		// The test has no state directory, so it supplies the monitor scenario.
+		m.overview.monitor = status
 		view := stripANSI(m.View())
 		if strings.Contains(view, "Waiting for review slot") != waiting {
 			t.Fatalf("waiting=%v:\n%s", waiting, view)
 		}
-		if !m.reviewPanel.automatic.Eligible {
-			t.Fatalf("capacity changed eligibility: %+v", m.reviewPanel.automatic)
+		if !m.regionState().automatic.Eligible {
+			t.Fatalf("capacity changed eligibility: %+v", m.regionState().automatic)
 		}
 	}
 	check(true)
-	m.reviewPanel.monitor.State = monitor.Stopped
+	status.State = monitor.Stopped
 	check(false)
-	m.reviewPanel.monitor.State = monitor.Running
-	m.reviewPanel.monitor.ObservationOK = false
+	status.State = monitor.Running
+	status.ObservationOK = false
 	check(false)
-	m.reviewPanel.monitor.ObservationOK = true
+	status.ObservationOK = true
 	check(true)
 	save(2)
 	check(false)
@@ -85,35 +86,10 @@ func TestReviewPanelWaitsForSharedSlotAndReloadsLimit(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer claim.Close()
-	next, _ := m.Update(m.reviewHistoryCmd(m.reviewPanel.pr.URL)())
+	next, _ := m.Update(m.reviewOverviewCmd()())
 	m = next.(Model)
-	if m.reviewPanel.automatic.Reason != reviewmemory.ErrActive.Error() || strings.Contains(stripANSI(m.View()), "Waiting for review slot") {
+	m.overview.monitor = status
+	if m.regionState().automatic.Reason != reviewmemory.ErrActive.Error() || strings.Contains(stripANSI(m.View()), "Waiting for review slot") {
 		t.Fatalf("active review mislabeled as waiting: %s", stripANSI(m.View()))
-	}
-}
-
-type capacityErrorBackend struct {
-	reviewFake
-	err error
-}
-
-func (b *capacityErrorBackend) ReviewCapacity() error { return b.err }
-
-func TestReviewPanelReportsCapacityReadFailureAndRecovery(t *testing.T) {
-	m := autoPanel(t)
-	m.reviewPanel.monitor = monitor.Status{State: monitor.Running, ObservationOK: true}
-	backend := &capacityErrorBackend{err: errors.New("cannot read claims")}
-	m = m.WithReviews(context.Background(), backend)
-	next, _ := m.Update(m.reviewHistoryCmd(m.reviewPanel.pr.URL)())
-	m = next.(Model)
-	view := stripANSI(m.View())
-	if !strings.Contains(view, "Review capacity unavailable: cannot read claims") || strings.Contains(view, "Waiting for review slot") {
-		t.Fatalf("capacity error hidden or presented as full: %s", view)
-	}
-	backend.err = nil
-	next, _ = m.Update(m.reviewHistoryCmd(m.reviewPanel.pr.URL)())
-	m = next.(Model)
-	if strings.Contains(stripANSI(m.View()), "Review capacity unavailable") {
-		t.Fatal("capacity error persisted after recovery")
 	}
 }

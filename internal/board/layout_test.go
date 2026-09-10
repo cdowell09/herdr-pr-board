@@ -264,8 +264,8 @@ func TestHelpOverlayNamesEveryImplementedControl(t *testing.T) {
 
 func TestFooterShowsTheTopControls(t *testing.T) {
 	model := layoutModel(t, 200)
-	footer := stripANSI(model.renderFooter())
-	want := "Tab view · ↑↓ select · Enter open · v reviews · E config · ? help"
+	footer := stripANSI(model.renderFooter(model.footerHelpLines()))
+	want := "Tab view · ↑↓ select · Enter open · j/k scroll · n run · s settings · v zoom · ? help"
 	if !strings.Contains(footer, want) {
 		t.Fatalf("footer missing %q:\n%s", want, footer)
 	}
@@ -285,7 +285,7 @@ func TestHelpOverlayOpensAndClosesFromBoardAndReviewPanel(t *testing.T) {
 		t.Fatal("? did not open the help overlay on the board")
 	}
 	overlay := stripANSI(opened.View())
-	for _, want := range []string{"Board", "Review panel", "Esc"} {
+	for _, want := range []string{"Board", "Review region", "Esc"} {
 		if !strings.Contains(overlay, want) {
 			t.Fatalf("overlay missing %q:\n%s", want, overlay)
 		}
@@ -304,8 +304,8 @@ func TestHelpOverlayOpensAndClosesFromBoardAndReviewPanel(t *testing.T) {
 		t.Fatal("? did not open the help overlay in the review panel")
 	}
 	back, _ := opened.Update(tea.KeyMsg{Type: tea.KeyEsc})
-	if closed := back.(Model); closed.helpOverlay || closed.reviewPanel == nil {
-		t.Fatal("Esc did not return from the help overlay to the review panel")
+	if closed := back.(Model); closed.helpOverlay || !closed.zoom {
+		t.Fatal("Esc did not return from the help overlay to the zoomed region")
 	}
 }
 
@@ -367,7 +367,7 @@ func TestHelpOverlayFitsNarrowTerminalsAndKeepsEveryControl(t *testing.T) {
 
 func TestReviewPanelHelpLineOffersTheHelpOverlay(t *testing.T) {
 	model := panelModel(t)
-	help, _ := model.reviewViewport()
+	help, _ := model.zoomViewport()
 	if line := stripANSI(strings.Join(help, " ")); !strings.Contains(line, "? help") {
 		t.Fatalf("review panel help line missing %q: %q", "? help", line)
 	}
@@ -377,18 +377,18 @@ func TestFooterMetaLineStartsWithoutASeparator(t *testing.T) {
 	model := layoutModel(t, 200)
 	model.views[model.active].UpdatedAt = time.Now()
 	metaLine := func(m Model) string {
-		lines := strings.Split(stripANSI(m.renderFooter()), "\n")
+		lines := strings.Split(stripANSI(m.renderFooter(m.footerHelpLines())), "\n")
 		return lines[len(lines)-1]
 	}
 	if got, want := metaLine(model), "updated now"; got != want {
 		t.Fatalf("meta line with no review jobs = %q, want %q", got, want)
 	}
 	model.reviewJobs = map[string]string{"https://github.com/acme/web-ui/pull/42": "running"}
-	if got, want := metaLine(model), "1 review requests · v reviews · updated now"; got != want {
+	if got, want := metaLine(model), "1 review requests · updated now"; got != want {
 		t.Fatalf("meta line with one review job = %q, want %q", got, want)
 	}
 	model.monitorError = "monitor stopped"
-	if got, want := metaLine(model), "monitor stopped · 1 review requests · v reviews · updated now"; got != want {
+	if got, want := metaLine(model), "monitor stopped · 1 review requests · updated now"; got != want {
 		t.Fatalf("meta line with a monitor error = %q, want %q", got, want)
 	}
 }
@@ -592,12 +592,46 @@ func TestEmptyViewFitsShortTerminalsAndKeepsTheKeys(t *testing.T) {
 // keys but not the actions next to them.
 func TestEmptyViewKeepsTheKeysWithoutTheActions(t *testing.T) {
 	model := emptyViewModel(t, 30, defaultView(t, config.ViewAll), defaultView(t, config.ViewAuthored))
-	model.height = 11
+	model.height = 9
 	rendered := stripANSI(model.View())
 	if !strings.Contains(rendered, "Tab · E · r") {
 		t.Fatalf("a short pane dropped the keys:\n%s", rendered)
 	}
 	if lines := strings.Split(rendered, "\n"); len(lines) > model.height {
 		t.Fatalf("rendered %d lines in a %d-line terminal:\n%s", len(lines), model.height, rendered)
+	}
+}
+
+// TestShortPaneKeepsRowsAndURLOnScreen covers a pane where the wrapped footer
+// competes with the collapsed summary. Overflow would push the tabs, rows, and
+// URL off their mouse rows.
+func TestShortPaneKeepsRowsAndURLOnScreen(t *testing.T) {
+	// The filter row and the stale notice each need one more row than the
+	// tightest panes hold.
+	for _, size := range [][3]int{{80, 11, 0}, {60, 12, 0}, {40, 14, 1}, {80, 12, 1}} {
+		for _, extra := range []string{"", "filter", "stale"} {
+			if extra != "" && size[2] == 0 {
+				continue
+			}
+			model := layoutModel(t, size[0])
+			model.height = size[1]
+			model.views[0].PRs = model.views[0].PRs[:1]
+			switch extra {
+			case "filter":
+				next, _ := model.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("/")})
+				model = next.(Model)
+			case "stale":
+				model.views[0].UpdatedAt = time.Now()
+				model.views[0].Err = errors.New("search failed")
+			}
+			lines := strings.Split(model.View(), "\n")
+			if len(lines) > size[1] {
+				t.Fatalf("%v %s: rendered %d lines:\n%s", size, extra, len(lines), stripANSI(model.View()))
+			}
+			lay := model.boardLayout()
+			if !strings.Contains(stripANSI(lines[lay.selectedURLRow]), "https://github.com/") {
+				t.Fatalf("%v %s: URL row %d = %q", size, extra, lay.selectedURLRow, stripANSI(lines[lay.selectedURLRow]))
+			}
+		}
 	}
 }

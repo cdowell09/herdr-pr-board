@@ -14,7 +14,7 @@ import (
 func TestReviewerRowShowsPositionAndCyclesBothWays(t *testing.T) {
 	m := panelModel(t)
 	setup := setupWith(t, installedAgents(fakeLookPath("claude")))
-	m.reviewPanel.setup = setup
+	m.region.setup = setup
 	setup.row = repositoryReviewerRow
 	total := len(config.BuiltinReviewers(""))
 	if len(setup.reviewers) != total {
@@ -60,7 +60,7 @@ func TestOtherSetupRowsKeepOneActionForEveryKey(t *testing.T) {
 	for _, key := range []tea.KeyMsg{{Type: tea.KeyLeft}, {Type: tea.KeyRight}, {Type: tea.KeySpace}} {
 		m := panelModel(t)
 		setup := setupWith(t, installedAgents(fakeLookPath("claude")))
-		m.reviewPanel.setup = setup
+		m.region.setup = setup
 		setup.row = repositoryAutomaticRow
 		for _, want := range []bool{true, false} {
 			next, _ := m.Update(key)

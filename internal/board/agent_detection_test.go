@@ -59,7 +59,7 @@ func TestSetupDefaultsToAnInstalledAgentAndLabelsMissingOnes(t *testing.T) {
 				t.Fatalf("reviewer row %q does not match missing=%v", label, test.missing)
 			}
 			m := panelModel(t)
-			m.reviewPanel.setup = setup
+			m.region.setup = setup
 			view := stripANSI(m.View())
 			if strings.Contains(view, noAgentHint) != test.hint {
 				t.Fatalf("install hint present=%v, want %v:\n%s", !test.hint, test.hint, view)
@@ -84,7 +84,7 @@ func TestSetupKeepsASavedReviewerWithAMissingProgram(t *testing.T) {
 		t.Fatalf("saved reviewer row hides the missing program: %q", label)
 	}
 	m := panelModel(t)
-	m.reviewPanel.setup = setup
+	m.region.setup = setup
 	if view := stripANSI(m.View()); strings.Contains(view, noAgentHint) {
 		t.Fatal("install hint appeared while an agent is installed")
 	}
@@ -148,7 +148,7 @@ func TestSetupHidesTheInstallHintForACustomCommand(t *testing.T) {
 		t.Fatalf("default reviewer %q, want the custom command", setup.repo.Reviewer)
 	}
 	m := panelModel(t)
-	m.reviewPanel.setup = setup
+	m.region.setup = setup
 	if view := stripANSI(m.View()); strings.Contains(view, noAgentHint) {
 		t.Fatalf("install hint appeared for a custom command:\n%s", view)
 	}
@@ -181,7 +181,7 @@ func TestInstallHintOnlyCoversAProbedReviewer(t *testing.T) {
 				t.Fatal(err)
 			}
 			m := panelModel(t)
-			m.reviewPanel.setup = setup
+			m.region.setup = setup
 			view := stripANSI(m.View())
 			if strings.Contains(view, noAgentHint) != test.hint {
 				t.Fatalf("install hint present=%v, want %v:\n%s", !test.hint, test.hint, view)
@@ -239,7 +239,7 @@ func TestRepositorySettingsCommandUsesTheReplacedProbe(t *testing.T) {
 		t.Fatal(err)
 	}
 	m.lookPath = fakeLookPath("grok")
-	message, ok := m.repositorySettingsCmd(true)().(repositorySettingsMsg)
+	message, ok := m.repositorySettingsCmd()().(repositorySettingsMsg)
 	if !ok {
 		t.Fatal("settings command returned another message")
 	}
@@ -247,8 +247,8 @@ func TestRepositorySettingsCommandUsesTheReplacedProbe(t *testing.T) {
 		t.Fatalf("probe reported %v, want only grok", message.installed)
 	}
 	next, _, _ := m.updateRepository(message)
-	if next.reviewPanel.setup.repo.Reviewer != "grok" {
-		t.Fatalf("panel selected %q, want grok", next.reviewPanel.setup.repo.Reviewer)
+	if next.region.setup.repo.Reviewer != "grok" {
+		t.Fatalf("panel selected %q, want grok", next.region.setup.repo.Reviewer)
 	}
 }
 
@@ -263,7 +263,7 @@ func TestRepositorySettingsCommandProbesPath(t *testing.T) {
 	if _, err := config.Load(m.configPath); err != nil {
 		t.Fatal(err)
 	}
-	message, ok := m.repositorySettingsCmd(true)().(repositorySettingsMsg)
+	message, ok := m.repositorySettingsCmd()().(repositorySettingsMsg)
 	if !ok {
 		t.Fatal("settings command returned another message")
 	}
@@ -271,7 +271,7 @@ func TestRepositorySettingsCommandProbesPath(t *testing.T) {
 		t.Fatalf("probe reported %v, want only codex", message.installed)
 	}
 	next, _, _ := m.updateRepository(message)
-	if next.reviewPanel.setup.repo.Reviewer != "codex" {
-		t.Fatalf("panel selected %q, want codex", next.reviewPanel.setup.repo.Reviewer)
+	if next.region.setup.repo.Reviewer != "codex" {
+		t.Fatalf("panel selected %q, want codex", next.region.setup.repo.Reviewer)
 	}
 }

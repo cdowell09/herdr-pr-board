@@ -92,11 +92,11 @@ func (s *repositorySetup) globalView(row int) (config.View, bool) {
 }
 
 type repositorySettingsMsg struct {
-	url string
-	cfg config.Config
+	url     string
+	request uint64
+	cfg     config.Config
 	// installed holds each built-in agent program found on PATH.
 	installed map[string]bool
-	force     bool
 	err       error
 }
 type repositorySavedMsg struct {
@@ -120,12 +120,17 @@ func installedAgents(lookPath func(string) (string, error)) map[string]bool {
 	return installed
 }
 
-// The PATH probe runs in this command, never on the update or render path.
-func (m Model) repositorySettingsCmd(force bool) tea.Cmd {
-	path, url, lookPath := m.configPath, m.reviewPanel.pr.URL, m.lookPath
+// repositorySettingsCmd asks for the selected PR's repository settings. The
+// region records the request, so only that request's response opens the
+// form. The PATH probe runs in this command, never on the update or render
+// path.
+func (m *Model) repositorySettingsCmd() tea.Cmd {
+	m.settingsRequests++
+	m.region.settingsLoading, m.region.settingsRequest = true, m.settingsRequests
+	path, url, request, lookPath := m.configPath, m.region.pr.URL, m.settingsRequests, m.lookPath
 	return func() tea.Msg {
 		cfg, err := config.LoadExisting(path)
-		return repositorySettingsMsg{url: url, cfg: cfg, installed: installedAgents(lookPath), force: force, err: err}
+		return repositorySettingsMsg{url: url, request: request, cfg: cfg, installed: installedAgents(lookPath), err: err}
 	}
 }
 
@@ -172,26 +177,25 @@ func newRepositorySetup(cfg config.Config, name string, installed map[string]boo
 func (m Model) updateRepository(message tea.Msg) (Model, tea.Cmd, bool) {
 	switch msg := message.(type) {
 	case repositorySettingsMsg:
-		if m.reviewPanel == nil || m.reviewPanel.pr.URL != msg.url {
+		// Only the response to the region's own pending request opens the
+		// form, so an abandoned request never satisfies a newer one.
+		if m.region == nil || m.region.pr.URL != msg.url || !m.region.settingsLoading || msg.request != m.region.settingsRequest {
 			return m, nil, true
 		}
-		m.reviewPanel.settingsLoading = false
+		m.region.settingsLoading = false
 		if msg.err != nil {
-			m.reviewPanel.message = msg.err.Error()
+			m.region.message = msg.err.Error()
 			return m, nil, true
 		}
 		m.cfg.Reviewers, m.cfg.Repositories = msg.cfg.Reviewers, msg.cfg.Repositories
 		m.cfg.Review.AutoViews = slices.Clone(msg.cfg.Review.AutoViews)
-		_, exists := msg.cfg.RepositoryFor(m.reviewPanel.pr.Repository)
-		if msg.force || !exists {
-			setup, err := newRepositorySetup(msg.cfg, m.reviewPanel.pr.Repository, msg.installed)
-			if err != nil {
-				m.reviewPanel.message = err.Error()
-			} else {
-				m.reviewPanel.setup = setup
-				m.reviewPanel.message = ""
-			}
+		setup, err := newRepositorySetup(msg.cfg, m.region.pr.Repository, msg.installed)
+		if err != nil {
+			m.region.message = err.Error()
+			return m, nil, true
 		}
+		m.region.setup = setup
+		m.region.message = ""
 		return m, nil, true
 	case repositorySavedMsg:
 		var start tea.Cmd
@@ -200,25 +204,26 @@ func (m Model) updateRepository(message tea.Msg) (Model, tea.Cmd, bool) {
 			m.cfg.Reviewers, m.cfg.Repositories = msg.cfg.Reviewers, msg.cfg.Repositories
 			m.cfg.Review.AutoViews = slices.Clone(msg.cfg.Review.AutoViews)
 		}
-		if m.reviewPanel == nil || m.reviewPanel.pr.URL != msg.url {
+		if m.region == nil || m.region.pr.URL != msg.url {
 			return m, start, true
 		}
-		if m.reviewPanel.setup != nil {
-			m.reviewPanel.setup.saving = false
+		if m.region.setup != nil {
+			m.region.setup.saving = false
 		}
 		if msg.err != nil {
-			m.reviewPanel.message = msg.err.Error()
+			m.region.message = msg.err.Error()
 		} else {
-			m.reviewPanel.setup = nil
-			m.reviewPanel.message = "Repository settings saved. Press n to run a review."
+			m.closeSettings()
+			m.region.message = "Repository settings saved. Press n to run a review."
 		}
-		return m, tea.Batch(start, m.monitorStatusCmd()), true
+		refresh := m.requestOverview()
+		return m, tea.Batch(start, refresh), true
 	}
 	return m, nil, false
 }
 
 func (m Model) updateRepositoryKey(key tea.KeyMsg) (tea.Model, tea.Cmd) {
-	s := m.reviewPanel.setup
+	s := m.region.setup
 	if key.String() == "ctrl+c" || s.editing == nil && key.String() == "q" {
 		return m, tea.Quit
 	}
@@ -232,7 +237,7 @@ func (m Model) updateRepositoryKey(key tea.KeyMsg) (tea.Model, tea.Cmd) {
 	}
 	switch key.String() {
 	case "esc":
-		m.reviewPanel.setup = nil
+		m.closeSettings()
 		return m, nil
 	case "up", "k":
 		s.row = max(0, s.row-1)
@@ -260,7 +265,7 @@ func (m Model) updateRepositoryKey(key tea.KeyMsg) (tea.Model, tea.Cmd) {
 		s.saving = true
 		automatic := s.automatic
 		automatic.Selected = slices.Clone(automatic.Selected)
-		path, state, url, repo, reviewer, expected := m.configPath, m.stateDir, m.reviewPanel.pr.URL, s.repo, s.reviewerEdit(), s.expected
+		path, state, url, repo, reviewer, expected := m.configPath, m.stateDir, m.region.pr.URL, s.repo, s.reviewerEdit(), s.expected
 		return m, func() tea.Msg {
 			ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
 			defer cancel()
@@ -270,6 +275,13 @@ func (m Model) updateRepositoryKey(key tea.KeyMsg) (tea.Model, tea.Cmd) {
 	}
 	m.revealRepositoryRow()
 	return m, nil
+}
+
+// closeSettings leaves the form and keeps the selection on the PR it was
+// opened for, which a refresh may have moved to another row.
+func (m *Model) closeSettings() {
+	m.region.setup = nil
+	m.restoreSelection(m.region.pr.URL)
 }
 
 // toggle changes the selected row. Only the reviewer row has an order, so step

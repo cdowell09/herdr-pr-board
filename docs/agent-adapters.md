@@ -36,7 +36,7 @@ See [review instructions](review-instructions.md) for scope, precedence, and fil
 
 ## Configure a repository
 
-Open the review panel with `v` and open repository settings.
+Select the PR and press `s` to open repository settings.
 The reviewer row shows the selection, its position, and the total.
 Press Right or Space to select the next reviewer. Press Left to go back.
 Setup starts at the first available reviewer and shows `not installed` for an absent agent CLI.

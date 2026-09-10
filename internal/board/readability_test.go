@@ -52,7 +52,7 @@ func TestRepositorySetupPutsEssentialsBeforeAdvancedFiles(t *testing.T) {
 func TestRepositoryGroupsPreserveRowsAndMouseTargets(t *testing.T) {
 	for _, size := range [][2]int{{80, 24}, {30, 10}} {
 		m := onboardingModel(t, size[0], size[1], 3)
-		s := m.reviewPanel.setup
+		s := m.region.setup
 		for _, heading := range repositorySections {
 			found := -1
 			for i, line := range m.repositoryContent() {
@@ -100,7 +100,7 @@ func TestRepositoryGroupsPreserveRowsAndMouseTargets(t *testing.T) {
 
 func TestPostingLabelsDistinguishPermissionFromAutomaticAction(t *testing.T) {
 	m := onboardingModel(t, 80, 24, 3)
-	s := m.reviewPanel.setup
+	s := m.region.setup
 	s.row = repositoryPostingRow
 	m.revealRepositoryRow()
 	for _, tc := range []struct {

@@ -1,11 +1,13 @@
 package board
 
 import (
-	"errors"
 	"fmt"
+	"slices"
+	"strconv"
 	"strings"
 	"time"
 
+	gh "github.com/cdowell09/herdr-pr-board/internal/github"
 	"github.com/cdowell09/herdr-pr-board/internal/publication"
 	"github.com/cdowell09/herdr-pr-board/internal/reviewmemory"
 	"github.com/charmbracelet/lipgloss"
@@ -14,34 +16,55 @@ import (
 
 var reviewSecondaryStyle = dimStyle.Foreground(lipgloss.Color("246"))
 
-func (m Model) reviewLines() []string {
-	p := m.reviewPanel
+const (
+	// regionSplitHeight is the terminal height that fits the table and a
+	// review region. A shorter terminal shows the one-line summary instead.
+	regionSplitHeight = 24
+	// regionMinRows keeps the region readable when the table has many rows.
+	regionMinRows = 6
+)
+
+// regionSplit reports whether the board shows the review region under the table.
+func (m Model) regionSplit() bool { return m.region != nil && m.height >= regionSplitHeight }
+
+// regionLines renders the selected PR's review state. The split shows the
+// latest run and one line each for automation and details. Zoom shows every
+// run and the full automation and details sections.
+func (m Model) regionLines(full bool) []string {
+	r, s := m.region, m.regionState()
 	var lines []string
 	add := func(value string, style lipgloss.Style) {
 		for _, line := range strings.Split(ansi.Wrap(reviewText(value), max(1, m.width), ""), "\n") {
 			lines = append(lines, style.Render(line))
 		}
 	}
-	section := func(title string) {
-		if len(lines) > 0 && m.height >= 20 {
+	heading := func(text, suffix string, style lipgloss.Style) {
+		if full && len(lines) > 0 && m.height >= 20 {
 			add("", reviewSecondaryStyle)
 		}
-		add(title, keyStyle)
+		lines = append(lines, rule(text, suffix, m.width, style))
 	}
 	body := keyStyle.Bold(false)
-	stopTarget, _ := p.stopTarget()
-	if status := m.reviewJobs[p.pr.URL]; status != "" {
+	if status := m.reviewJobs[r.pr.URL]; status != "" {
 		add("Request: "+status, keyStyle)
 	}
-	if p.message != "" {
-		add("Status: "+p.message, warningStyle)
+	if r.message != "" {
+		add("Status: "+r.message, warningStyle)
+	}
+	if s.readErr != nil {
+		add("Local reviews unavailable: "+s.readErr.Error(), warningStyle)
 	}
 	if m.monitorError != "" {
 		add(m.monitorError, warningStyle)
 	}
+	// The posted summary belongs to the PR, not to a run, so it leads the
+	// region and stays visible above the findings. The row summary checks the
+	// revision identity, so a read against an older head never labels an old
+	// post as current.
+	add("Posted: "+m.rowReviewSummary(r.pr).postedDetail, reviewSecondaryStyle)
 	current := m.reviewObservation()
-	target, hasTarget := latestCompleted(p.runs)
-	seen := map[string]bool{}
+	target, hasTarget := latestCompleted(s.runs)
+	stopTarget, _ := m.stopTarget()
 	publicationResult := func(a publication.Attempt) {
 		style := keyStyle
 		if a.Status != publication.Published {
@@ -52,30 +75,48 @@ func (m Model) reviewLines() []string {
 			add(a.Message, warningStyle)
 		}
 	}
-	for i := len(p.runs) - 1; i >= 0; i-- {
-		run := p.runs[i]
-		label := "Previous review"
-		if i == len(p.runs)-1 {
-			label = "Latest review"
+	// Zoom lists every run. The split lists the newest run and, when a newer
+	// run did not complete, the completion that publication would target.
+	for i := len(s.runs) - 1; i >= 0; i-- {
+		run := s.runs[i]
+		if !full && i != len(s.runs)-1 && !(hasTarget && run.ID == target.ID) {
+			continue
 		}
-		section(label)
-		statusStyle := keyStyle
+		label, suffix := "Review", fmt.Sprintf("run %d/%d", len(s.runs)-i, len(s.runs))
+		if full {
+			label, suffix = "Previous review", ""
+			if i == len(s.runs)-1 {
+				label = "Latest review"
+			}
+		}
+		header := []string{label, string(run.Status)}
+		if run.Reviewer != "" {
+			header = append(header, run.Reviewer)
+		}
+		header = append(header, revisionComparison(run, current))
+		if run.Status == reviewmemory.Completed {
+			header = append(header, reviewmemory.CountSeverities(run.Findings).String())
+		}
+		style := keyStyle
 		if run.Status == reviewmemory.Failed || run.Status == reviewmemory.Blocked || run.Status == reviewmemory.Abandoned {
-			statusStyle = warningStyle.Bold(true)
+			style = warningStyle.Bold(true)
 		}
-		add(string(run.Status)+" · "+run.Reviewer, statusStyle)
+		// A narrow terminal keeps the label and outcome on the rule and lists
+		// the rest below it, one part per line, so no metadata is lost.
+		if lipgloss.Width("── "+strings.Join(header, " · ")+" ") > m.width {
+			heading(strings.Join(header[:2], " · "), suffix, style)
+			for _, part := range header[2:] {
+				add(part, reviewSecondaryStyle)
+			}
+		} else {
+			heading(strings.Join(header, " · "), suffix, style)
+		}
 		if run.ID == stopTarget.ID && run.ID != "" {
-			if p.stopping == run.ID {
+			if m.stopping[r.pr.URL] == run.ID {
 				add("Stopping run "+shortRevision(run.ID)+" · waiting for reviewer cleanup", warningStyle)
 			} else {
 				add("t stop run "+shortRevision(run.ID), keyStyle)
 			}
-		}
-		comparison := "older revision"
-		if current.HeadOID == "" || current.BaseRefName == "" {
-			comparison = "current revision unknown"
-		} else if run.Identity.HeadOID == current.HeadOID && run.Identity.BaseRefName == current.BaseRefName {
-			comparison = "current observed revision"
 		}
 		if run.Message != "" {
 			add(run.Message, body)
@@ -87,81 +128,94 @@ func (m Model) reviewLines() []string {
 			}
 			add(f.Body, body)
 		}
-		add(comparison, reviewSecondaryStyle)
-		add(fmt.Sprintf("%s → %s · %s", shortRevision(run.Identity.HeadOID), run.Identity.BaseRefName, run.StartedAt.Local().Format("02 Jan 2006 15:04 MST")), reviewSecondaryStyle)
+		meta := fmt.Sprintf("%s → %s · %s", shortRevision(run.Identity.HeadOID), run.Identity.BaseRefName, run.StartedAt.Local().Format("02 Jan 2006 15:04 MST"))
 		if hasTarget && run.ID == target.ID {
-			add("Publication target · latest completed review", reviewSecondaryStyle)
+			meta += " · Publication target"
 		}
-		published := false
-		for _, a := range p.publications {
+		if !slices.ContainsFunc(s.publications, func(a publication.Attempt) bool { return a.RunID == run.ID }) {
+			meta += " · Publication: no recorded posts"
+		}
+		add(meta, reviewSecondaryStyle)
+		for _, a := range s.publications {
 			if a.RunID == run.ID {
 				publicationResult(a)
-				published = true
 			}
 		}
-		if !published {
-			add("Publication: no recorded posts", reviewSecondaryStyle)
-		}
-		seen[run.ID] = true
 	}
-	if len(p.runs) == 0 {
-		section("Reviews")
-		add("No local review runs.", body)
-	}
-	orphanHeading := false
-	for _, a := range p.publications {
-		if !seen[a.RunID] {
-			if !orphanHeading {
-				section("Other publication records")
-				orphanHeading = true
-			}
-			publicationResult(a)
-			add("Run "+a.RunID, reviewSecondaryStyle)
+	if len(s.runs) == 0 {
+		heading("Reviews", "", keyStyle)
+		if s.loaded {
+			add("No local review runs · n run", body)
+		} else {
+			add("Loading local reviews…", reviewSecondaryStyle)
 		}
 	}
-	section("Automation")
-	state := string(p.monitor.State)
+
+	repo, _ := m.cfg.RepositoryFor(r.pr.Repository)
+	state := string(s.monitor.State)
 	if state == "" {
 		state = "unknown"
 	}
-	add("Monitor: "+state, body)
-	if p.automatic.Reason != "" {
-		add("Latest full observation: "+p.automatic.Reason, body)
+	launches := "off"
+	if repo.AutoLaunch {
+		launches = "on"
 	}
-	repo, _ := m.cfg.RepositoryFor(p.pr.Repository)
-	if reason := automaticSetupWait(repo, m.cfg.Review.AutoViews, p.monitor); reason != "" {
-		add("Waiting: "+reason, warningStyle)
-	} else if p.capacityErr != nil {
-		if errors.Is(p.capacityErr, reviewmemory.ErrCapacity) {
-			add("Waiting for review slot", warningStyle)
-		} else {
-			add("Review capacity unavailable: "+p.capacityErr.Error(), warningStyle)
+	after := "keep local"
+	if repo.AutoPublish != "" {
+		after = string(repo.AutoPublish)
+	}
+	waiting := ""
+	if reason := automaticSetupWait(repo, m.cfg.Review.AutoViews, s.monitor); reason != "" {
+		waiting = "Waiting: " + reason
+	} else if s.slotBusy {
+		waiting = "Waiting for review slot"
+	}
+	if !full {
+		line := "Automation: monitor " + state + " · launches " + launches + " · after review: " + after
+		if waiting != "" {
+			line += " · " + waiting
 		}
+		add(line, reviewSecondaryStyle)
+		if s.automatic.Reason != "" {
+			add("Latest full observation: "+s.automatic.Reason, reviewSecondaryStyle)
+		}
+		if s.monitor.Message != "" {
+			add(s.monitor.Message, warningStyle)
+		}
+		if len(s.runs) > 0 {
+			latest := s.runs[len(s.runs)-1]
+			details := "Details: run " + latest.ID
+			if m.reviews != nil {
+				details += " · diagnostics " + m.reviews.RunDirectory(latest.ID)
+			}
+			add(details, reviewSecondaryStyle)
+		}
+		return lines
 	}
-	if !repo.AutoLaunch {
-		add("Automatic launches: off", reviewSecondaryStyle)
-	} else {
-		add("Automatic launches: on", reviewSecondaryStyle)
+	heading("Automation", "", keyStyle)
+	add("Monitor: "+state, body)
+	if s.automatic.Reason != "" {
+		add("Latest full observation: "+s.automatic.Reason, body)
 	}
-	if repo.AutoPublish == "" {
-		add("After review: keep local", reviewSecondaryStyle)
-	} else {
-		add("After review: "+string(repo.AutoPublish), reviewSecondaryStyle)
+	if waiting != "" {
+		add(waiting, warningStyle)
 	}
-	if p.monitor.Message != "" {
-		add(p.monitor.Message, warningStyle)
+	add("Automatic launches: "+launches, reviewSecondaryStyle)
+	add("After review: "+after, reviewSecondaryStyle)
+	if s.monitor.Message != "" {
+		add(s.monitor.Message, warningStyle)
 	}
-	if !p.monitor.ObservedAt.IsZero() {
-		add("Latest monitor observation: "+p.monitor.ObservedAt.Format(time.RFC3339), reviewSecondaryStyle)
+	if !s.monitor.ObservedAt.IsZero() {
+		add("Latest monitor observation: "+s.monitor.ObservedAt.Format(time.RFC3339), reviewSecondaryStyle)
 	}
 	if command := m.monitorCommandLines(); len(command) > 0 {
 		add("Run in another terminal:", body)
 		lines = append(lines, command...)
 	}
-	if len(p.runs) > 0 || len(p.publications) > 0 {
-		section("Details")
-		for i := len(p.runs) - 1; i >= 0; i-- {
-			run := p.runs[i]
+	if len(s.runs) > 0 || len(s.publications) > 0 {
+		heading("Details", "", keyStyle)
+		for i := len(s.runs) - 1; i >= 0; i-- {
+			run := s.runs[i]
 			add("Run "+run.ID, keyStyle)
 			add("Head "+run.Identity.HeadOID+" → "+run.Identity.BaseRefName, reviewSecondaryStyle)
 			add("Started: "+run.StartedAt.Format(time.RFC3339), reviewSecondaryStyle)
@@ -169,7 +223,7 @@ func (m Model) reviewLines() []string {
 				add("Diagnostics: "+m.reviews.RunDirectory(run.ID), reviewSecondaryStyle)
 			}
 		}
-		for _, a := range p.publications {
+		for _, a := range s.publications {
 			add("Publication "+string(a.Action)+": "+string(a.Status), keyStyle)
 			add("Run "+a.RunID, reviewSecondaryStyle)
 			if a.URL != "" {
@@ -180,50 +234,90 @@ func (m Model) reviewLines() []string {
 	return lines
 }
 
+// revisionComparison relates a run to the latest successful board observation.
+func revisionComparison(run reviewmemory.Run, current gh.PullRequest) string {
+	switch {
+	case current.HeadOID == "" || current.BaseRefName == "":
+		return "current revision unknown"
+	case run.Identity.HeadOID == current.HeadOID && run.Identity.BaseRefName == current.BaseRefName:
+		return "current observed revision"
+	default:
+		return "older revision"
+	}
+}
+
+// rule renders a section heading as a horizontal rule with the text at the
+// left and an optional suffix at the right. A narrow terminal drops the
+// suffix before it truncates the text.
+func rule(text, suffix string, width int, style lipgloss.Style) string {
+	line := "── " + reviewText(text) + " "
+	if suffix != "" {
+		suffix = " " + suffix + " ──"
+		if lipgloss.Width(line)+lipgloss.Width(suffix) > width {
+			suffix = ""
+		}
+	}
+	line += strings.Repeat("─", max(0, width-lipgloss.Width(line)-lipgloss.Width(suffix))) + suffix
+	return style.Render(truncate(line, max(1, width)))
+}
+
 func shortRevision(value string) string { r := []rune(value); return string(r[:min(8, len(r))]) }
 
-func (m Model) reviewViewport() ([]string, int) {
-	text := "n run · N rerun · s settings · c comment · a approve · x changes · j/k scroll · o open · ? help · Esc back · q quit"
-	stopControl := ""
-	if target, ok := m.reviewPanel.stopTarget(); ok {
-		stopControl = "t stop " + shortRevision(target.ID)
-		text = stopControl + " · " + text
+// regionSize is the number of lines the region may show right now.
+func (m Model) regionSize() int {
+	if m.zoom {
+		_, size := m.zoomViewport()
+		return size
 	}
-	help := strings.Split(ansi.Wrap(text, max(1, m.width), ""), "\n")
-	if len(help) > max(1, m.height-4) {
-		fallback := "Enlarge panel for controls."
-		if stopControl != "" {
-			fallback = stopControl
-		}
-		help = []string{truncate(fallback, m.width)}
-	}
-	return help, max(0, m.height-2-len(help))
+	return m.boardLayout().regionRows
 }
-func (m *Model) clampReviewOffset() {
-	if m.reviewPanel == nil {
+
+// regionViewport returns exactly size lines: the visible window, with the
+// last line replaced by a marker while lines stay hidden below it.
+func (m Model) regionViewport(lines []string, size int) []string {
+	if size <= 0 {
+		return nil
+	}
+	offset := max(0, min(m.region.offset, max(0, len(lines)-size)))
+	end := min(len(lines), offset+size)
+	out := make([]string, size)
+	shown := copy(out, lines[offset:end])
+	// A one-row viewport shows content, or scrolling could never reveal it.
+	if hidden := len(lines) - end; hidden > 0 && size > 1 {
+		out[shown-1] = reviewSecondaryStyle.Render(truncate(fmt.Sprintf("▼ %d more lines · j/k scroll", hidden+1), m.width))
+	}
+	return out
+}
+
+func (m Model) renderRegion(lay boardLayout) string {
+	return strings.Join(m.regionViewport(m.regionLines(false), lay.regionRows), "\n")
+}
+
+// zoomViewport returns the zoom footer controls and the lines left for the
+// region under the title and URL rows and above the footer. The controls
+// leave those rows, one content row, and the meta line on screen.
+func (m Model) zoomViewport() ([]string, int) {
+	help := m.helpLines(zoomKeyHelp, m.height-4)
+	return help, max(0, m.height-3-len(help))
+}
+
+func (m *Model) clampRegionOffset() {
+	if m.region == nil {
 		return
 	}
-	if m.reviewPanel.setup != nil {
+	if m.region.setup != nil {
 		m.clampRepositoryOffset()
 		return
 	}
-	_, visible := m.reviewViewport()
-	m.reviewPanel.offset = max(0, min(m.reviewPanel.offset, max(0, len(m.reviewLines())-visible)))
+	m.region.offset = max(0, min(m.region.offset, max(0, len(m.regionLines(m.zoom))-m.regionSize())))
 }
-func (m Model) renderReviewPanel() string {
-	if m.reviewPanel.setup != nil {
-		return m.renderRepositoryPanel()
-	}
-	lines := m.reviewLines()
-	help, visible := m.reviewViewport()
-	offset := max(0, min(m.reviewPanel.offset, max(0, len(lines)-visible)))
-	body := []string{titleStyle.Render(truncate("Local reviews", m.width)), urlStyle.Render(truncate(reviewText(m.reviewPanel.pr.URL), m.width))}
-	body = append(body, lines[offset:min(len(lines), offset+visible)]...)
-	for len(body) < 2+visible {
-		body = append(body, "")
-	}
-	for _, line := range help {
-		body = append(body, reviewSecondaryStyle.Render(line))
-	}
-	return strings.Join(body[:min(len(body), max(0, m.height))], "\n")
+
+func (m Model) renderZoom() string {
+	pr := m.region.pr
+	help, size := m.zoomViewport()
+	title := m.cfg.UI.Title + " · " + pr.Repository + " #" + strconv.Itoa(pr.Number) + " · " + pr.Title
+	body := []string{titleStyle.Render(truncate(reviewText(title), m.width)), urlStyle.Render(truncate(reviewText(pr.URL), m.width))}
+	body = append(body, m.regionViewport(m.regionLines(true), size)...)
+	body = append(body, strings.Split(m.renderFooter(help), "\n")...)
+	return strings.Join(body[:min(len(body), max(1, m.height))], "\n")
 }

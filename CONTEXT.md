@@ -87,3 +87,11 @@ _Avoid_: Configuration navigation
 **Board session**:
 The running interactive PR Board experience that shows views and pull requests.
 _Avoid_: Board tab, plugin window
+
+**Review region**:
+The area under the PR table that shows the selected PR's local reviews.
+_Avoid_: Review panel, findings pane
+
+**Zoom**:
+The review region shown at the full height of the board.
+_Avoid_: Review screen, full-screen panel

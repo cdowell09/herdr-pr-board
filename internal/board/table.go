@@ -183,12 +183,18 @@ func (m Model) selectedReviewLines(pr gh.PullRequest) []string {
 	return strings.Split(ansi.Wrap(reviewText(detail), max(1, m.width), ""), "\n")
 }
 
-func (m Model) renderSelected() string {
+// renderSelected shows the selected URL. The one-line summary follows it
+// only when the review region is collapsed.
+func (m Model) renderSelected(lay boardLayout) string {
 	pr, ok := m.selectedPR()
 	if !ok {
 		return dimStyle.Render("No PR selected")
 	}
-	return urlStyle.Render(truncate(pr.URL, m.width)) + "\n" + reviewSecondaryStyle.Render(strings.Join(m.selectedReviewLines(pr), "\n"))
+	url := urlStyle.Render(truncate(pr.URL, m.width))
+	if lay.regionRows > 0 {
+		return url
+	}
+	return url + "\n" + reviewSecondaryStyle.Render(strings.Join(m.selectedReviewLines(pr), "\n"))
 }
 
 func renderCI(state gh.CIState) string {

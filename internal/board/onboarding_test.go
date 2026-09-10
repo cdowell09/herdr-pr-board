@@ -84,17 +84,17 @@ func onboardingModel(t *testing.T, width, height, views int) Model {
 	}
 	setup.repo.AutoLaunch = true
 	setup.repo.PublishActions = []config.PublicationAction{config.PublishComment}
-	m.reviewPanel.setup = setup
-	m.reviewPanel.monitor = monitor.Status{State: monitor.Stopped, Message: "start the monitor in another terminal"}
+	m.region.setup = setup
+	m.overview.monitor = monitor.Status{State: monitor.Stopped, Message: "start the monitor in another terminal"}
 	root := filepath.VolumeName(t.TempDir()) + string(filepath.Separator)
-	m.reviewPanel.monitorCommand, _ = monitorCommand(filepath.Join(root, "opt", "PR Board", "bin", "herdr-pr-board"), filepath.Join(root, "Users", "example user", "configuration with a long name", "config.toml"), filepath.Join(root, "Users", "example user", "plugin state with a long name"))
+	m.overview.monitorCommand, _ = monitorCommand(filepath.Join(root, "opt", "PR Board", "bin", "herdr-pr-board"), filepath.Join(root, "Users", "example user", "configuration with a long name", "config.toml"), filepath.Join(root, "Users", "example user", "plugin state with a long name"))
 	return m
 }
 
 func TestOnboardingManyViewsRemainSelectableAndScrollable(t *testing.T) {
 	for _, size := range [][2]int{{80, 24}, {30, 10}} {
 		m := onboardingModel(t, size[0], size[1], 30)
-		setup := m.reviewPanel.setup
+		setup := m.region.setup
 		if len(setup.automatic.Selected) != 0 || setup.repo.AutoPublish != "" {
 			t.Fatal("setup silently selected automation")
 		}
@@ -165,7 +165,7 @@ func TestOnboardingManyViewsRemainSelectableAndScrollable(t *testing.T) {
 
 func TestSetupSummariesDoNotConfusePermissionWithScheduling(t *testing.T) {
 	m := onboardingModel(t, 80, 40, 3)
-	setup := m.reviewPanel.setup
+	setup := m.region.setup
 	lines := stripANSI(m.View())
 	for _, want := range []string{"Waiting: select global views", "[x] Comments", "After review: Keep local", "Monitor: stopped"} {
 		if !strings.Contains(lines, want) {
@@ -173,7 +173,7 @@ func TestSetupSummariesDoNotConfusePermissionWithScheduling(t *testing.T) {
 		}
 	}
 	setup.automatic.Selected = []string{"review"}
-	m.reviewPanel.monitor = monitor.Status{State: monitor.Running, Message: "configuration differs"}
+	m.overview.monitor = monitor.Status{State: monitor.Running, Message: "configuration differs"}
 	if lines := stripANSI(m.View()); !strings.Contains(lines, "Waiting: wait for a matching observation") || strings.Contains(lines, "Setup ready") {
 		t.Fatalf("lock alone implied readiness: %s", lines)
 	}
@@ -183,8 +183,8 @@ func TestSetupSummariesDoNotConfusePermissionWithScheduling(t *testing.T) {
 	}
 	m.cfg.Repositories = []config.Repository{setup.repo}
 	m.cfg.Review.AutoViews = setup.automatic.Selected
-	m.reviewPanel.setup = nil
-	lines = stripANSI(strings.Join(m.reviewLines(), "\n"))
+	m.region.setup = nil
+	lines = stripANSI(strings.Join(m.regionLines(true), "\n"))
 	for _, want := range []string{"Waiting: enable automatic launches", "Automatic launches: off", "After review: keep local"} {
 		if !strings.Contains(lines, want) {
 			t.Fatalf("missing %q: %s", want, lines)
@@ -207,7 +207,7 @@ func TestSetupWithoutAutomationInvitesManualReview(t *testing.T) {
 			ready, running = "Ready · Enter save · n run", "Settings · monitor stopped"
 		}
 		m := onboardingModel(t, size[0], size[1], 3)
-		setup := m.reviewPanel.setup
+		setup := m.region.setup
 		setup.repo.AutoLaunch = false
 		header, content, _, _ := m.repositoryViewport()
 		top, body := stripANSI(strings.Join(header, "\n")), repositoryText(content)
@@ -255,11 +255,11 @@ func TestOnboardingSaveAndStatusRefresh(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	setup, err := newRepositorySetup(cfg, m.reviewPanel.pr.Repository, installedAgents(fakeLookPath("pi")))
+	setup, err := newRepositorySetup(cfg, m.region.pr.Repository, installedAgents(fakeLookPath("pi")))
 	if err != nil {
 		t.Fatal(err)
 	}
-	m.reviewPanel.setup = setup
+	m.region.setup = setup
 	setup.repo.AutoLaunch = true
 	setup.repo.PublishActions = []config.PublicationAction{config.PublishComment}
 	setup.row = repositoryViewsRow + 1
@@ -275,30 +275,30 @@ func TestOnboardingSaveAndStatusRefresh(t *testing.T) {
 	if len(loaded.Review.AutoViews) != 1 || loaded.Review.AutoViews[0] != "review" {
 		t.Fatalf("unsaved selection: %+v", loaded.Review)
 	}
-	if m.reviewPanel.setup != nil || len(m.cfg.Review.AutoViews) != 1 {
+	if m.region.setup != nil || len(m.cfg.Review.AutoViews) != 1 {
 		t.Fatal("saved selection not reflected")
 	}
-	updated, _, _ = m.updateReview(m.monitorStatusCmd()())
+	updated, _ = m.Update(m.reviewOverviewCmd()())
 	m = updated.(Model)
-	if m.reviewPanel.monitor.State != monitor.Stopped || m.reviewPanel.monitorCommand.path != m.configPath {
-		t.Fatalf("status %+v", m.reviewPanel.monitor)
+	if m.overview.monitor.State != monitor.Stopped || m.overview.monitorCommand.path != m.configPath {
+		t.Fatalf("status %+v", m.overview.monitor)
 	}
-	if !strings.Contains(strings.Join(m.reviewLines(), "\n"), "After review: keep local") {
+	if !strings.Contains(strings.Join(m.regionLines(true), "\n"), "After review: keep local") {
 		t.Fatal("saved local-only publication unclear")
 	}
 	owner, err := localstate.TryLock(filepath.Join(m.stateDir, "monitor.lock"))
 	if err != nil {
 		t.Fatal(err)
 	}
-	updated, _, _ = m.updateReview(m.monitorStatusCmd()())
+	updated, _ = m.Update(m.reviewOverviewCmd()())
 	m = updated.(Model)
-	if m.reviewPanel.monitor.State != monitor.Running || m.reviewPanel.monitor.ObservationOK {
+	if m.overview.monitor.State != monitor.Running || m.overview.monitor.ObservationOK {
 		t.Fatal("status did not refresh or fabricated observation")
 	}
 	owner.Close()
-	updated, _, _ = m.updateReview(m.monitorStatusCmd()())
+	updated, _ = m.Update(m.reviewOverviewCmd()())
 	m = updated.(Model)
-	if m.reviewPanel.monitor.State != monitor.Stopped {
+	if m.overview.monitor.State != monitor.Stopped {
 		t.Fatal("stop not reflected")
 	}
 	// View uses the captured state and never reloads the now-missing configuration.

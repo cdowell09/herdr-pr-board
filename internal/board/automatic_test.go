@@ -33,10 +33,21 @@ func autoPanel(t *testing.T) Model {
 	return next.(Model)
 }
 
+// regionDecision reads the selected PR's automatic decision the way the board
+// does: through the overview command.
+func regionDecision(t *testing.T, m Model) dispatch.Decision {
+	t.Helper()
+	msg, ok := m.reviewOverviewCmd()().(reviewOverviewMsg)
+	data, found := msg.read.regions[strings.ToLower(m.region.pr.URL)]
+	if !ok || !found {
+		t.Fatalf("overview read carried no region: %+v", msg)
+	}
+	return data.automatic
+}
+
 func TestAutomaticPanelUsesCandidatesBeforeStaleRowRetention(t *testing.T) {
 	m := autoPanel(t)
-	url := m.reviewPanel.pr.URL
-	if got := m.automaticDecision(url); !got.Eligible {
+	if got := regionDecision(t, m); !got.Eligible {
 		t.Fatalf("decision=%+v", got)
 	}
 	now := time.Now()
@@ -49,7 +60,7 @@ func TestAutomaticPanelUsesCandidatesBeforeStaleRowRetention(t *testing.T) {
 	if len(m.autoCandidates) != 0 {
 		t.Fatal("retained rows entered automatic candidates")
 	}
-	if got := m.automaticDecision(url); got.Eligible {
+	if got := regionDecision(t, m); got.Eligible {
 		t.Fatalf("retained row eligible: %+v", got)
 	}
 }
@@ -62,12 +73,11 @@ func TestActiveViewRevisionChangeInvalidatesAutomaticStatus(t *testing.T) {
 	now := time.Now()
 	next, _ := m.Update(viewMsg{index: 0, snapshot: discovery.ViewSnapshot{Data: discovery.ViewData{View: m.cfg.Views[0], PRs: []gh.PullRequest{pr}, ObservedAt: now, UpdatedAt: now}, StartedAt: now, FinishedAt: now}})
 	m = next.(Model)
-	got := m.automaticDecision(pr.URL)
+	got := regionDecision(t, m)
 	if got.Eligible || got.Reason != dispatch.ObservationFailed {
 		t.Fatalf("decision=%+v", got)
 	}
-	msg := m.reviewHistoryCmd(pr.URL)()
-	next, _ = m.Update(msg)
+	next, _ = m.Update(m.reviewOverviewCmd()())
 	m = next.(Model)
 	if !strings.Contains(stripANSI(m.View()), "Latest full observation: "+dispatch.ObservationFailed) {
 		t.Fatal("panel omitted shared eligibility reason")
@@ -76,29 +86,29 @@ func TestActiveViewRevisionChangeInvalidatesAutomaticStatus(t *testing.T) {
 
 func TestAutomaticPublicationSelectorUsesRenderedRow(t *testing.T) {
 	m := panelModel(t)
-	setup, err := newRepositorySetup(m.cfg, m.reviewPanel.pr.Repository, installedAgents(fakeLookPath("pi")))
+	setup, err := newRepositorySetup(m.cfg, m.region.pr.Repository, installedAgents(fakeLookPath("pi")))
 	if err != nil {
 		t.Fatal(err)
 	}
-	m.reviewPanel.setup = setup
+	m.region.setup = setup
 	setup.row = repositoryPostingRow
 	m.revealRepositoryRow()
 	y := renderedRepositoryLine(t, m, "After review: Keep local")
 	next, _ := m.Update(tea.MouseMsg{Button: tea.MouseButtonLeft, Action: tea.MouseActionPress, X: 1, Y: y})
 	m = next.(Model)
-	if m.reviewPanel.setup.repo.AutoPublish != config.PublishComment || len(m.reviewPanel.setup.repo.PublishActions) != 1 {
-		t.Fatalf("selection=%+v", m.reviewPanel.setup.repo)
+	if m.region.setup.repo.AutoPublish != config.PublishComment || len(m.region.setup.repo.PublishActions) != 1 {
+		t.Fatalf("selection=%+v", m.region.setup.repo)
 	}
 	next, _ = m.Update(tea.MouseMsg{Button: tea.MouseButtonLeft, Action: tea.MouseActionPress, X: 1, Y: renderedRepositoryLine(t, m, "[x] Comments")})
 	m = next.(Model)
-	if m.reviewPanel.setup.repo.AutoPublish != "" {
+	if m.region.setup.repo.AutoPublish != "" {
 		t.Fatal("revocation retained automatic publication")
 	}
 }
 
 func TestAutomaticHistoryCommandOwnsCandidateSnapshot(t *testing.T) {
 	model := autoPanel(t)
-	command := model.reviewHistoryCmd(model.reviewPanel.pr.URL)
+	command := model.reviewOverviewCmd()
 	snapshot := discovery.ViewSnapshot{Data: discovery.ViewData{View: model.cfg.Views[0], Err: errors.New("failed")}}
 	done := make(chan struct{})
 	go func() {
@@ -111,8 +121,8 @@ func TestAutomaticHistoryCommandOwnsCandidateSnapshot(t *testing.T) {
 		model.invalidateAutomatic(snapshot)
 	}
 	<-done
-	result := command().(reviewHistoryMsg)
-	if !result.automatic.Eligible {
-		t.Fatalf("history command shared mutable candidates: %+v", result.automatic)
+	result := command().(reviewOverviewMsg)
+	if data := result.read.regions[strings.ToLower(model.region.pr.URL)]; !data.automatic.Eligible {
+		t.Fatalf("overview command shared mutable candidates: %+v", data)
 	}
 }

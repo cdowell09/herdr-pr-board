@@ -25,9 +25,10 @@ func TestFirstReviewSetupControlsAndSavedConfiguration(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	next, _, _ := m.updateRepository(repositorySettingsMsg{url: m.reviewPanel.pr.URL, cfg: cfg})
+	m.region.settingsLoading = true
+	next, _, _ := m.updateRepository(repositorySettingsMsg{url: m.region.pr.URL, cfg: cfg})
 	m = next
-	if m.reviewPanel.setup == nil || m.reviewPanel.setup.selectedBuiltin() == nil {
+	if m.region.setup == nil || m.region.setup.selectedBuiltin() == nil {
 		t.Fatal("first review did not offer Pi setup")
 	}
 	for _, width := range []int{30, 100} {
@@ -44,7 +45,7 @@ func TestFirstReviewSetupControlsAndSavedConfiguration(t *testing.T) {
 	m.width = 100
 	updated, _ := m.Update(tea.MouseMsg{Button: tea.MouseButtonLeft, Action: tea.MouseActionPress, X: 1, Y: renderedRepositoryLine(t, m, "[ ] Comments")})
 	m = updated.(Model)
-	settings := m.reviewPanel.setup.repo
+	settings := m.region.setup.repo
 	if len(settings.PublishActions) != 1 || settings.PublishActions[0] != config.PublishComment || settings.AutoLaunch {
 		t.Fatalf("unsafe publication defaults: %+v", settings)
 	}
@@ -55,8 +56,8 @@ func TestFirstReviewSetupControlsAndSavedConfiguration(t *testing.T) {
 	}
 	updated, _ = m.Update(save())
 	m = updated.(Model)
-	if m.reviewPanel.setup != nil || !strings.Contains(m.reviewPanel.message, "saved") {
-		t.Fatalf("setup did not finish: %+v", m.reviewPanel)
+	if m.region.setup != nil || !strings.Contains(m.region.message, "saved") {
+		t.Fatalf("setup did not finish: %+v", m.region)
 	}
 	data, err := os.ReadFile(m.configPath)
 	if err != nil {
@@ -64,14 +65,6 @@ func TestFirstReviewSetupControlsAndSavedConfiguration(t *testing.T) {
 	}
 	if !strings.HasPrefix(string(data), config.DefaultFile) {
 		t.Fatal("setup changed unrelated configuration")
-	}
-	loaded, err := config.LoadExisting(m.configPath)
-	if err != nil {
-		t.Fatal(err)
-	}
-	updated, _, _ = m.updateRepository(repositorySettingsMsg{url: m.reviewPanel.pr.URL, cfg: loaded})
-	if updated.(Model).reviewPanel.setup != nil {
-		t.Fatal("saved repository prompted again")
 	}
 }
 
@@ -91,13 +84,12 @@ func (f *publicationFake) Publish(_ context.Context, _ string, runID string, act
 func (f *publicationFake) PublishConfigured(ctx context.Context, url, runID string) (publication.Attempt, error) {
 	return f.Publish(ctx, url, runID, config.PublishComment)
 }
-func (*publicationFake) History(string) ([]publication.Attempt, error) { return nil, nil }
 
 func TestPublicationControlsTargetLatestCompletion(t *testing.T) {
 	m := panelModel(t)
 	backend := &publicationFake{}
 	m = m.WithPublications(t.TempDir(), backend)
-	m.reviewPanel.runs = []reviewmemory.Run{{ID: "completed", Outcome: reviewmemory.Outcome{Status: reviewmemory.Completed}}, {ID: "failed", Outcome: reviewmemory.Outcome{Status: reviewmemory.Failed}}}
+	m.setRegionRuns(reviewmemory.Run{ID: "completed", Outcome: reviewmemory.Outcome{Status: reviewmemory.Completed}}, reviewmemory.Run{ID: "failed", Outcome: reviewmemory.Outcome{Status: reviewmemory.Failed}})
 	for key, action := range map[string]config.PublicationAction{"c": config.PublishComment, "a": config.PublishApprove, "x": config.PublishRequestChanges} {
 		updated, command := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune(key)})
 		m = updated.(Model)
@@ -119,7 +111,7 @@ func TestNarrowSetupKeepsEveryPermissionIndicatorVisible(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	m.reviewPanel.setup = setup
+	m.region.setup = setup
 	for _, enabled := range []bool{false, true} {
 		setup.repo.AutoLaunch = enabled
 		setup.repo.PublishActions = nil
@@ -177,8 +169,9 @@ func TestRepositorySetupOffersMissingAdaptersAndPreservesCustomCommands(t *testi
 			if err != nil {
 				t.Fatal(err)
 			}
-			m, _, _ = m.updateRepository(repositorySettingsMsg{url: m.reviewPanel.pr.URL, cfg: cfg})
-			setup := m.reviewPanel.setup
+			m.region.settingsLoading = true
+			m, _, _ = m.updateRepository(repositorySettingsMsg{url: m.region.pr.URL, cfg: cfg})
+			setup := m.region.setup
 			if setup == nil || len(setup.reviewers) != len(config.BuiltinReviewers("")) || setup.selectedBuiltin() != nil {
 				t.Fatalf("setup=%+v", setup)
 			}
@@ -196,14 +189,14 @@ func TestRepositorySetupOffersMissingAdaptersAndPreservesCustomCommands(t *testi
 			}
 			next, _ = m.Update(save())
 			m = next.(Model)
-			if m.reviewPanel.setup != nil {
-				t.Fatalf("save failed: %s", m.reviewPanel.message)
+			if m.region.setup != nil {
+				t.Fatalf("save failed: %s", m.region.message)
 			}
 			cfg, err = config.LoadExisting(m.configPath)
 			if err != nil {
 				t.Fatal(err)
 			}
-			repo, _ := cfg.RepositoryFor(m.reviewPanel.pr.Repository)
+			repo, _ := cfg.RepositoryFor(m.region.pr.Repository)
 			if repo.Reviewer != selected || len(cfg.Reviewers) != 2 || cfg.Reviewers[0].Command[0] != "custom-pi" || cfg.Reviewers[1].ID != selected {
 				t.Fatalf("unexpected saved selection: %+v %+v", cfg.Reviewers, repo)
 			}
@@ -244,8 +237,9 @@ func TestInstructionFilesRoundTripThroughBoardAndTOML(t *testing.T) {
 				}
 				return cfg
 			}
-			m, _, _ = m.updateRepository(repositorySettingsMsg{url: m.reviewPanel.pr.URL, cfg: load(), force: true})
-			s := m.reviewPanel.setup
+			m.region.settingsLoading = true
+			m, _, _ = m.updateRepository(repositorySettingsMsg{url: m.region.pr.URL, cfg: load()})
+			s := m.region.setup
 			if rows := strings.Join(s.rows(), "\n"); !strings.Contains(rows, "initial.md") || !strings.Contains(rows, "old-skill.md") {
 				t.Fatalf("TOML and legacy selections missing: %s", rows)
 			}
@@ -280,8 +274,8 @@ func TestInstructionFilesRoundTripThroughBoardAndTOML(t *testing.T) {
 			m = next.(Model)
 			next, _ = m.Update(save())
 			m = next.(Model)
-			if m.reviewPanel.setup != nil {
-				t.Fatalf("save failed: %s", m.reviewPanel.message)
+			if m.region.setup != nil {
+				t.Fatalf("save failed: %s", m.region.message)
 			}
 			cfg := load()
 			profile := cfg.Reviewers[0]
@@ -298,8 +292,9 @@ func TestInstructionFilesRoundTripThroughBoardAndTOML(t *testing.T) {
 			if err := os.WriteFile(m.configPath, []byte(strings.Replace(string(data), prompt, "direct.md", 1)), 0600); err != nil {
 				t.Fatal(err)
 			}
-			m, _, _ = m.updateRepository(repositorySettingsMsg{url: m.reviewPanel.pr.URL, cfg: load(), force: true})
-			if rows := strings.Join(m.reviewPanel.setup.rows(), "\n"); !strings.Contains(rows, "Prompt file: direct.md") || !strings.Contains(rows, "Skill file: None") {
+			m.region.settingsLoading = true
+			m, _, _ = m.updateRepository(repositorySettingsMsg{url: m.region.pr.URL, cfg: load()})
+			if rows := strings.Join(m.region.setup.rows(), "\n"); !strings.Contains(rows, "Prompt file: direct.md") || !strings.Contains(rows, "Skill file: None") {
 				t.Fatalf("direct TOML edits not reflected: %s", rows)
 			}
 		})
@@ -308,7 +303,7 @@ func TestInstructionFilesRoundTripThroughBoardAndTOML(t *testing.T) {
 
 func TestInstructionEditorKeepsCursorVisibleAndCancelsDraft(t *testing.T) {
 	m := onboardingModel(t, 30, 10, 3)
-	s := m.reviewPanel.setup
+	s := m.region.setup
 	s.repo.Reviewer = "pi"
 	s.row = s.promptRow()
 	s.toggle(1)
@@ -331,7 +326,7 @@ func TestInstructionEditorKeepsCursorVisibleAndCancelsDraft(t *testing.T) {
 	}
 	next, _ := m.Update(tea.KeyMsg{Type: tea.KeyEsc})
 	m = next.(Model)
-	if s.editing != nil || s.selectedReviewer().PromptFile != nil || m.reviewPanel.setup == nil {
+	if s.editing != nil || s.selectedReviewer().PromptFile != nil || m.region.setup == nil {
 		t.Fatal("Escape did not discard only the path draft")
 	}
 }
@@ -344,15 +339,16 @@ func TestMissingInstructionFileKeepsSetupOpenForRepair(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	m, _, _ = m.updateRepository(repositorySettingsMsg{url: m.reviewPanel.pr.URL, cfg: cfg, force: true})
+	m.region.settingsLoading = true
+	m, _, _ = m.updateRepository(repositorySettingsMsg{url: m.region.pr.URL, cfg: cfg})
 	missing := "missing-security.md"
-	m.reviewPanel.setup.selectedReviewer().PromptFile = &missing
+	m.region.setup.selectedReviewer().PromptFile = &missing
 	next, save := m.Update(tea.KeyMsg{Type: tea.KeyEnter})
 	m = next.(Model)
 	next, _ = m.Update(save())
 	m = next.(Model)
-	if m.reviewPanel.setup == nil || m.reviewPanel.setup.saving || !strings.Contains(m.reviewPanel.message, missing) {
-		t.Fatalf("missing file not repairable: %+v", m.reviewPanel)
+	if m.region.setup == nil || m.region.setup.saving || !strings.Contains(m.region.message, missing) {
+		t.Fatalf("missing file not repairable: %+v", m.region)
 	}
 	data, err := os.ReadFile(m.configPath)
 	if err != nil || string(data) != config.DefaultFile {

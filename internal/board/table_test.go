@@ -78,7 +78,7 @@ func TestReviewOverviewLayouts(t *testing.T) {
 		if layout.title < 1 || (width >= tierWide && layout.title < 15) {
 			t.Fatalf("width %d: title has only %d cells", width, layout.title)
 		}
-		selected := stripANSI(model.renderSelected())
+		selected := stripANSI(model.renderSelected(model.boardLayout()))
 		detail := strings.Join(strings.Fields(strings.Join(strings.Split(selected, "\n")[1:], " ")), " ")
 		want := strings.Join(strings.Fields("Review: "+summary.detail+" · Posted: "+summary.postedDetail), " ")
 		if detail != want {

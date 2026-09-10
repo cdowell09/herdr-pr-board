@@ -22,16 +22,16 @@ func TestReviewPanelStopsExactRunAsynchronously(t *testing.T) {
 		m := panelModel(t)
 		backend := &stopReviewBackend{err: failure}
 		m.reviews = backend
-		m.reviewPanel.runs = []reviewmemory.Run{
-			{ID: "older-running", Outcome: reviewmemory.Outcome{Status: reviewmemory.Running}},
-			{ID: "newer-running", Outcome: reviewmemory.Outcome{Status: reviewmemory.Running}},
-		}
+		m.setRegionRuns(
+			reviewmemory.Run{ID: "older-running", Outcome: reviewmemory.Outcome{Status: reviewmemory.Running}},
+			reviewmemory.Run{ID: "newer-running", Outcome: reviewmemory.Outcome{Status: reviewmemory.Running}},
+		)
 		if !strings.Contains(stripANSI(m.View()), "t stop run newer-ru") {
 			t.Fatalf("stop target not visible: %s", stripANSI(m.View()))
 		}
 		next, cmd := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("t")})
 		m = next.(Model)
-		if cmd == nil || backend.stopped != "" || m.reviewPanel.stopping != "newer-running" {
+		if cmd == nil || backend.stopped != "" || m.stopping[m.region.pr.URL] != "newer-running" {
 			t.Fatal("stop did not capture target asynchronously")
 		}
 		if _, duplicate := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("t")}); duplicate != nil {
@@ -43,18 +43,18 @@ func TestReviewPanelStopsExactRunAsynchronously(t *testing.T) {
 			t.Fatal("wrong run stopped or history not refreshed")
 		}
 		if failure != nil {
-			if m.reviewPanel.stopping != "" || !strings.Contains(m.reviewPanel.message, failure.Error()) {
-				t.Fatalf("stop error hidden: %+v", m.reviewPanel)
+			if m.stopping[m.region.pr.URL] != "" || !strings.Contains(m.region.message, failure.Error()) {
+				t.Fatalf("stop error hidden: %+v", m.region)
 			}
 			continue
 		}
-		if !strings.Contains(m.reviewPanel.message, "waiting for reviewer cleanup") {
+		if !strings.Contains(m.region.message, "waiting for reviewer cleanup") {
 			t.Fatal("accepted request presented as completed")
 		}
 		terminal := reviewmemory.Run{ID: "newer-running", Outcome: reviewmemory.Outcome{Status: reviewmemory.Failed, Message: reviewmemory.ErrStopped.Error()}}
-		next, _ = m.Update(reviewHistoryMsg{url: m.reviewPanel.pr.URL, runs: []reviewmemory.Run{terminal}})
+		next, _ = m.Update(reviewOverviewMsg{epoch: m.epoch, read: overviewRead{regions: map[string]regionData{m.region.pr.URL: {runs: []reviewmemory.Run{terminal}}}, runs: map[string]reviewmemory.Run{terminal.ID: terminal}}})
 		m = next.(Model)
-		if m.reviewPanel.stopping != "" || !strings.Contains(m.reviewPanel.message, reviewmemory.ErrStopped.Error()) {
+		if m.stopping[m.region.pr.URL] != "" || !strings.Contains(m.region.message, reviewmemory.ErrStopped.Error()) {
 			t.Fatal("final stop outcome missing")
 		}
 		if _, cmd := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("t")}); cmd != nil {
@@ -65,24 +65,25 @@ func TestReviewPanelStopsExactRunAsynchronously(t *testing.T) {
 
 func TestReviewStopResultCannotOverwriteNewPanelOrFinishedRun(t *testing.T) {
 	m := panelModel(t)
-	m.reviewPanel.runs = []reviewmemory.Run{{ID: "active", Outcome: reviewmemory.Outcome{Status: reviewmemory.Running}}}
+	m.setRegionRuns(reviewmemory.Run{ID: "active", Outcome: reviewmemory.Outcome{Status: reviewmemory.Running}})
 	next, cmd := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("t")})
 	m = next.(Model)
 	message := cmd()
-	next, _ = m.Update(reviewHistoryMsg{url: m.reviewPanel.pr.URL, runs: []reviewmemory.Run{{ID: "active", Outcome: reviewmemory.Outcome{Status: reviewmemory.Completed, Message: "Finished before stop"}}}})
+	finished := reviewmemory.Run{ID: "active", Outcome: reviewmemory.Outcome{Status: reviewmemory.Completed, Message: "Finished before stop"}}
+	next, _ = m.Update(reviewOverviewMsg{epoch: m.epoch, read: overviewRead{regions: map[string]regionData{m.region.pr.URL: {runs: []reviewmemory.Run{finished}}}, runs: map[string]reviewmemory.Run{finished.ID: finished}}})
 	m = next.(Model)
-	terminal := m.reviewPanel.message
+	terminal := m.region.message
 	next, _ = m.Update(message)
 	m = next.(Model)
-	if m.reviewPanel.message != terminal {
+	if m.region.message != terminal {
 		t.Fatal("late stop result overwrote terminal history")
 	}
-	m.reviewPanel.stopping = "active"
-	m.reviewGeneration++
-	m.reviewPanel.message = "new panel"
+	// A result for a run other than the pending one is not this PR's answer.
+	m.stopping[m.region.pr.URL] = "other"
+	m.region.message = "pending other"
 	next, _ = m.Update(message)
-	if next.(Model).reviewPanel.message != "new panel" {
-		t.Fatal("old stop response changed reopened panel")
+	if next.(Model).region.message != "pending other" {
+		t.Fatal("stop response for another run changed the region")
 	}
 }
 
@@ -90,9 +91,9 @@ func TestStopControlPreservesPanelLayoutAndURLHitbox(t *testing.T) {
 	for _, width := range []int{30, 60, 100} {
 		m := panelModel(t)
 		m.width = width
-		m.reviewPanel.runs = []reviewmemory.Run{{ID: "active", Outcome: reviewmemory.Outcome{Status: reviewmemory.Running}}}
+		m.setRegionRuns(reviewmemory.Run{ID: "active", Outcome: reviewmemory.Outcome{Status: reviewmemory.Running}})
 		lines := strings.Split(m.View(), "\n")
-		if len(lines) > m.height || stripANSI(lines[1]) != truncate(m.reviewPanel.pr.URL, width) {
+		if len(lines) > m.height || stripANSI(lines[1]) != truncate(m.region.pr.URL, width) {
 			t.Fatalf("width %d: stop control moved URL or overflowed height", width)
 		}
 		for _, line := range lines {
@@ -103,7 +104,7 @@ func TestStopControlPreservesPanelLayoutAndURLHitbox(t *testing.T) {
 		opened := ""
 		m.openBrowser = func(url string) tea.Cmd { opened = url; return nil }
 		m.Update(tea.MouseMsg{X: 0, Y: 1, Button: tea.MouseButtonLeft, Action: tea.MouseActionPress})
-		if opened != m.reviewPanel.pr.URL {
+		if opened != m.region.pr.URL {
 			t.Fatal("stop control changed URL hitbox")
 		}
 	}
@@ -113,10 +114,10 @@ func TestStopTargetRemainsVisibleOutsideHistoryViewport(t *testing.T) {
 	for _, height := range []int{6, 20} {
 		m := panelModel(t)
 		m.width, m.height = 60, height
-		m.reviewPanel.runs = []reviewmemory.Run{
-			{ID: "active-123456", Outcome: reviewmemory.Outcome{Status: reviewmemory.Running}},
-			{ID: "completed-123456", Outcome: reviewmemory.Outcome{Status: reviewmemory.Completed, Message: strings.Repeat("Completed review details. ", 100)}},
-		}
+		m.setRegionRuns(
+			reviewmemory.Run{ID: "active-123456", Outcome: reviewmemory.Outcome{Status: reviewmemory.Running}},
+			reviewmemory.Run{ID: "completed-123456", Outcome: reviewmemory.Outcome{Status: reviewmemory.Completed, Message: strings.Repeat("Completed review details. ", 100)}},
+		)
 		view := stripANSI(m.View())
 		if strings.Contains(view, "t stop run active-1") {
 			t.Fatal("fixture must place the running review outside the history viewport")

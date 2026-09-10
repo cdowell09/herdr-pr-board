@@ -24,7 +24,7 @@ func (m startupCommands) Init() tea.Cmd { return m.command }
 func (m startupCommands) View() string  { return "" }
 func (m startupCommands) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	switch msg.(type) {
-	case monitorStartedMsg, snapshotMsg, configRefreshMsg, monitorStatusMsg:
+	case monitorStartedMsg, snapshotMsg, configRefreshMsg:
 		m.messages = append(m.messages, msg)
 		m.remaining--
 		if m.remaining == 0 {
@@ -88,7 +88,7 @@ func TestBoardSavedSettingsStartEvenAfterPanelCloses(t *testing.T) {
 	m := panelModel(t)
 	calls := 0
 	m = m.WithMonitorStarter(func() error { calls++; return nil })
-	m.reviewPanel = nil
+	m.reviews, m.region, m.zoom = nil, nil, false
 	saved := m.cfg
 	saved.Review.AutoViews = []string{saved.Views[0].ID}
 	saved.Repositories = []config.Repository{{Name: "owner/repo", AutoLaunch: true}}
@@ -116,12 +116,12 @@ func TestMonitorStartupErrorPersistsAcrossObservationAndStatus(t *testing.T) {
 	m := panelModel(t)
 	next, _ := m.Update(monitorStartedMsg{err: errors.New("timeout; log: /state/monitor.log")})
 	m = next.(Model)
-	next, _ = m.Update(monitorStatusMsg{url: m.reviewPanel.pr.URL, generation: m.reviewGeneration})
+	next, _ = m.Update(reviewOverviewMsg{epoch: m.epoch})
 	m = next.(Model)
 	if !strings.Contains(stripANSI(m.View()), "Monitor startup failed") {
 		t.Fatal("status erased startup failure")
 	}
-	m.reviewPanel = nil
+	m.region, m.zoom = nil, false
 	m.width = 120
 	next, _ = m.Update(snapshotMsg{Snapshot: discovery.Snapshot{FinishedAt: time.Now()}})
 	m = next.(Model)
@@ -158,7 +158,7 @@ func TestFailedConfigReloadDoesNotStartMonitor(t *testing.T) {
 
 func TestUnwiredSavedSettingsDoNotStartMonitor(t *testing.T) {
 	m := panelModel(t)
-	m.reviewPanel = nil
+	m.reviews, m.region, m.zoom = nil, nil, false
 	_, command := m.Update(repositorySavedMsg{cfg: m.cfg})
 	if command != nil {
 		t.Fatal("unwired settings save returned a startup command")

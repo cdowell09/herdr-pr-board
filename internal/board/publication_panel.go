@@ -13,14 +13,8 @@ type PublicationBackend interface {
 	HistoryForRuns([]reviewmemory.Run) ([]publication.Attempt, error)
 	PublishConfigured(context.Context, string, string) (publication.Attempt, error)
 	Publish(context.Context, string, string, config.PublicationAction) (publication.Attempt, error)
-	History(string) ([]publication.Attempt, error)
 }
 
-type publicationHistoryMsg struct {
-	url      string
-	attempts []publication.Attempt
-	err      error
-}
 type publicationDoneMsg struct {
 	url     string
 	attempt publication.Attempt
@@ -32,51 +26,37 @@ func (m Model) WithPublications(stateDir string, backend PublicationBackend) Mod
 	return m
 }
 
-func (m Model) publicationHistoryCmd(url string) tea.Cmd {
-	if m.publications == nil {
-		return nil
-	}
-	backend := m.publications
-	return func() tea.Msg { history, err := backend.History(url); return publicationHistoryMsg{url, history, err} }
-}
-
 func (m Model) updatePublication(message tea.Msg) (Model, tea.Cmd, bool) {
 	switch msg := message.(type) {
-	case publicationHistoryMsg:
-		if m.reviewPanel != nil && m.reviewPanel.pr.URL == msg.url {
-			m.reviewPanel.publications = msg.attempts
-			if msg.err != nil {
-				m.reviewPanel.message = msg.err.Error()
-			}
-		}
-		return m, nil, true
 	case publicationDoneMsg:
 		message := string(msg.attempt.Status)
 		if msg.err != nil {
 			message = msg.err.Error()
 		}
 		m.warning = "publication: " + message
-		if m.reviewPanel != nil && m.reviewPanel.pr.URL == msg.url {
-			m.reviewPanel.publishing = false
-			m.reviewPanel.message = message
+		delete(m.publishing, msg.url)
+		if m.region != nil && m.region.pr.URL == msg.url {
+			m.region.message = message
 		}
-		return m, m.publicationHistoryCmd(msg.url), true
+		cmd := m.requestOverview()
+		return m, cmd, true
 	}
 	return m, nil, false
 }
 
 func (m Model) publishCmd(action config.PublicationAction) (tea.Model, tea.Cmd) {
-	if m.publications == nil || m.reviewPanel.publishing {
+	url := m.region.pr.URL
+	if m.publications == nil || m.publishing[url] {
 		return m, nil
 	}
-	run, ok := latestCompleted(m.reviewPanel.runs)
+	run, ok := latestCompleted(m.regionState().runs)
 	if !ok {
-		m.reviewPanel.message = "No completed local review is available for publication."
+		m.region.message = "No completed local review is available for publication."
 		return m, nil
 	}
-	m.reviewPanel.publishing = true
-	m.reviewPanel.message = "Publishing " + string(action) + "…"
-	backend, ctx, url := m.publications, m.reviewContext, m.reviewPanel.pr.URL
+	m.publishing[url] = true
+	m.region.message = "Publishing " + string(action) + "…"
+	backend, ctx := m.publications, m.reviewContext
 	return m, func() tea.Msg {
 		attempt, err := backend.Publish(ctx, url, run.ID, action)
 		return publicationDoneMsg{url, attempt, err}

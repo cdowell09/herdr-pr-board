@@ -2,7 +2,6 @@ package board
 
 import (
 	"fmt"
-	"os"
 	"path/filepath"
 	"runtime"
 	"strings"
@@ -10,39 +9,8 @@ import (
 
 	"github.com/cdowell09/herdr-pr-board/internal/config"
 	"github.com/cdowell09/herdr-pr-board/internal/monitor"
-	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/x/ansi"
 )
-
-type monitorStatusMsg struct {
-	url        string
-	generation uint64
-	status     monitor.Status
-	cfg        config.Config
-	command    monitorInvocation
-}
-
-func (m Model) monitorStatusCmd() tea.Cmd {
-	path, state, url, generation := m.configPath, m.stateDir, m.reviewPanel.pr.URL, m.reviewGeneration
-	return func() tea.Msg {
-		msg := monitorStatusMsg{url: url, generation: generation}
-		cfg, err := config.LoadExisting(path)
-		if err != nil {
-			msg.status = monitor.Status{State: monitor.Unknown, Message: err.Error()}
-			return msg
-		}
-		msg.cfg = cfg
-		msg.status = monitor.Inspect(state, cfg)
-		binary, err := os.Executable()
-		if err == nil {
-			msg.command, err = monitorCommand(binary, path, state)
-		}
-		if err != nil {
-			msg.status.Message += "; monitor command unavailable: " + err.Error()
-		}
-		return msg
-	}
-}
 
 // Quote each argument independently so the displayed command is safe to paste.
 type monitorInvocation struct{ binary, path, state string }
@@ -68,10 +36,10 @@ func monitorCommand(binary, path, state string) (monitorInvocation, error) {
 }
 
 func (m Model) monitorCommandLines() []string {
-	if m.reviewPanel.monitor.State != monitor.Stopped || m.reviewPanel.monitorCommand.binary == "" {
+	if m.overview.monitor.State != monitor.Stopped || m.overview.monitorCommand.binary == "" {
 		return nil
 	}
-	return m.reviewPanel.monitorCommand.lines(m.width)
+	return m.overview.monitorCommand.lines(m.width)
 }
 
 func shellQuote(value string) string {
