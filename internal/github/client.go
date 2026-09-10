@@ -177,7 +177,7 @@ func (c *Client) SearchView(ctx context.Context, view config.View) ([]PullReques
 	ctx, cancel := context.WithCancel(ctx)
 	defer cancel()
 	results := make([][]PullRequest, len(queries))
-	var errMu sync.Mutex
+	var firstFailure sync.Once
 	var firstErr error
 	var wg sync.WaitGroup
 	for i, query := range queries {
@@ -186,15 +186,10 @@ func (c *Client) SearchView(ctx context.Context, view config.View) ([]PullReques
 			defer wg.Done()
 			rows, err := c.search(ctx, query)
 			if err != nil {
-				errMu.Lock()
-				shouldCancel := firstErr == nil
-				if shouldCancel {
+				firstFailure.Do(func() {
 					firstErr = err
-				}
-				errMu.Unlock()
-				if shouldCancel {
 					cancel()
-				}
+				})
 				return
 			}
 			results[i] = rows

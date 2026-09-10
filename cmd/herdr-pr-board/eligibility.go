@@ -20,7 +20,7 @@ func printEligibility(cfg config.Config, source discovery.Loader, reviews dispat
 	ctx, cancel := context.WithTimeout(ctx, discovery.RefreshAllTimeout)
 	defer cancel()
 	snapshot := source.RefreshAll(ctx)
-	decisions := dispatch.Decisions(dispatch.Candidates(snapshot, cfg.Views, cfg.Review.AutoViews), cfg, reviews)
+	decisions := dispatch.Decisions(dispatch.Candidates(snapshot, cfg.Views), cfg, reviews)
 	if err := json.NewEncoder(stdout).Encode(struct {
 		Version    int                 `json:"version"`
 		ObservedAt time.Time           `json:"observed_at"`

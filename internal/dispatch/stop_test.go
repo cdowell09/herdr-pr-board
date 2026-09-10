@@ -88,7 +88,7 @@ func TestStoppedMonitorProcess(t *testing.T) {
 			t.Errorf("stopped monitor review published or succeeded: %+v", event)
 		}
 		fresh := snapshotWithPRs(cfg, 1)
-		decision := Decisions(Candidates(fresh, cfg.Views, cfg.Review.AutoViews), cfg, reviews)[0]
+		decision := Decisions(Candidates(fresh, cfg.Views), cfg, reviews)[0]
 		if decision.Eligible || decision.Reason != reviewmemory.ErrRetryRequired.Error() {
 			t.Errorf("stopped revision can restart automatically: %+v", decision)
 		}

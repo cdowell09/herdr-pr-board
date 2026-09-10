@@ -349,11 +349,11 @@ func TestCancellationWaitsForMaximumActiveReviewers(t *testing.T) {
 func TestPublicationFailureDoesNotChangeCompletedReviewEligibility(t *testing.T) {
 	path, cfg := dispatchConfig(t, t.TempDir(), []string{"unused"}, true)
 	snapshot := snapshotWithPRs(cfg, 1)
-	candidate := Candidates(snapshot, cfg.Views, cfg.Review.AutoViews)[0]
-	eligible := Evaluate(candidate, true, nil)
+	candidate := Candidates(snapshot, cfg.Views)[0]
 	reviews := &fakeReviews{statuses: map[reviewmemory.Identity]error{}, run: func(context.Context, review.Request) (reviewmemory.Run, error) {
 		return reviewmemory.Run{ID: "completed", Outcome: reviewmemory.Outcome{Status: reviewmemory.Completed}}, nil
 	}}
+	eligible := decision(candidate, cfg, reviews)
 	event := New(path, reviews, &fakePublisher{err: errors.New("posting denied")}).launch(context.Background(), candidate, eligible, cfg)
 	if event.Run == nil || event.Run.Status != reviewmemory.Completed || !event.Decision.Eligible || event.Decision.Reason != eligible.Reason || !strings.Contains(event.Error, "publication failed") {
 		t.Fatalf("publication relabeled review: %+v", event)

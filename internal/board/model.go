@@ -273,7 +273,7 @@ func (m Model) Update(message tea.Msg) (tea.Model, tea.Cmd) {
 		}
 		current := m.observationCurrent(msg.FinishedAt)
 		if current {
-			m.autoCandidates = dispatch.Candidates(msg.Snapshot, m.cfg.Views, m.cfg.Review.AutoViews)
+			m.autoCandidates = dispatch.Candidates(msg.Snapshot, m.cfg.Views)
 		}
 		for i := range msg.Views {
 			if !m.acceptObservation(msg.Views[i].View.ID, msg.FinishedAt) {
@@ -291,7 +291,7 @@ func (m Model) Update(message tea.Msg) (tea.Model, tea.Cmd) {
 		m.clampCursor()
 		var cmd tea.Cmd
 		if m.sidebar != nil && current {
-			if tokens := sidebar.Tokens(m.cfg.Sidebar.ReviewView, adaptViews(m.views)); len(tokens) > 0 {
+			if tokens := sidebar.Tokens(m.cfg.Sidebar.ReviewView, m.views); len(tokens) > 0 {
 				cmd = m.sidebarReportCmd(tokens)
 			}
 		}
@@ -903,15 +903,6 @@ func (m Model) tabBudget() int {
 	count := max(1, len(m.views))
 	available := m.width - (count - 1) // separators between tabs
 	return max(6, available/count-tabPadding)
-}
-
-// adaptViews converts retained view data into the sidebar token inputs.
-func adaptViews(views []discovery.ViewData) []sidebar.View {
-	adapted := make([]sidebar.View, len(views))
-	for i, view := range views {
-		adapted[i] = sidebar.View{ID: view.View.ID, PRs: view.PRs, Err: view.Err}
-	}
-	return adapted
 }
 
 // sidebarReportCmd reports the tokens to the workspace running the board.

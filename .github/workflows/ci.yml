@@ -25,7 +25,7 @@ jobs:
       - name: Read manifest platforms
         id: platforms
         run: |
-          matrix="$(go run ./cmd/ci-platform-matrix herdr-plugin.toml)"
+          matrix="$(python3 -B scripts/ci_platform_matrix.py herdr-plugin.toml)"
           printf 'matrix=%s\n' "$matrix" >>"$GITHUB_OUTPUT"
       - name: Check formatting
         run: |

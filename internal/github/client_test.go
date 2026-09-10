@@ -600,6 +600,7 @@ func TestSearchViewConcurrencyDoesNotExceedMaxConcurrency(t *testing.T) {
 
 func TestSearchViewStopsRemainingSearchesOnError(t *testing.T) {
 	otherScopeWaiting := make(chan struct{})
+	scopeErr := errors.New("scope one failed")
 	var secondCanceled atomic.Bool
 	runner := Runner(func(ctx context.Context, args ...string) ([]byte, error) {
 		if len(args) >= 3 && args[0] == "search" && args[1] == "prs" {
@@ -608,7 +609,7 @@ func TestSearchViewStopsRemainingSearchesOnError(t *testing.T) {
 			if strings.Contains(query, "repo:acme/one") {
 				select {
 				case <-otherScopeWaiting:
-					return nil, errors.New("scope one failed")
+					return nil, scopeErr
 				case <-time.After(2 * time.Second):
 					return nil, errors.New("second scope search never started")
 				}
@@ -630,7 +631,7 @@ func TestSearchViewStopsRemainingSearchesOnError(t *testing.T) {
 		Scopes:         []string{"repo:acme/one", "repo:acme/two"},
 	})
 	_, err := client.SearchView(context.Background(), config.View{Title: "All", Query: "is:open", Scope: "configured"})
-	if err == nil || !strings.Contains(err.Error(), `search "All"`) || !strings.Contains(err.Error(), "scope one failed") {
+	if !errors.Is(err, scopeErr) || !strings.Contains(err.Error(), `search "All"`) {
 		t.Fatalf("error = %v, want the first failure wrapped with the view title", err)
 	}
 	if !secondCanceled.Load() {

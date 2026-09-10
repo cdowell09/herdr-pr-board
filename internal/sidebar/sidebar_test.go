@@ -4,6 +4,8 @@ import (
 	"errors"
 	"testing"
 
+	"github.com/cdowell09/herdr-pr-board/internal/config"
+	"github.com/cdowell09/herdr-pr-board/internal/discovery"
 	gh "github.com/cdowell09/herdr-pr-board/internal/github"
 )
 
@@ -12,9 +14,9 @@ func pr(url string, ci gh.CIState) gh.PullRequest {
 }
 
 func TestTokensCountsDistinctPRsAcrossViews(t *testing.T) {
-	views := []View{
-		{ID: "authored", PRs: []gh.PullRequest{pr("https://github.com/acme/api/pull/1", gh.CISuccess)}},
-		{ID: "all", PRs: []gh.PullRequest{
+	views := []discovery.ViewData{
+		{View: config.View{ID: "authored"}, PRs: []gh.PullRequest{pr("https://github.com/acme/api/pull/1", gh.CISuccess)}},
+		{View: config.View{ID: "all"}, PRs: []gh.PullRequest{
 			pr("https://github.com/acme/api/pull/1", gh.CISuccess),
 			pr("https://github.com/acme/api/pull/2", gh.CIPending),
 			pr("https://github.com/acme/api/pull/3", gh.CIFailure),
@@ -33,12 +35,12 @@ func TestTokensCountsDistinctPRsAcrossViews(t *testing.T) {
 }
 
 func TestTokensCountsReviewViewAndCIFailures(t *testing.T) {
-	views := []View{
-		{ID: "review", PRs: []gh.PullRequest{
+	views := []discovery.ViewData{
+		{View: config.View{ID: "review"}, PRs: []gh.PullRequest{
 			pr("https://github.com/acme/api/pull/1", gh.CIFailure),
 			pr("https://github.com/acme/api/pull/2", gh.CIError),
 		}},
-		{ID: "all", PRs: []gh.PullRequest{
+		{View: config.View{ID: "all"}, PRs: []gh.PullRequest{
 			pr("https://github.com/acme/api/pull/1", gh.CIFailure),
 			pr("https://github.com/acme/api/pull/2", gh.CIError),
 			pr("https://github.com/acme/api/pull/3", gh.CIPending),
@@ -60,8 +62,8 @@ func TestTokensCountsReviewViewAndCIFailures(t *testing.T) {
 }
 
 func TestTokensOmitsCITokenWhenNothingFails(t *testing.T) {
-	views := []View{
-		{ID: "review", PRs: []gh.PullRequest{
+	views := []discovery.ViewData{
+		{View: config.View{ID: "review"}, PRs: []gh.PullRequest{
 			pr("https://github.com/acme/api/pull/1", gh.CISuccess),
 			pr("https://github.com/acme/api/pull/2", gh.CIPending),
 		}},
@@ -76,7 +78,7 @@ func TestTokensOmitsCITokenWhenNothingFails(t *testing.T) {
 }
 
 func TestTokensReportsZeroCountsOnEmptyBoard(t *testing.T) {
-	views := []View{{ID: "review"}, {ID: "all"}}
+	views := []discovery.ViewData{{View: config.View{ID: "review"}}, {View: config.View{ID: "all"}}}
 	tokens := Tokens("review", views)
 	if tokens[TokenOpen] != "0 open" {
 		t.Fatalf("prs_open = %q, want %q", tokens[TokenOpen], "0 open")
@@ -90,9 +92,9 @@ func TestTokensReportsZeroCountsOnEmptyBoard(t *testing.T) {
 }
 
 func TestTokensNilWhenAnyViewFailed(t *testing.T) {
-	views := []View{
-		{ID: "authored", PRs: []gh.PullRequest{pr("https://github.com/acme/api/pull/1", gh.CISuccess)}},
-		{ID: "all", Err: errors.New("rate limited")},
+	views := []discovery.ViewData{
+		{View: config.View{ID: "authored"}, PRs: []gh.PullRequest{pr("https://github.com/acme/api/pull/1", gh.CISuccess)}},
+		{View: config.View{ID: "all"}, Err: errors.New("rate limited")},
 	}
 	if tokens := Tokens("review", views); tokens != nil {
 		t.Fatalf("tokens = %#v, want nil", tokens)
@@ -100,7 +102,7 @@ func TestTokensNilWhenAnyViewFailed(t *testing.T) {
 }
 
 func TestTokensOmitReviewTokenForUnknownReviewView(t *testing.T) {
-	views := []View{{ID: "mine", PRs: []gh.PullRequest{pr("https://github.com/acme/api/pull/1", gh.CISuccess)}}}
+	views := []discovery.ViewData{{View: config.View{ID: "mine"}, PRs: []gh.PullRequest{pr("https://github.com/acme/api/pull/1", gh.CISuccess)}}}
 	tokens := Tokens("renamed", views)
 	if _, exists := tokens[TokenReview]; exists {
 		t.Fatalf("prs_review reported for missing view: %#v", tokens)
