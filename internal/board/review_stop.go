@@ -7,44 +7,69 @@ import (
 
 type reviewStoppedMsg struct {
 	url, runID string
-	generation uint64
 	err        error
 }
 
-// The stop action targets the newest running attempt shown for this PR.
-func (p *reviewPanel) stopTarget() (reviewmemory.Run, bool) {
-	for i := len(p.runs) - 1; i >= 0; i-- {
-		if p.runs[i].Status == reviewmemory.Running {
-			return p.runs[i], true
+// The stop action targets the newest running attempt recorded for this PR.
+func (m Model) stopTarget() (reviewmemory.Run, bool) {
+	runs := m.regionState().runs
+	for i := len(runs) - 1; i >= 0; i-- {
+		if runs[i].Status == reviewmemory.Running {
+			return runs[i], true
 		}
 	}
 	return reviewmemory.Run{}, false
 }
 
 func (m Model) stopReviewCmd() (tea.Model, tea.Cmd) {
-	run, ok := m.reviewPanel.stopTarget()
-	if !ok || m.reviews == nil || m.reviewPanel.stopping != "" {
+	run, ok := m.stopTarget()
+	url := m.region.pr.URL
+	if !ok || m.reviews == nil || m.stopping[url] != "" {
 		return m, nil
 	}
-	m.reviewPanel.stopping = run.ID
-	m.reviewPanel.message = "Requesting stop for run " + shortRevision(run.ID)
-	m.clampReviewOffset()
-	backend, url, generation := m.reviews, m.reviewPanel.pr.URL, m.reviewGeneration
+	m.stopping[url] = run.ID
+	m.region.message = "Requesting stop for run " + shortRevision(run.ID)
+	m.clampRegionOffset()
+	backend := m.reviews
 	return m, func() tea.Msg {
-		return reviewStoppedMsg{url: url, runID: run.ID, generation: generation, err: backend.Stop(run.ID)}
+		return reviewStoppedMsg{url: url, runID: run.ID, err: backend.Stop(run.ID)}
 	}
 }
 
+// updateReviewStopped records the owner's answer for the pending stop of
+// this PR. The message reaches the region only while it shows that PR.
 func (m Model) updateReviewStopped(msg reviewStoppedMsg) (Model, tea.Cmd, bool) {
-	p := m.reviewPanel
-	if p == nil || p.pr.URL != msg.url || m.reviewGeneration != msg.generation || p.stopping != msg.runID {
+	if m.stopping[msg.url] != msg.runID {
 		return m, nil, true
 	}
-	p.message = "Stop requested for run " + shortRevision(msg.runID) + "; waiting for reviewer cleanup"
+	message := "Stop requested for run " + shortRevision(msg.runID) + "; waiting for reviewer cleanup"
 	if msg.err != nil {
-		p.stopping = ""
-		p.message = "Cannot stop run " + shortRevision(msg.runID) + ": " + msg.err.Error()
+		delete(m.stopping, msg.url)
+		message = "Cannot stop run " + shortRevision(msg.runID) + ": " + msg.err.Error()
 	}
-	m.clampReviewOffset()
-	return m, m.reviewHistoryCmd(msg.url), true
+	if m.region != nil && m.region.pr.URL == msg.url {
+		m.region.message = message
+		m.clampRegionOffset()
+	}
+	cmd := m.requestOverview()
+	return m, cmd, true
+}
+
+// settleStops clears every pending stop whose run the latest read no longer
+// records as running, whether or not a view lists its PR, and reports the
+// outcome in the region that shows it. A failed read settles nothing.
+func (m *Model) settleStops() {
+	if m.overview.err != nil {
+		return
+	}
+	for url, id := range m.stopping {
+		run, recorded := m.overview.runs[id]
+		if recorded && run.Status == reviewmemory.Running {
+			continue
+		}
+		delete(m.stopping, url)
+		if recorded && m.region != nil && m.region.pr.URL == url {
+			m.region.message = "Run " + shortRevision(run.ID) + ": " + string(run.Status) + " · " + run.Message
+		}
+	}
 }

@@ -1192,12 +1192,12 @@ func TestEditKeyAnnouncesTheEditorAndValidationReplacesTheNotice(t *testing.T) {
 	if launched != fallbackEditor() {
 		t.Fatalf("launched %q, want %q", launched, fallbackEditor())
 	}
-	if footer := stripANSI(announced.renderFooter()); !strings.Contains(footer, notice) {
+	if footer := stripANSI(announced.renderFooter(announced.footerHelpLines())); !strings.Contains(footer, notice) {
 		t.Fatalf("footer missing %q:\n%s", notice, footer)
 	}
 
 	after, _ := announced.Update(configEditMsg{err: errors.New("editor: exit status 1")})
-	footer := stripANSI(after.(Model).renderFooter())
+	footer := stripANSI(after.(Model).renderFooter(after.(Model).footerHelpLines()))
 	if strings.Contains(footer, notice) {
 		t.Fatalf("the notice outlived the editor:\n%s", footer)
 	}
@@ -1212,7 +1212,7 @@ func TestEditKeyStaysSilentWhenNoEditorLaunches(t *testing.T) {
 	model.editConfig = nil
 
 	updated, _ := model.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("E")})
-	footer := stripANSI(updated.(Model).renderFooter())
+	footer := stripANSI(updated.(Model).renderFooter(updated.(Model).footerHelpLines()))
 	if strings.Contains(footer, "Opening config in") {
 		t.Fatalf("announced an editor that does not open:\n%s", footer)
 	}

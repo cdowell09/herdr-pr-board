@@ -27,7 +27,7 @@ func TestManualReviewNotifiesThroughConfiguredNotifier(t *testing.T) {
 	m := panelModel(t).WithNotifications(notifier)
 	next, cmd := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("n")})
 	if cmd == nil {
-		t.Fatalf("review did not start: %q", next.(Model).reviewPanel.message)
+		t.Fatalf("review did not start: %q", next.(Model).region.message)
 	}
 	msg, ok := cmd().(reviewDoneMsg)
 	if !ok || msg.run.ID != "attempt" || msg.err != nil || msg.notification == nil {
@@ -48,7 +48,7 @@ func TestManualReviewNotifiesThroughConfiguredNotifier(t *testing.T) {
 
 func TestNotificationFailureWarnsOncePerBoardSession(t *testing.T) {
 	m := panelModel(t).WithNotifications(&notifierFake{})
-	done := reviewDoneMsg{url: m.reviewPanel.pr.URL, run: reviewmemory.Run{ID: "attempt", Outcome: reviewmemory.Outcome{Status: reviewmemory.Completed}}, notification: errors.New("no herdr server")}
+	done := reviewDoneMsg{url: m.region.pr.URL, run: reviewmemory.Run{ID: "attempt", Outcome: reviewmemory.Outcome{Status: reviewmemory.Completed}}, notification: errors.New("no herdr server")}
 	updated, _ := m.Update(done)
 	m = updated.(Model)
 	if view := stripANSI(m.View()); !strings.Contains(view, notificationWarning) {

@@ -48,7 +48,9 @@ The board refreshes every five minutes by default.
 | `Enter`, `o`, or click the URL | Open the selected PR in a browser. |
 | `/` | Filter the current view locally. |
 | `r` / `R` | Refresh the current view / all views. |
-| `v` | Open reviews and repository settings. |
+| `n`, `s` | Start a review or edit repository settings for the selected PR. |
+| `j`, `k` | Scroll the review region under the table. |
+| `v` | Zoom the review region to the full height. |
 | `E` | Edit configuration and reload valid changes. |
 | `?` | Show the keyboard help for all controls. |
 | `q` | Close the board. |
@@ -99,14 +101,14 @@ See [agent compatibility](docs/agent-compatibility.md) for native version requir
 PR Board shows a Herdr notification when a review completes, blocks, or fails.
 See [review notifications](docs/reviews.md#review-notifications) to limit or disable them.
 
-Select a PR and press `v`.
-The panel opens repository setup when the repository has no saved settings.
+Select a PR and press `n`.
+Repository setup opens when the repository has no saved settings.
 Choose a reviewer and save the settings.
 
 Setup looks for installed agent CLIs and starts at the first one it finds.
 
-Press `n` in the review panel to run the review.
-Press `s` in the review panel to change settings later.
+Press `n` to run the review.
+Press `s` to change settings later.
 
 Default reviews check repository standards and the PR specification.
 The specification comes from the PR body and linked closing issues.

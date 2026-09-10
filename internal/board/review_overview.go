@@ -2,6 +2,7 @@ package board
 
 import (
 	"fmt"
+	"os"
 	"strings"
 	"time"
 
@@ -27,6 +28,32 @@ type reviewOverviewRow struct {
 type reviewOverviewMsg struct {
 	epoch uint64
 	rows  map[string]reviewOverviewRow
+	read  overviewRead
+	// cfg is the configuration the read used; zero when it failed to load.
+	cfg config.Config
+}
+
+// overviewRead is the shared part of one local read. The board keeps the
+// latest one, so binding the region to another PR is a lookup, not a read.
+type overviewRead struct {
+	regions map[string]regionData
+	// runs holds every recorded run by ID, so pending stops settle even for
+	// a PR that no view lists.
+	runs           map[string]reviewmemory.Run
+	monitor        monitor.Status
+	monitorCommand monitorInvocation
+	err            error
+}
+
+// regionData is one PR's local review state from an overview read. err is
+// that PR's own publication read failure, so one corrupt record never blanks
+// another PR.
+type regionData struct {
+	runs         []reviewmemory.Run
+	publications []publication.Attempt
+	automatic    dispatch.Decision
+	slotBusy     bool
+	err          error
 }
 
 type reviewOverviewTickMsg struct{}
@@ -35,34 +62,76 @@ func reviewOverviewTick() tea.Cmd {
 	return tea.Tick(time.Second, func(time.Time) tea.Msg { return reviewOverviewTickMsg{} })
 }
 
-// Only one local read runs at a time. Its completion schedules the next tick.
+// The tick asks for a read each second. Only one local read runs at a time,
+// so results never overlap or arrive out of order.
 func (m Model) updateReviewOverview(message tea.Msg) (Model, tea.Cmd, bool) {
 	switch msg := message.(type) {
 	case reviewOverviewMsg:
+		m.overviewReading = false
 		if msg.epoch == m.epoch {
-			m.reviewRows = msg.rows
+			m.reviewRows, m.overview = msg.rows, msg.read
+			if msg.cfg.Views != nil {
+				m.cfg.Reviewers, m.cfg.Repositories, m.cfg.Review.AutoViews = msg.cfg.Reviewers, msg.cfg.Repositories, msg.cfg.Review.AutoViews
+			}
+			m.settleJobs()
+			m.settleStops()
+			m.clampRegionOffset()
+			// The region can add a footer line, so clamp after the read lands.
 			m.clampCursor()
 		}
-		return m, reviewOverviewTick(), true
-	case reviewOverviewTickMsg:
-		if m.reviewPanel != nil {
-			return m, reviewOverviewTick(), true
+		var cmd tea.Cmd
+		if m.overviewQueued {
+			m.overviewQueued = false
+			cmd = m.requestOverview()
 		}
-		return m, m.reviewOverviewCmd(), true
+		return m, cmd, true
+	case reviewOverviewTickMsg:
+		cmd := m.requestOverview()
+		return m, tea.Batch(reviewOverviewTick(), cmd), true
 	}
 	return m, nil, false
 }
 
-// The overview reads each local history once, independently of GitHub refreshes.
+// requestOverview starts a local read unless one is in flight. A request
+// during a read runs once more when that read returns, so key repeat never
+// queues more than one extra read.
+func (m *Model) requestOverview() tea.Cmd {
+	if m.overviewReading {
+		m.overviewQueued = true
+		return nil
+	}
+	m.overviewReading = true
+	return m.reviewOverviewCmd()
+}
+
+// settleJobs marks a queued manual review as running once the latest read
+// records its run, for every PR with a request in flight.
+func (m *Model) settleJobs() {
+	for url := range m.reviewJobs {
+		for _, run := range m.overview.regions[strings.ToLower(url)].runs {
+			if run.Status == reviewmemory.Running {
+				m.reviewJobs[url] = "running"
+			}
+		}
+	}
+}
+
+// The overview reads each local history once, independently of GitHub
+// refreshes, and returns every listed PR's region data from the same read.
+// Every read goes through requestOverview.
 func (m Model) reviewOverviewCmd() tea.Cmd {
 	prs := map[string]gh.PullRequest{}
-	wanted := map[string]bool{}
 	for _, view := range m.views {
 		for _, pr := range view.PRs {
-			wanted[strings.ToLower(pr.URL)] = true
 			if previous, ok := prs[pr.URL]; !ok || pr.MetadataObservedAt.After(previous.MetadataObservedAt) {
 				prs[pr.URL] = pr
 			}
+		}
+	}
+	if m.region != nil {
+		// The pinned PR stays in the read even after it leaves every view.
+		if _, listed := prs[m.region.pr.URL]; !listed {
+			prs[m.region.pr.URL] = m.region.pr
 		}
 	}
 	candidates := append([]dispatch.Candidate(nil), m.autoCandidates...)
@@ -79,9 +148,19 @@ func (m Model) reviewOverviewCmd() tea.Cmd {
 		if path != "" {
 			latest, configErr = config.LoadExisting(path)
 		}
-		status := monitor.Status{}
+		read := overviewRead{regions: make(map[string]regionData, len(prs))}
 		if configErr == nil && state != "" {
-			status = monitor.Inspect(state, latest)
+			read.monitor = monitor.Inspect(state, latest)
+			binary, err := os.Executable()
+			if err == nil {
+				read.monitorCommand, err = monitorCommand(binary, path, state)
+			}
+			if err != nil {
+				read.monitor.Message += "; monitor command unavailable: " + err.Error()
+			}
+		}
+		if configErr != nil {
+			read.monitor = monitor.Status{State: monitor.Unknown, Message: configErr.Error()}
 		}
 		if !config.SameDiscovery(cfg, latest) {
 			for i := range candidates {
@@ -95,29 +174,24 @@ func (m Model) reviewOverviewCmd() tea.Cmd {
 			}
 		}
 		runs := map[string][]reviewmemory.Run{}
-		var relevant []reviewmemory.Run
+		read.runs = make(map[string]reviewmemory.Run, len(snapshot.Runs))
 		for _, run := range snapshot.Runs {
-			url := fmt.Sprintf("https://github.com/%s/pull/%d", run.Identity.Repository, run.Identity.Number)
-			key := strings.ToLower(url)
+			key := strings.ToLower(fmt.Sprintf("https://github.com/%s/pull/%d", run.Identity.Repository, run.Identity.Number))
 			runs[key] = append(runs[key], run)
-			if wanted[key] {
-				relevant = append(relevant, run)
-			}
+			read.runs[run.ID] = run
 		}
-		var attempts []publication.Attempt
-		publicationErr := stateErr
-		if publisher != nil && publicationErr == nil {
-			attempts, publicationErr = publisher.HistoryForRuns(relevant)
-		}
-		posts := map[string][]publication.Attempt{}
-		for _, attempt := range attempts {
-			key := fmt.Sprintf("https://github.com/%s/pull/%d", strings.ToLower(attempt.Identity.Repository), attempt.Identity.Number)
-			posts[key] = append(posts[key], attempt)
-		}
+		read.err = stateErr
 		rows := make(map[string]reviewOverviewRow, len(prs))
 		for url, pr := range prs {
 			key := strings.ToLower(url)
-			summary := localReviewSummary(pr, runs[key], snapshot.Active, decisions[url], latest, status)
+			// Publication records are read per PR, so one PR's corrupt record
+			// leaves every other PR's records intact.
+			var attempts []publication.Attempt
+			publicationErr := stateErr
+			if publisher != nil && stateErr == nil {
+				attempts, publicationErr = publisher.HistoryForRuns(runs[key])
+			}
+			summary := localReviewSummary(pr, runs[key], snapshot.Active, decisions[url], latest, read.monitor)
 			if stateErr != nil {
 				summary.state, summary.detail = "unknown", "Local review state unavailable"
 			} else if reviews == nil {
@@ -125,10 +199,28 @@ func (m Model) reviewOverviewCmd() tea.Cmd {
 			} else if configErr != nil && summary.state == "none" {
 				summary.state, summary.detail = "unknown", "Review configuration unavailable"
 			}
-			summary.posted, summary.postedDetail = postedReviewSummary(pr, posts[key], publicationErr)
+			summary.posted, summary.postedDetail = postedReviewSummary(pr, attempts, publicationErr)
 			rows[url] = reviewOverviewRow{dispatch.Identity(pr), summary}
+			data := regionData{runs: runs[key], publications: attempts, err: publicationErr}
+			switch {
+			case configErr != nil:
+				data.automatic = dispatch.Decision{URL: url, Reason: configErr.Error()}
+			case stateErr == nil:
+				decision, ok := decisions[url]
+				if !ok {
+					decision = dispatch.Decision{URL: url, Reason: "waiting for a full observation"}
+				}
+				data.automatic = decision
+				// The same claims and limit that mark rows as waiting.
+				data.slotBusy = decision.Eligible && len(snapshot.Active) >= max(1, latest.Review.MaxConcurrency)
+			}
+			read.regions[key] = data
 		}
-		return reviewOverviewMsg{epoch, rows}
+		msg := reviewOverviewMsg{epoch: epoch, rows: rows, read: read}
+		if configErr == nil {
+			msg.cfg = latest
+		}
+		return msg
 	}
 }
 

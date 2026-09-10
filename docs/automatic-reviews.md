@@ -84,7 +84,7 @@ The log retains its first 1 MiB and discards further output.
 Each new background launch resets the log.
 Reopen the board, save settings, or reload configuration to retry a stopped monitor.
 The plugin does not continuously restart crashed monitors or install an operating-system startup service.
-The board refreshes this local status while the review panel remains open.
+The board refreshes this local status each second.
 New selections can take effect on the next monitor scan.
 A ready setup still requires an eligible PR.
 
@@ -156,7 +156,7 @@ The POSTED column independently shows submitted reviews from GitHub, PR Board, o
 Posted reviews do not change automatic launch eligibility.
 
 Press `v` on the board to inspect the selected PR.
-The review panel shows the same eligibility reason from the latest full observation.
+The review region shows the same eligibility reason from the latest full observation.
 Eligible PRs show **Waiting for review slot** when the running monitor has no available review slot.
 The panel checks shared review slots each second.
 The message clears when a slot becomes available.

@@ -14,7 +14,7 @@ type repositoryLine struct {
 }
 
 func (m Model) repositoryContent() []repositoryLine {
-	s := m.reviewPanel.setup
+	s := m.region.setup
 	var lines []repositoryLine
 	add := func(text string, row int) {
 		for _, line := range strings.Split(ansi.Wrap(reviewText(text), max(1, m.width), ""), "\n") {
@@ -96,19 +96,19 @@ func (m Model) repositoryContent() []repositoryLine {
 		add("Install and authenticate the agent CLI before running a review.", -1)
 	}
 	automatic := s.automationSelected()
-	if automatic || m.reviewPanel.message != "" || m.monitorError != "" || s.saving {
+	if automatic || m.region.message != "" || m.monitorError != "" || s.saving {
 		section("Monitor")
 	}
 	if automatic {
-		if observed := m.reviewPanel.monitor.ObservedAt; !observed.IsZero() {
+		if observed := m.overview.monitor.ObservedAt; !observed.IsZero() {
 			add("Latest observation: "+observed.Format(time.RFC3339), -1)
 		}
-		if message := m.reviewPanel.monitor.Message; message != "" {
+		if message := m.overview.monitor.Message; message != "" {
 			add(message, -1)
 		}
 	}
-	if m.reviewPanel.message != "" {
-		add(m.reviewPanel.message, -1)
+	if m.region.message != "" {
+		add(m.region.message, -1)
 	}
 	if m.monitorError != "" {
 		add(m.monitorError, -1)
@@ -129,14 +129,14 @@ func (m Model) repositoryContent() []repositoryLine {
 
 // The same viewport defines visible lines and clickable row coordinates.
 func (m Model) repositoryViewport() (header []string, content []repositoryLine, start, size int) {
-	s := m.reviewPanel.setup
-	status := m.reviewPanel.monitor.State
+	s := m.region.setup
+	status := m.overview.monitor.State
 	if status == "" {
 		status = "unknown"
 	}
 	narrow, automatic := m.width < 60, s.automationSelected()
 	summary := "Setup ready; save to apply"
-	switch reason := automaticSetupWait(s.repo, s.automatic.Selected, m.reviewPanel.monitor); {
+	switch reason := automaticSetupWait(s.repo, s.automatic.Selected, m.overview.monitor); {
 	case !s.repo.AutoLaunch && narrow:
 		summary = "Ready · Enter save · n run"
 	case !s.repo.AutoLaunch:
@@ -144,8 +144,8 @@ func (m Model) repositoryViewport() (header []string, content []repositoryLine, 
 	case reason != "":
 		summary = "Waiting: " + reason
 	}
-	if m.reviewPanel.message != "" {
-		summary = m.reviewPanel.message
+	if m.region.message != "" {
+		summary = m.region.message
 	}
 	if m.monitorError != "" {
 		summary = m.monitorError
@@ -160,7 +160,7 @@ func (m Model) repositoryViewport() (header []string, content []repositoryLine, 
 			title += " · monitor " + string(status)
 		}
 	}
-	header = []string{titleStyle.Render(truncate(title, m.width)), urlStyle.Render(truncate(reviewText(m.reviewPanel.pr.URL), m.width))}
+	header = []string{titleStyle.Render(truncate(title, m.width)), urlStyle.Render(truncate(reviewText(m.region.pr.URL), m.width))}
 	if automatic && !narrow {
 		header = append(header, truncate("Monitor: "+string(status), m.width))
 	}
@@ -170,7 +170,7 @@ func (m Model) repositoryViewport() (header []string, content []repositoryLine, 
 	header = header[:min(len(header), max(0, height-len(help)-1))]
 	size = max(1, height-len(header)-len(help))
 	content = m.repositoryContent()
-	start = min(max(0, m.reviewPanel.setup.offset), max(0, len(content)-size))
+	start = min(max(0, m.region.setup.offset), max(0, len(content)-size))
 	return
 }
 
@@ -178,7 +178,7 @@ func (m *Model) revealRepositoryRow() {
 	_, lines, start, size := m.repositoryViewport()
 	first, last := -1, -1
 	for i, line := range lines {
-		if line.row == m.reviewPanel.setup.row {
+		if line.row == m.region.setup.row {
 			if first < 0 {
 				first = i
 			}
@@ -190,7 +190,7 @@ func (m *Model) revealRepositoryRow() {
 	} else if last >= start+size {
 		start = min(first, last-size+1)
 	}
-	m.reviewPanel.setup.offset = max(0, start)
+	m.region.setup.offset = max(0, start)
 }
 
 func (m Model) renderRepositoryPanel() string {
@@ -208,7 +208,7 @@ func (m Model) renderRepositoryPanel() string {
 }
 
 func (m Model) updateRepositoryMouse(message tea.MouseMsg) (tea.Model, tea.Cmd) {
-	s := m.reviewPanel.setup
+	s := m.region.setup
 	if s.saving || s.editing != nil {
 		return m, nil
 	}
@@ -224,7 +224,7 @@ func (m Model) updateRepositoryMouse(message tea.MouseMsg) (tea.Model, tea.Cmd) 
 		}
 		header, lines, start, size := m.repositoryViewport()
 		if event.Y == 1 && len(header) > 1 {
-			return m, m.openBrowser(m.reviewPanel.pr.URL)
+			return m, m.openBrowser(m.region.pr.URL)
 		}
 		index := event.Y - len(header)
 		if index >= 0 && index < size && start+index < len(lines) && lines[start+index].row >= 0 {
@@ -238,7 +238,7 @@ func (m Model) updateRepositoryMouse(message tea.MouseMsg) (tea.Model, tea.Cmd) 
 
 func (m Model) repositoryHelp() []string {
 	text := "↑↓ select · ←→ Space change · Enter save · PgUp/Dn scroll · Esc cancel"
-	if m.reviewPanel.setup.editing != nil {
+	if m.region.setup.editing != nil {
 		text = "Type or paste path · Enter use · Ctrl+U clear · Esc discard"
 	}
 	lines := strings.Split(ansi.Wrap(text, max(1, m.width), ""), "\n")
@@ -249,8 +249,8 @@ func (m Model) repositoryHelp() []string {
 }
 
 func (m *Model) clampRepositoryOffset() {
-	if m.reviewPanel != nil && m.reviewPanel.setup != nil {
+	if m.region != nil && m.region.setup != nil {
 		_, _, start, _ := m.repositoryViewport()
-		m.reviewPanel.setup.offset = start
+		m.region.setup.offset = start
 	}
 }

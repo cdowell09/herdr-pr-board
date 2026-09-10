@@ -131,33 +131,36 @@ Those adapters start a shared language runtime, which does not prove the agent i
 Setup shows no install status for an unchecked reviewer.
 It also does not select an unchecked built-in reviewer as the default.
 
-## Use the review panel
+## Use the review region
 
-Press `v` to open the selected PR's review history.
-The panel opens repository setup when the repository has no saved settings.
-Choose a reviewer and save the settings.
-The reviewer row shows the selection, its position, and the total.
-`Reviewer: claude (3/13)` selects the third reviewer of 13.
-Press Right or Space to select the next reviewer.
-Press Left to select the previous reviewer.
-See [detect installed agent CLIs](#detect-installed-agent-clis) for the default selection and the install status.
-The setup header shows that manual reviews are ready when automatic launches are off.
-It names Enter to save the settings and `n` to run the review.
-Press `n` in the review panel to start the review.
+The board shows the selected PR's local reviews in the review region under the URL.
+A line under the URL summarizes the posted reviews.
+The region header names the outcome, the reviewer, the revision comparison, and the severity counts.
+The findings follow the header with their severity, title, path, and body.
+One line summarizes the automation state and one line names the run and its diagnostics directory.
+A `▼` marker counts the lines below the visible part of the region.
+Press `j` or `k` to scroll the region.
+Press `g` or `G` for the start or the end.
+Press `PgUp` or `PgDn` for one page.
+Selecting another PR reloads the region from local state without a GitHub request.
 
-The panel shows the latest review before previous reviews.
+Press `v` to zoom the region to the full height.
+Zoom shows the latest review before previous reviews.
 Each review shows its findings and publication outcomes together.
 The latest completed review is the manual publication target.
-The panel compares history with the latest successful board observation.
+The region compares history with the latest successful board observation.
 Older findings do not complete a newer observed revision.
 A failed observation makes the current revision unknown.
 Refresh the board to retrieve newer PR data.
 Scroll to Details for full run IDs, revisions, publication URLs, and diagnostics paths.
 Automation status appears after review results.
 Eligible PRs show **Waiting for review slot** when the running monitor has no available review slot.
-The panel checks shared review slots each second.
+The region checks shared review slots each second.
+A terminal with fewer than 24 rows collapses the region to one summary line. Zoom still shows everything.
 
-| Key | Action in the review panel |
+The review keys work on the board and in zoom:
+
+| Key | Action |
 | --- | --- |
 | `n` | Queue a review with the repository's configured reviewer. |
 | `N` | Explicitly retry or repeat a review. |
@@ -166,32 +169,45 @@ The panel checks shared review slots each second.
 | `c` | Publish the latest completed run as a comment. |
 | `a` | Publish the latest completed run as an approval. |
 | `x` | Publish the latest completed run as a change request. |
-| `j`, `k`, `↑`, `↓`, mouse wheel | Scroll through findings and diagnostics. |
-| `g`, `Home`, `G`, `End` | Move to the first or last history line. |
+| `j`, `k`, `g`, `G`, `PgUp`, `PgDn`, mouse wheel | Scroll the region. In zoom, `↑` and `↓` also scroll. |
 | `o`, click the URL | Open the PR in a browser. |
+| `v` | Zoom the region, or leave zoom. |
+| `Esc` | Leave zoom. |
 | `?` | Open or close the keyboard help. |
-| `Esc`, `v` | Return to the board. |
 | `q`, `Ctrl+C` | Close the board and stop its review requests. |
 
-Reviews continue when you close the panel.
+The repository must have saved settings before `n` starts a review.
+Without saved settings, `n` opens repository setup.
+Choose a reviewer and save the settings.
+The reviewer row shows the selection, its position, and the total.
+`Reviewer: claude (3/13)` selects the third reviewer of 13.
+Press Right or Space to select the next reviewer.
+Press Left to select the previous reviewer.
+See [detect installed agent CLIs](#detect-installed-agent-clis) for the default selection and the install status.
+The setup header shows that manual reviews are ready when automatic launches are off.
+It names Enter to save the settings and `n` to run the review.
+
+Reviews continue when you leave zoom or select another PR.
 Closing the board cancels its queued and active reviews.
 The background monitor and its reviews continue.
 
 Press `t` to stop the newest active review shown for this PR.
-The panel names the target run and reports cleanup progress and the final outcome.
+The footer names the target run while the run is active.
+The region reports cleanup progress and the final outcome.
 The stop request also works for a review owned by another board or monitor in the same state directory.
 The owner cancels only that reviewer and cleans up its child processes.
 The stopped run records a failure with a cancellation reason and does not publish findings.
 Use `N` to retry the stopped revision explicitly.
-If the run finishes before the stop request, the panel reports that it is no longer running.
+If the run finishes before the stop request, the region reports that it is no longer running.
 An older or unavailable owner cannot accept the request.
 
-Press `s` in the panel to edit repository settings.
+Press `s` to edit repository settings.
+The settings form replaces the board until you save or cancel.
 Use the arrow keys and Space to change settings.
 On the reviewer row, Left selects the previous reviewer.
 Right and Space select the next reviewer.
 
-The settings panel separates reviews, GitHub permissions, automatic posting, global views, and advanced files.
+The settings form separates reviews, GitHub permissions, automatic posting, global views, and advanced files.
 The rows keep that order.
 Select global automatic view IDs explicitly.
 These view selections apply to all repositories that allow automatic launches.
@@ -201,8 +217,8 @@ Select **Prompt file** and **Skill file** under **Advanced** to choose custom in
 See [instruction setup](review-instructions.md#select-files-in-the-board) for path editing controls.
 See [repository setup and publication](repository-publication.md) for permissions, automatic posting, and failure recovery.
 
-The panel shows the monitor state and missing setup requirements when automatic launches or global views are on.
-Use PgUp and PgDn to scroll through settings and the monitor command.
+The form shows the monitor state and missing setup requirements when automatic launches or global views are on.
+Use `PgUp` and `PgDn` to scroll through settings and the monitor command.
 Press Enter to save, or Esc to discard changes.
 Successful saves start a stopped monitor when automatic views and repository launches are enabled.
 Run the displayed command in another terminal if background startup fails.
@@ -294,7 +310,7 @@ bin/herdr-pr-board --review-history https://github.com/owner/repository/pull/7
 This command requires neither GitHub CLI nor a terminal.
 It writes a versioned document with a `runs` array.
 The command preserves older revision history.
-See [review panel controls](#use-the-review-panel) for findings, cancellation, and publication.
+See [review region controls](#use-the-review-region) for findings, cancellation, and publication.
 
 Each attempt stores artifacts under `HERDR_PLUGIN_STATE_DIR/reviews/<run-id>/`:
 

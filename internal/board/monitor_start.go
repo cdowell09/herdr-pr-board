@@ -35,9 +35,10 @@ func (m Model) updateMonitor(message tea.Msg) (Model, tea.Cmd, bool) {
 	if msg.err != nil {
 		m.monitorError = "Monitor startup failed: " + msg.err.Error()
 	}
-	if m.reviewPanel != nil {
-		m.clampReviewOffset()
-		return m, m.monitorStatusCmd(), true
+	if m.region != nil {
+		m.clampRegionOffset()
+		cmd := m.requestOverview()
+		return m, cmd, true
 	}
 	return m, nil, true
 }

@@ -89,12 +89,6 @@ func (b *overviewReviewBackend) Snapshot() (reviewmemory.Snapshot, error) {
 	b.reads++
 	return b.snapshot, b.err
 }
-func (*overviewReviewBackend) History(string) ([]reviewmemory.Run, error) {
-	panic("overview must not read each PR history")
-}
-func (*overviewReviewBackend) ReviewStatus(reviewmemory.Identity) error {
-	panic("overview must use one shared snapshot")
-}
 
 type overviewPublicationBackend struct {
 	publicationFake
@@ -111,7 +105,7 @@ func (b *overviewPublicationBackend) HistoryForRuns(runs []reviewmemory.Run) ([]
 
 func TestOverviewRefreshesAllRowsWithoutOpeningReviewPanel(t *testing.T) {
 	m := autoPanel(t)
-	m.reviewPanel = nil
+	m.region, m.zoom = nil, false
 	pr := m.autoCandidates[0].PR
 	pr.ViewerReviews = &gh.ReviewObservation{Actor: "ada", Complete: true, ObservedAt: time.Now(), Reviews: []gh.SubmittedReview{{ID: 7, HeadOID: pr.HeadOID, State: "COMMENTED", SubmittedAt: time.Now()}}}
 	m.views[0].PRs = []gh.PullRequest{pr}
@@ -120,21 +114,25 @@ func TestOverviewRefreshesAllRowsWithoutOpeningReviewPanel(t *testing.T) {
 	backend := &overviewReviewBackend{snapshot: reviewmemory.Snapshot{Runs: []reviewmemory.Run{run}, Active: map[string]bool{}}}
 	publisher := &overviewPublicationBackend{attempts: []publication.Attempt{{RunID: run.ID, Identity: run.Identity, Actor: "ada", GitHubID: 7, Status: publication.Published}}}
 	m = m.WithReviews(context.Background(), backend).WithPublications("", publisher)
-	next, cmd := m.Update(m.reviewOverviewCmd()())
+	next, _ := m.Update(m.reviewOverviewCmd()())
 	m = next.(Model)
-	if cmd == nil || backend.reads != 1 || publisher.reads != 1 || publisher.runs != 1 {
-		t.Fatalf("unbatched or stopped polling: %d %d %d", backend.reads, publisher.reads, publisher.runs)
+	if backend.reads != 1 || publisher.reads != 1 || publisher.runs != 1 {
+		t.Fatalf("unbatched or extra read: %d %d %d", backend.reads, publisher.reads, publisher.runs)
 	}
 	if got := m.rowReviewSummary(pr); got.state != "completed" || got.posted != "PR Board" {
 		t.Fatalf("%+v", got)
 	}
-	if view := stripANSI(m.View()); !strings.Contains(view, "REVIEW") || !strings.Contains(view, "PR Board") || !strings.Contains(view, "Completed locally") {
+	if view := stripANSI(m.View()); !strings.Contains(view, "REVIEW") || !strings.Contains(view, "PR Board") {
 		t.Fatalf("overview hidden: %s", view)
 	}
 	backend.snapshot.Active = map[string]bool{"local": true}
 	backend.snapshot.Runs[0].Status = reviewmemory.Running
-	_, cmd, _ = m.updateReviewOverview(reviewOverviewTickMsg{})
-	next, _ = m.Update(cmd())
+	// The tick asks for one read; an idle board runs it at once.
+	read := m.requestOverview()
+	if read == nil {
+		t.Fatal("idle board queued the read instead of running it")
+	}
+	next, _ = m.Update(read())
 	m = next.(Model)
 	if got := m.rowReviewSummary(pr); got.state != "running" {
 		t.Fatalf("external progress not refreshed: %+v", got)
@@ -149,7 +147,7 @@ func TestOverviewRefreshesAllRowsWithoutOpeningReviewPanel(t *testing.T) {
 
 func TestOverviewDropsOldEpochAndRevisionAndCapturesCandidates(t *testing.T) {
 	m := autoPanel(t)
-	m.reviewPanel = nil
+	m.region, m.zoom = nil, false
 	pr := m.autoCandidates[0].PR
 	command := m.reviewOverviewCmd()
 	m.autoCandidates[0].Observed = false

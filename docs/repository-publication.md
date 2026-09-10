@@ -51,7 +51,7 @@ Install and authenticate the selected agent CLI before running a review.
 The defaults require no custom instruction files.
 Saving validates selected files and reports missing requirements.
 
-Press `s` in the review panel to edit saved settings.
+Press `s` to edit saved settings.
 Saving does not change unrelated settings or comments.
 Settings use the active configuration file, including an explicit `--config` path.
 Runtime locks use `HERDR_PLUGIN_STATE_DIR`.
@@ -141,7 +141,7 @@ Validate the configuration with `--validate`.
 
 ## Publish findings
 
-Open the review panel with `v`.
+Select the PR on the board.
 The panel identifies the latest completed run as the publication target.
 Press `c` to publish a comment.
 Press `a` to approve.
