@@ -39,7 +39,7 @@ func emptyViewMessage(view config.View) string {
 // keeps only the rows that the table area holds, so neither a long query nor a
 // short pane can push the tabs off the screen and invalidate the mouse rows.
 func (m Model) renderEmptyView(lay boardLayout) string {
-	width, budget := max(1, m.width), max(1, lay.visibleRows)
+	width, budget := max(1, m.width), max(1, lay.emptyRows)
 	steps := emptyViewSteps
 	if len(m.views) < 2 {
 		// One view has no next view, so Tab does nothing.
@@ -52,19 +52,15 @@ func (m Model) renderEmptyView(lay boardLayout) string {
 	if len(stepLines) > budget-1 {
 		stepLines = packLines(keyLabels(steps), width)
 	}
-	if len(stepLines) > budget-1 {
-		stepLines = stepLines[:max(0, budget-1)]
-	}
+	stepLines = stepLines[:min(len(stepLines), budget-1)]
 
 	message := strings.Split(ansi.Wrap(emptyViewMessage(m.currentView().View), width, ""), "\n")
 	if room := budget - len(stepLines); len(message) > room {
 		// Compress the rest of the message into the last row it keeps.
 		message = append(message[:room-1], truncate(strings.Join(message[room-1:], " "), width))
 	}
-
-	lines := make([]string, 0, len(message)+len(stepLines))
-	for _, line := range message {
-		lines = append(lines, dimStyle.Render(line))
+	for i, line := range message {
+		message[i] = dimStyle.Render(line)
 	}
-	return strings.Join(append(lines, stepLines...), "\n") + "\n"
+	return strings.Join(append(message, stepLines...), "\n") + "\n"
 }

@@ -27,11 +27,17 @@ const (
 	sidebarReportTimeout = 15 * time.Second
 )
 
+// tableHeaderRows is the height of the table header: the column row and its
+// bottom border. A view with no rows renders neither, so its text has these
+// rows too.
+const tableHeaderRows = 2
+
 // boardLayout is the row geometry shared by rendering and mouse hit-testing.
 type boardLayout struct {
 	firstPRRow     int
 	selectedURLRow int
 	visibleRows    int
+	emptyRows      int
 }
 
 func (m Model) boardLayout() boardLayout {
@@ -43,13 +49,21 @@ func (m Model) boardLayout() boardLayout {
 	if pr, ok := m.selectedPR(); ok {
 		detailRows = len(m.selectedReviewLines(pr))
 	}
-	visibleRows := max(1, m.height-firstPRRow-3-len(m.footerHelpLines())-detailRows)
+	// budget is the space between the first PR row and the footer. A view with
+	// no rows renders no table header, so it keeps those rows too.
+	budget := m.height - firstPRRow - 3 - len(m.footerHelpLines()) - detailRows
+	visibleRows := max(1, budget)
 	rows := m.filteredPRs()
 	selectedURLRow := firstPRRow
 	if len(rows) > 0 {
 		selectedURLRow = firstPRRow + 1 + min(visibleRows, max(0, len(rows)-m.offset))
 	}
-	return boardLayout{firstPRRow: firstPRRow, selectedURLRow: selectedURLRow, visibleRows: visibleRows}
+	return boardLayout{
+		firstPRRow:     firstPRRow,
+		selectedURLRow: selectedURLRow,
+		visibleRows:    visibleRows,
+		emptyRows:      max(1, budget+tableHeaderRows),
+	}
 }
 
 var (

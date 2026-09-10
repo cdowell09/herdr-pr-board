@@ -574,7 +574,7 @@ func TestEmptyViewFitsShortTerminalsAndKeepsTheKeys(t *testing.T) {
 			if index, ok := model.tabAtX(lipgloss.Width(tabs[:start])); !ok || index != 0 {
 				t.Fatalf("width %d height %d: tabAtX = %d, %v, want 0", width, height, index, ok)
 			}
-			if height < 15 {
+			if height < 12 {
 				// A short pane drops the actions, then the keys.
 				continue
 			}
@@ -591,7 +591,7 @@ func TestEmptyViewFitsShortTerminalsAndKeepsTheKeys(t *testing.T) {
 // keys but not the actions next to them.
 func TestEmptyViewKeepsTheKeysWithoutTheActions(t *testing.T) {
 	model := emptyViewModel(t, 30, defaultView(t, config.ViewAll), defaultView(t, config.ViewAuthored))
-	model.height = 13
+	model.height = 11
 	rendered := stripANSI(model.View())
 	if !strings.Contains(rendered, "Tab · E · r") {
 		t.Fatalf("a short pane dropped the keys:\n%s", rendered)
