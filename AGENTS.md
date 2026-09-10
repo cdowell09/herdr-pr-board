@@ -12,7 +12,7 @@ Read [`docs/automatic-reviews.md`](docs/automatic-reviews.md) before changing au
 
 - `cmd/herdr-pr-board/`: process startup, dependency wiring, and the explicit JSON wire representation.
 - `docs/json-snapshots.md`: version-one JSON command and wire contract.
-- `cmd/ci-platform-matrix/`: convert manifest platforms into CI cross-compilation targets.
+- `scripts/ci_platform_matrix.py`: convert manifest platforms into CI cross-compilation targets.
 - `scripts/validate_release.py`: release tag and plugin manifest validation.
 - `internal/config/`: TOML defaults, parsing, validation, scope modes, and Search request counts.
 - `internal/cli/`: subprocess execution shared by the `gh` and `herdr` runners.

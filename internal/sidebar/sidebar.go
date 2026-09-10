@@ -9,6 +9,7 @@ package sidebar
 import (
 	"fmt"
 
+	"github.com/cdowell09/herdr-pr-board/internal/discovery"
 	"github.com/cdowell09/herdr-pr-board/internal/github"
 )
 
@@ -22,13 +23,6 @@ const (
 	TokenCI     = "prs_ci"
 )
 
-// View carries one board view's refresh result for token computation.
-type View struct {
-	ID  string
-	PRs []github.PullRequest
-	Err error
-}
-
 // Tokens builds the sidebar token values from a full refresh snapshot.
 //
 // It returns nil when any view failed. Partial data would overwrite
@@ -37,7 +31,7 @@ type View struct {
 //
 // The prs_ci token is omitted when no PR has a failed check. The
 // prs_review token is omitted when no view has the configured ID.
-func Tokens(reviewView string, views []View) map[string]string {
+func Tokens(reviewView string, views []discovery.ViewData) map[string]string {
 	distinct := make(map[string]github.PullRequest)
 	reviewCount := -1
 	for _, view := range views {
@@ -47,7 +41,7 @@ func Tokens(reviewView string, views []View) map[string]string {
 		for _, pr := range view.PRs {
 			distinct[pr.URL] = pr
 		}
-		if view.ID == reviewView {
+		if view.View.ID == reviewView {
 			reviewCount = len(view.PRs)
 		}
 	}

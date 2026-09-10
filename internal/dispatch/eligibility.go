@@ -25,7 +25,7 @@ const (
 type Candidate struct {
 	PR         gh.PullRequest
 	Views      []config.View
-	Selected   bool
+	Selected   bool // Set from current configuration when evaluating eligibility.
 	Observed   bool
 	ObservedAt time.Time
 	Conflict   bool
@@ -45,14 +45,10 @@ func Identity(pr gh.PullRequest) reviewmemory.Identity {
 
 // Candidates deduplicates PRs and retains conflicting observations as a hold.
 // A failed snapshot never supplies dispatchable retained rows.
-func Candidates(snapshot discovery.Snapshot, configuredViews []config.View, selectedViews []string) []Candidate {
+func Candidates(snapshot discovery.Snapshot, configuredViews []config.View) []Candidate {
 	configured := map[string]config.View{}
 	for _, view := range configuredViews {
 		configured[view.ID] = view
-	}
-	selected := map[string]bool{}
-	for _, id := range selectedViews {
-		selected[id] = true
 	}
 	type key struct {
 		repository string
@@ -65,11 +61,10 @@ func Candidates(snapshot discovery.Snapshot, configuredViews []config.View, sele
 		observed := successful && configured[view.View.ID] == view.View && view.Err == nil && !view.UpdatedAt.Before(snapshot.StartedAt) && !view.ObservedAt.Before(snapshot.StartedAt)
 		for _, pr := range view.PRs {
 			id := key{strings.ToLower(pr.Repository), pr.Number}
-			current := Candidate{PR: pr, Views: []config.View{view.View}, Selected: selected[view.View.ID], Observed: observed, ObservedAt: snapshot.StartedAt}
+			current := Candidate{PR: pr, Views: []config.View{view.View}, Observed: observed, ObservedAt: snapshot.StartedAt}
 			if index, exists := byPR[id]; exists {
 				previous := &result[index]
 				previous.Views = append(previous.Views, view.View)
-				previous.Selected = previous.Selected || current.Selected
 				previous.Observed = previous.Observed && current.Observed
 				previous.Conflict = previous.Conflict || Identity(previous.PR) != Identity(pr) || previous.PR.BaseOID != pr.BaseOID || previous.PR.Draft != pr.Draft || previous.PR.State != pr.State
 			} else {

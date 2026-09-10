@@ -110,7 +110,7 @@ func (d *Dispatcher) Run(ctx context.Context, observedConfig config.Config, obse
 			} else if !config.SameDiscovery(cfg, observedConfig) {
 				emit(Event{Error: "monitor discovery configuration changed; restart the monitor"})
 			} else {
-				for _, candidate := range Candidates(*latest, cfg.Views, cfg.Review.AutoViews) {
+				for _, candidate := range Candidates(*latest, cfg.Views) {
 					if len(active) >= max(1, cfg.Review.MaxConcurrency) {
 						break
 					}

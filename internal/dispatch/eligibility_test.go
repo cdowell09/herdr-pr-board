@@ -41,7 +41,8 @@ func TestEligibilityUsesOneReasonForEachHold(t *testing.T) {
 		{name: "abandoned", reason: reviewmemory.ErrRetryRequired.Error(), allowed: true, status: reviewmemory.Abandoned},
 	} {
 		t.Run(test.name, func(t *testing.T) {
-			candidate := Candidates(observedSnapshot(), []config.View{{ID: "review"}}, []string{"review"})[0]
+			candidate := Candidates(observedSnapshot(), []config.View{{ID: "review"}})[0]
+			candidate.Selected = true
 			if test.change != nil {
 				test.change(&candidate)
 			}
@@ -62,26 +63,42 @@ func TestCandidatesDeduplicateAndRejectFailedObservations(t *testing.T) {
 	duplicate := snapshot.Views[0]
 	duplicate.View.ID = "all"
 	snapshot.Views = append(snapshot.Views, duplicate)
-	candidates := Candidates(snapshot, []config.View{{ID: "review"}, {ID: "all"}}, []string{"review", "all"})
-	if len(candidates) != 1 || len(candidates[0].Views) != 2 || !Evaluate(candidates[0], true, nil).Eligible {
+	candidates := Candidates(snapshot, []config.View{{ID: "review"}, {ID: "all"}})
+	if len(candidates) != 1 || len(candidates[0].Views) != 2 || !candidates[0].Observed || candidates[0].Conflict {
 		t.Fatalf("candidates=%+v", candidates)
 	}
 	snapshot.Errors = []discovery.RetrievalError{{Stage: "enrichment", Err: errors.New("failed")}}
-	if got := Evaluate(Candidates(snapshot, []config.View{{ID: "review"}, {ID: "all"}}, []string{"review"})[0], true, nil); got.Eligible || got.Reason != ObservationFailed {
+	if got := Candidates(snapshot, []config.View{{ID: "review"}, {ID: "all"}})[0]; got.Observed {
 		t.Fatalf("decision=%+v", got)
 	}
 	snapshot.Errors = nil
 	snapshot.Views[1].PRs = append([]gh.PullRequest(nil), snapshot.Views[1].PRs...)
 	snapshot.Views[1].PRs[0].HeadOID = strings.Repeat("c", 40)
-	if got := Evaluate(Candidates(snapshot, []config.View{{ID: "review"}, {ID: "all"}}, []string{"review"})[0], true, nil); got.Eligible || got.Reason != ConflictingRevision {
+	if got := Candidates(snapshot, []config.View{{ID: "review"}, {ID: "all"}})[0]; !got.Conflict {
 		t.Fatalf("decision=%+v", got)
 	}
 }
 
 func TestChangedViewDefinitionDoesNotReuseOldObservation(t *testing.T) {
 	snapshot := observedSnapshot()
-	candidates := Candidates(snapshot, []config.View{{ID: "review", Query: "new query"}}, []string{"review"})
-	if got := Evaluate(candidates[0], true, nil); got.Reason != ObservationFailed {
+	candidates := Candidates(snapshot, []config.View{{ID: "review", Query: "new query"}})
+	if got := candidates[0]; got.Observed {
 		t.Fatalf("decision=%+v", got)
+	}
+}
+
+func TestDecisionsUseCurrentViewSelection(t *testing.T) {
+	_, cfg := dispatchConfig(t, t.TempDir(), []string{"unused"}, false)
+	candidates := Candidates(snapshotWithPRs(cfg, 1), cfg.Views)
+	for _, selected := range [][]string{nil, {"review"}, nil} {
+		cfg.Review.AutoViews = selected
+		got := Decisions(candidates, cfg, &fakeReviews{})[0]
+		want := ViewNotSelected
+		if len(selected) > 0 {
+			want = Ready
+		}
+		if got.Reason != want || got.Eligible != (want == Ready) {
+			t.Fatalf("selected=%v decision=%+v", selected, got)
+		}
 	}
 }
