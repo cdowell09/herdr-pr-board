@@ -117,7 +117,8 @@ Setup keeps a saved reviewer, even when its agent CLI is absent.
 
 The reviewer row shows `not installed` for an absent built-in agent CLI.
 Each missing reviewer still cycles normally, so you can select one before you install it.
-Setup shows this hint below the row when it finds no built-in agent CLI:
+Setup shows this hint below the row when it finds no built-in agent CLI.
+The hint appears only while a built-in reviewer is selected:
 
 ```text
 No agent CLI found on PATH. Install one, then reopen settings.
