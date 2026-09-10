@@ -21,6 +21,7 @@ import (
 	"github.com/cdowell09/herdr-pr-board/internal/publication"
 	"github.com/cdowell09/herdr-pr-board/internal/review"
 	"github.com/cdowell09/herdr-pr-board/internal/sidebar"
+	"github.com/cdowell09/herdr-pr-board/internal/version"
 	tea "github.com/charmbracelet/bubbletea"
 )
 
@@ -33,6 +34,10 @@ func run(args []string, stdout, stderr io.Writer) int {
 	if err != nil {
 		fmt.Fprintln(stderr, "herdr-pr-board:", err)
 		return 2
+	}
+	if o.version {
+		fmt.Fprintln(stdout, "herdr-pr-board", version.String())
+		return 0
 	}
 	if o.pluginAction == "open" {
 		ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
@@ -169,6 +174,7 @@ func run(args []string, stdout, stderr io.Writer) int {
 	if err != nil {
 		return fail(stderr, err)
 	}
+	model = model.WithVersion(version.Current)
 	binary, err := os.Executable()
 	if err != nil {
 		return fail(stderr, err)

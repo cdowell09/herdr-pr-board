@@ -7,6 +7,8 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"github.com/cdowell09/herdr-pr-board/internal/version"
 )
 
 func TestDefaultConfigPathReportsMissingUserConfigDirectory(t *testing.T) {
@@ -135,6 +137,39 @@ func TestRunValidateDoesNotRequireGh(t *testing.T) {
 	code := run([]string{"-config", path, "-validate"}, &stdout, &stderr)
 	if code != 0 {
 		t.Fatalf("run() = %d, want 0; stderr = %q", code, stderr.String())
+	}
+}
+
+func TestRunVersionPrintsOneLineAndExitsBeforeAnyLookup(t *testing.T) {
+	t.Setenv("PATH", "")
+	t.Setenv("HERDR_PLUGIN_CONFIG_DIR", "")
+	t.Setenv("HERDR_PLUGIN_STATE_DIR", "")
+	var stdout, stderr bytes.Buffer
+	code := run([]string{"--version"}, &stdout, &stderr)
+	if code != 0 {
+		t.Fatalf("run() = %d, want 0; stderr = %q", code, stderr.String())
+	}
+	if stderr.String() != "" {
+		t.Fatalf("stderr = %q, want empty", stderr.String())
+	}
+	want := "herdr-pr-board " + version.String() + "\n"
+	if stdout.String() != want {
+		t.Fatalf("stdout = %q, want %q", stdout.String(), want)
+	}
+	if !strings.HasPrefix(stdout.String(), "herdr-pr-board "+version.Current) {
+		t.Fatalf("stdout = %q, want the manifest version %q", stdout.String(), version.Current)
+	}
+}
+
+func TestVersionWithAnotherModeIsInvalid(t *testing.T) {
+	for _, args := range [][]string{{"--version", "--json"}, {"--version", "--validate"}, {"--version", "--plugin-action", "open"}} {
+		var stdout, stderr bytes.Buffer
+		if code := run(args, &stdout, &stderr); code != 2 {
+			t.Fatalf("args=%v code=%d stderr=%s", args, code, &stderr)
+		}
+		if stdout.String() != "" {
+			t.Fatalf("args=%v stdout = %q, want empty", args, stdout.String())
+		}
 	}
 }
 

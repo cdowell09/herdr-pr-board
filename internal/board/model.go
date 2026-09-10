@@ -169,6 +169,7 @@ type Model struct {
 	reviewGeneration uint64
 	cfg              config.Config
 	configPath       string
+	version          string
 	loader           discovery.Loader
 	openBrowser      func(url string) tea.Cmd
 	editConfig       func(path string) (notice string, cmd tea.Cmd)
@@ -692,11 +693,7 @@ func (m Model) View() string {
 		return "Loading PR board…"
 	}
 	var output strings.Builder
-	status := ""
-	if m.loading {
-		status = warningStyle.Render("  refreshing…")
-	}
-	output.WriteString(titleStyle.Render(m.cfg.UI.Title) + status + "\n")
+	output.WriteString(m.renderTitle() + "\n")
 	output.WriteString(m.renderTabs() + "\n")
 	if notice := m.renderStaleNotice(); notice != "" {
 		output.WriteString(notice + "\n")

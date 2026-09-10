@@ -1,6 +1,9 @@
 # Release PR Board
 
 Use a Git tag that matches the version in `herdr-plugin.toml`.
+The manifest is the source of truth for the version.
+`internal/version/version.go` holds the same version for the binary.
+`bin/herdr-pr-board --version` prints that version and the build revision.
 
 ## Versioning
 
@@ -30,7 +33,7 @@ Use Conventional Commit subjects for merged changes.
 The changelog omits `chore(release):` commits.
 Keep feature and bug-fix changes separate from release preparation.
 
-1. Change `version` in `herdr-plugin.toml`.
+1. Change `version` in `herdr-plugin.toml` and `Current` in `internal/version/version.go`. The two values must be the same.
 2. Write `docs/releases/vX.Y.Z.md` with the release summary and feature highlights.
 3. Generate `CHANGELOG.md` with the new version and highlights.
 4. Review the highlights and generated entries against the commits since the previous release.
@@ -94,6 +97,7 @@ Set the release version to the manifest version.
 
 ```sh
 version="$(python3 -c 'import tomllib; print(tomllib.load(open("herdr-plugin.toml", "rb"))["version"])')"
+go test ./internal/version/...
 python3 scripts/validate_release.py herdr-plugin.toml "v$version"
 git tag -a "v$version" --cleanup=verbatim -F "docs/releases/v$version.md"
 git push origin "v$version"
@@ -102,6 +106,9 @@ git push origin "v$version"
 The release workflow validates every pushed tag.
 It accepts only the `vX.Y.Z` form.
 It compares the tag with the manifest version.
+The release job runs `go test ./internal/version/...` before that comparison.
+That test compares `Current` in `internal/version/version.go` with the manifest version.
+A difference between those two values fails the release.
 
 The workflow creates the GitHub release only after validation succeeds.
 A failed validation does not create a GitHub release.
