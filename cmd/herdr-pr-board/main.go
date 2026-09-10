@@ -17,6 +17,7 @@ import (
 	gh "github.com/cdowell09/herdr-pr-board/internal/github"
 	"github.com/cdowell09/herdr-pr-board/internal/localstate"
 	"github.com/cdowell09/herdr-pr-board/internal/monitor"
+	"github.com/cdowell09/herdr-pr-board/internal/notification"
 	"github.com/cdowell09/herdr-pr-board/internal/plugin"
 	"github.com/cdowell09/herdr-pr-board/internal/publication"
 	"github.com/cdowell09/herdr-pr-board/internal/review"
@@ -155,8 +156,9 @@ func run(args []string, stdout, stderr io.Writer) int {
 			return fail(stderr, err)
 		}
 	}
+	notifier := notification.New(o.configPath, os.Getenv("HERDR_WORKSPACE_ID"), os.Getenv("HERDR_BIN_PATH"))
 	if o.monitor {
-		return runMonitor(monitorSource, cfg, dispatch.New(o.configPath, reviews, publisher), stderr)
+		return runMonitor(monitorSource, cfg, dispatch.New(o.configPath, reviews, publisher, notifier), stderr)
 	}
 	if o.eligibility {
 		if reviews == nil {
@@ -191,7 +193,7 @@ func run(args []string, stdout, stderr io.Writer) int {
 		}
 	}()
 	if reviews != nil {
-		model = model.WithReviews(reviewCtx, reviews).WithPublications(stateDir, publisher)
+		model = model.WithReviews(reviewCtx, reviews).WithPublications(stateDir, publisher).WithNotifications(notifier)
 	}
 	if _, err := tea.NewProgram(model, tea.WithAltScreen(), tea.WithMouseCellMotion()).Run(); err != nil {
 		return fail(stderr, err)

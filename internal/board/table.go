@@ -159,11 +159,7 @@ func findingsDetail(counts reviewmemory.SeverityCounts) string {
 	if counts == (reviewmemory.SeverityCounts{}) {
 		return "no findings"
 	}
-	tokens := make([]string, len(counts))
-	for i, count := range counts {
-		tokens[i] = fmt.Sprintf("%s:%d", reviewmemory.Severities[i], count)
-	}
-	return strings.Join(tokens, " ")
+	return counts.String()
 }
 
 func renderReviewState(state string) string {

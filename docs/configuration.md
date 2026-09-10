@@ -90,6 +90,7 @@ The plugin combines the scoped results. The plugin removes duplicate PR URLs.
 | `review.auto_views` | `[]` | Unique configured view IDs | The views that supply automatic review candidates. An empty list disables automatic reviews. |
 | `review.max_concurrency` | `1` | An integer from 1 through 8 | The shared limit for simultaneous manual and automatic reviews in one state directory. |
 | `review.timeout` | `"30m"` | A Go duration from `"1s"` through `"24h"` | The review timeout, including queue time and execution time. |
+| `review.notify` | `"all"` | `"all"`, `"problems"`, or `"off"` | The run outcomes that show a Herdr notification. `"problems"` limits notifications to blocked and failed runs. See [review notifications](reviews.md#review-notifications). |
 
 Reviewer commands and repository permissions require separate configuration.
 See [manual reviews](reviews.md) and [repository setup and publication](repository-publication.md) for those settings.

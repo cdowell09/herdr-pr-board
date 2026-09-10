@@ -78,7 +78,7 @@ func TestStoppedMonitorProcess(t *testing.T) {
 	}()
 	source := monitor.New(dir, cfg, stopMonitorLoader{cfg: cfg})
 	publisher := &fakePublisher{}
-	err = New(path, reviews, publisher).Run(ctx, cfg, func(ctx context.Context, report func(discovery.Snapshot)) error {
+	err = New(path, reviews, publisher, nil).Run(ctx, cfg, func(ctx context.Context, report func(discovery.Snapshot)) error {
 		return source.Run(ctx, report, nil)
 	}, func(event Event) {
 		if event.Run == nil {

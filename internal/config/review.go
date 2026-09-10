@@ -8,10 +8,23 @@ import (
 	"time"
 )
 
+// NotifyMode selects the run outcomes that produce a review notification.
+type NotifyMode string
+
+const (
+	// NotifyAll notifies on completed, blocked, and failed runs.
+	NotifyAll NotifyMode = "all"
+	// NotifyProblems notifies on blocked and failed runs only.
+	NotifyProblems NotifyMode = "problems"
+	// NotifyOff sends no review notifications.
+	NotifyOff NotifyMode = "off"
+)
+
 type ReviewConfig struct {
-	AutoViews      []string `toml:"auto_views"`
-	MaxConcurrency int      `toml:"max_concurrency"`
-	Timeout        string   `toml:"timeout"`
+	AutoViews      []string   `toml:"auto_views"`
+	MaxConcurrency int        `toml:"max_concurrency"`
+	Timeout        string     `toml:"timeout"`
+	Notify         NotifyMode `toml:"notify"`
 }
 
 type Reviewer struct {
@@ -59,6 +72,11 @@ func (c Config) validateReviews() error {
 	}
 	if _, err := c.Review.TimeoutDuration(); err != nil {
 		return err
+	}
+	switch c.Review.Notify {
+	case "", NotifyAll, NotifyProblems, NotifyOff:
+	default:
+		return errors.New(`review.notify must be "all", "problems", or "off"`)
 	}
 	seen := map[string]bool{}
 	for _, reviewer := range c.Reviewers {

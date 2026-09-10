@@ -96,6 +96,8 @@ They also support Copilot, Mastra Code, Hermes, Cursor, Antigravity, and Grok.
 Install and authenticate the selected native CLI or SDK before you start a review.
 See [reviewer setup](docs/reviews.md#configure-reviewers) for supported versions and custom reviewer commands.
 See [agent compatibility](docs/agent-compatibility.md) for native version requirements and assessed limitations.
+PR Board shows a Herdr notification when a review completes, blocks, or fails.
+See [review notifications](docs/reviews.md#review-notifications) to limit or disable them.
 
 Select a PR and press `v`.
 The panel opens repository setup when the repository has no saved settings.

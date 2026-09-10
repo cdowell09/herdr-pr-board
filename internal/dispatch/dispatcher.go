@@ -21,20 +21,25 @@ type Reviews interface {
 	Review(context.Context, review.Request, func(string)) (reviewmemory.Run, error)
 }
 
+// Event reports one dispatch decision or launch. Notification holds a review
+// notification problem, which never changes the decision or the run.
 type Event struct {
-	Decision Decision          `json:"decision"`
-	Run      *reviewmemory.Run `json:"run,omitempty"`
-	Error    string            `json:"error,omitempty"`
+	Decision     Decision          `json:"decision"`
+	Run          *reviewmemory.Run `json:"run,omitempty"`
+	Error        string            `json:"error,omitempty"`
+	Notification string            `json:"notification,omitempty"`
 }
 
 type Dispatcher struct {
 	configPath string
 	reviews    Reviews
 	publisher  reviewflow.Publisher
+	notifier   reviewflow.Notifier
 }
 
-func New(configPath string, reviews Reviews, publisher reviewflow.Publisher) *Dispatcher {
-	return &Dispatcher{configPath: configPath, reviews: reviews, publisher: publisher}
+// New builds a dispatcher. A nil notifier sends no review notifications.
+func New(configPath string, reviews Reviews, publisher reviewflow.Publisher, notifier reviewflow.Notifier) *Dispatcher {
+	return &Dispatcher{configPath: configPath, reviews: reviews, publisher: publisher, notifier: notifier}
 }
 
 // Decisions uses the same eligibility gate as unattended dispatch.
@@ -155,9 +160,13 @@ func (d *Dispatcher) Run(ctx context.Context, observedConfig config.Config, obse
 func (d *Dispatcher) launch(ctx context.Context, candidate Candidate, eligible Decision, observedConfig config.Config) Event {
 	event := Event{Decision: eligible}
 	id := eligible.Identity
-	run, err := reviewflow.Run(ctx, d.reviews, d.publisher, review.Request{URL: candidate.PR.URL, Automatic: true, ExpectedRevision: &id, ObservedViews: candidate.Views, ObservedConfig: observedConfig}, nil)
+	result, err := reviewflow.Run(ctx, d.reviews, d.publisher, d.notifier, review.Request{URL: candidate.PR.URL, Automatic: true, ExpectedRevision: &id, ObservedViews: candidate.Views, ObservedConfig: observedConfig}, nil)
+	run := result.Run
 	if run.ID != "" {
 		event.Run = &run
+	}
+	if result.Notification != nil {
+		event.Notification = result.Notification.Error()
 	}
 	if err != nil {
 		event.Error = err.Error()

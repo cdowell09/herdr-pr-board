@@ -70,6 +70,11 @@ max_concurrency = 1
 # Include queue time and reviewer execution time in this limit.
 # Press v, then t, to stop the selected PR's newest active review before the timeout.
 timeout = "30m"
+# Show a Herdr notification when a review run completes, blocks, or fails.
+# Use "all", "problems" for blocked and failed runs only, or "off".
+# A stopped run never notifies. The board and the monitor read this setting
+# when a run finishes. Notifications need the herdr CLI.
+notify = "all"
 
 # Reuse each reviewer across repositories.
 # Use an absolute program path or a program on PATH.

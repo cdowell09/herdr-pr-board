@@ -256,6 +256,33 @@ Cancellation terminates the owned reviewer processes.
 On macOS and Linux, wrappers must stop separate child process groups when they receive termination.
 On Windows, the runner terminates the owned Job Object and waits for its processes.
 
+## Review notifications
+
+A review run that finishes in the background is silent until you open the board.
+PR Board shows a Herdr notification when a run completes, blocks, or fails.
+The board sends it for manual reviews.
+The monitor sends it for automatic reviews.
+The `--review` command does not send notifications.
+
+The title names the outcome, the repository, and the PR number.
+A completed run lists the finding count for each severity, for example `P0:0 P1:2 P2:0 P3:1`.
+A blocked or failed run shows the first clause of the run message.
+A stopped run does not notify.
+A notification never makes a GitHub request.
+
+Set `review.notify` to select the outcomes:
+
+- `"all"` notifies on completed, blocked, and failed runs. This is the default.
+- `"problems"` notifies on blocked and failed runs only.
+- `"off"` sends no notifications.
+
+The board and the monitor read the setting when a run finishes.
+A saved change applies to queued and running reviews without a restart.
+Notifications need the `herdr` CLI on `PATH` or in `HERDR_BIN_PATH`.
+When the CLI is missing or a notification fails to show, the board warns once per session.
+The monitor writes one `monitor.log` line for each failed notification.
+The review run records its outcome in both cases.
+
 ## Inspect local results
 
 Read all revisions for one PR:

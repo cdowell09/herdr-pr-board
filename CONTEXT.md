@@ -48,6 +48,14 @@ _Avoid_: Priority, level
 A review completion with no findings at any severity.
 _Avoid_: Passed review, empty review
 
+**Run outcome**:
+The terminal state of a review run: completed, blocked, failed, stopped, or abandoned.
+_Avoid_: Review outcome, result, status
+
+**Review notification**:
+A Herdr notification sent when a review run reaches a run outcome other than stopped.
+_Avoid_: Toast, alert, popup
+
 **Review eligibility**:
 Whether a PR needs review under the user's configured rules and recorded review history.
 _Avoid_: Review permission

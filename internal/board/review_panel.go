@@ -52,9 +52,10 @@ type reviewHistoryMsg struct {
 	err         error
 }
 type reviewDoneMsg struct {
-	url string
-	run reviewmemory.Run
-	err error
+	url          string
+	run          reviewmemory.Run
+	err          error
+	notification error
 }
 type reviewTickMsg struct {
 	url        string
@@ -64,6 +65,14 @@ type reviewTickMsg struct {
 func (m Model) WithReviews(ctx context.Context, backend ReviewBackend) Model {
 	m.reviews, m.reviewContext = backend, ctx
 	m.reviewJobs = map[string]string{}
+	return m
+}
+
+// WithNotifications sends a review notification when a manual review finishes.
+// A nil notifier sends none. The first failed notification of a board session
+// appears in the review panel status line and the board footer.
+func (m Model) WithNotifications(notifier reviewflow.Notifier) Model {
+	m.notifier = notifier
 	return m
 }
 
@@ -146,6 +155,10 @@ func (m Model) updateReview(message tea.Msg) (Model, tea.Cmd, bool) {
 		if msg.err != nil {
 			message = msg.err.Error()
 		}
+		if msg.notification != nil && !m.notifyWarn {
+			m.notifyWarn = true
+			message += "; review notifications unavailable: " + msg.notification.Error()
+		}
 		m.warning = "review: " + message
 		if m.reviewPanel != nil && m.reviewPanel.pr.URL == msg.url {
 			m.reviewPanel.message = message
@@ -210,10 +223,10 @@ func (m Model) updateReviewKey(key tea.KeyMsg) (tea.Model, tea.Cmd) {
 		m.reviewJobs[url] = "queued"
 		m.reviewPanel.message = ""
 		m.clampReviewOffset()
-		backend, publisher, ctx, rerun := m.reviews, m.publications, m.reviewContext, key.String() == "N"
+		backend, publisher, notifier, ctx, rerun := m.reviews, m.publications, m.notifier, m.reviewContext, key.String() == "N"
 		return m, func() tea.Msg {
-			run, err := reviewflow.Run(ctx, backend, publisher, review.Request{URL: url, Rerun: rerun}, nil)
-			return reviewDoneMsg{url, run, err}
+			result, err := reviewflow.Run(ctx, backend, publisher, notifier, review.Request{URL: url, Rerun: rerun}, nil)
+			return reviewDoneMsg{url: url, run: result.Run, err: err, notification: result.Notification}
 		}
 	}
 	m.clampReviewOffset()

@@ -1,6 +1,10 @@
 package reviewmemory
 
-import "slices"
+import (
+	"slices"
+	"strconv"
+	"strings"
+)
 
 // Severities lists finding severities from most to least severe.
 var Severities = [...]string{"P0", "P1", "P2", "P3"}
@@ -18,4 +22,13 @@ func CountSeverities(findings []Finding) SeverityCounts {
 		}
 	}
 	return counts
+}
+
+// String lists every count in Severities order, for example "P0:1 P1:2 P2:0 P3:3".
+func (c SeverityCounts) String() string {
+	tokens := make([]string, len(c))
+	for i, count := range c {
+		tokens[i] = Severities[i] + ":" + strconv.Itoa(count)
+	}
+	return strings.Join(tokens, " ")
 }

@@ -31,6 +31,7 @@ Read [`docs/automatic-reviews.md`](docs/automatic-reviews.md) before changing au
 - `internal/dispatch/`: automatic eligibility, selected observations, dispatch scheduling, and optional publication.
 - `internal/board/`: Bubble Tea state, scheduling epochs, stale-row retention, rendering, keyboard input, and mouse input.
 - `internal/sidebar/`: Herdr sidebar token computation and `herdr` CLI metadata reporting.
+- `internal/notification/`: review notification content and `herdr` CLI notification display.
 - `bin/open`: focus an existing plugin pane or open one dedicated tab.
 - `bin/run`: record pane ownership, name the tab, run the board, and clean owned state.
 - `internal/plugin/`: end-to-end tests for the `bin/open` and `bin/run` entrypoints against a fake Herdr and isolated directories.
