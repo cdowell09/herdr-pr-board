@@ -6,21 +6,6 @@ import tomllib
 from pathlib import Path
 
 VERSION_PATTERN = re.compile(r"^(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$")
-CONSTANT_PATTERN = re.compile(r'^const\s+Current(?:\s+string)?\s*=\s*"([^"]*)"\s*(?://.*)?$', re.MULTILINE)
-COMMENT_PATTERN = re.compile(r"/\*.*?\*/", re.DOTALL)
-GO_VERSION_NAME = "internal/version/version.go"
-
-
-def read_go_version(source_path: Path) -> str:
-    """Return the version that the Go source declares in the Current constant."""
-    try:
-        source = source_path.read_text(encoding="utf-8")
-    except OSError as error:
-        raise ValueError(f"{GO_VERSION_NAME} is not readable: {error}") from error
-    found = CONSTANT_PATTERN.findall(COMMENT_PATTERN.sub("", source))
-    if len(found) != 1:
-        raise ValueError(f'{GO_VERSION_NAME} must define one const Current = "X.Y.Z"')
-    return found[0]
 
 
 def validate(manifest_path: Path, tag: str) -> str:
@@ -31,9 +16,6 @@ def validate(manifest_path: Path, tag: str) -> str:
         raise ValueError("herdr-plugin.toml must define a top-level version in strict X.Y.Z form")
     if tag != "v" + version:
         raise ValueError(f"release tag {tag!r} must equal {'v' + version!r}")
-    constant = read_go_version(manifest_path.parent / GO_VERSION_NAME)
-    if constant != version:
-        raise ValueError(f"{GO_VERSION_NAME} defines {constant!r} but herdr-plugin.toml defines {version!r}")
     return version
 
 
@@ -43,7 +25,7 @@ def main() -> int:
     except (IndexError, OSError, ValueError) as error:
         print(f"release validation failed: {error}", file=sys.stderr)
         return 1
-    print(f"release tag {sys.argv[2]} matches plugin version {version} and {GO_VERSION_NAME}")
+    print(f"release tag {sys.argv[2]} matches plugin version {version}")
     return 0
 
 

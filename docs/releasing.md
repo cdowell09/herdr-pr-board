@@ -97,6 +97,7 @@ Set the release version to the manifest version.
 
 ```sh
 version="$(python3 -c 'import tomllib; print(tomllib.load(open("herdr-plugin.toml", "rb"))["version"])')"
+go test ./internal/version/...
 python3 scripts/validate_release.py herdr-plugin.toml "v$version"
 git tag -a "v$version" --cleanup=verbatim -F "docs/releases/v$version.md"
 git push origin "v$version"
@@ -105,7 +106,8 @@ git push origin "v$version"
 The release workflow validates every pushed tag.
 It accepts only the `vX.Y.Z` form.
 It compares the tag with the manifest version.
-It also compares the manifest version with `Current` in `internal/version/version.go`.
+The release job runs `go test ./internal/version/...` before that comparison.
+That test compares `Current` in `internal/version/version.go` with the manifest version.
 A difference between those two values fails the release.
 
 The workflow creates the GitHub release only after validation succeeds.

@@ -6,8 +6,8 @@ import "runtime/debug"
 // Current is the PR Board version. It must equal the top-level version in
 // herdr-plugin.toml. The manifest build command runs a plain go build without
 // link-time variables, so the binary carries the version in this constant.
-// TestCurrentMatchesThePluginManifest and scripts/validate_release.py keep the
-// two values equal.
+// TestCurrentMatchesThePluginManifest keeps the two values equal. Pull-request
+// CI and the release workflow both run that test.
 const Current = "0.6.0"
 
 // revisionLength is the number of leading characters kept from a VCS revision.
