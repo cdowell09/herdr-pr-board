@@ -120,6 +120,8 @@ The reviewer row shows `not installed` for an absent agent CLI.
 Setup shows an install hint when PATH holds no built-in agent CLI.
 This check reads PATH only. It sends no GitHub request.
 Setup does not check a custom reviewer command.
+Setup does not check the Hermes and Cursor reviewers.
+Those adapters start a shared language runtime, which does not prove the agent is installed.
 The setup header shows that manual reviews are ready when automatic launches are off.
 It names Enter to save the settings and `n` to run the review.
 Press `n` in the review panel to start the review.

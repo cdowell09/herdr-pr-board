@@ -72,6 +72,8 @@ Select these agents in repository settings.
 Setup looks for each built-in agent CLI on PATH when it opens.
 The reviewer row starts at the first built-in reviewer that PATH holds.
 The reviewer row shows `not installed` for an absent agent CLI.
+Setup does not check the Hermes and Cursor reviewers.
+Those adapters start a shared language runtime, which does not prove the agent is installed.
 Install the agent CLI before you select it.
 Alternatively, use a setup command:
 

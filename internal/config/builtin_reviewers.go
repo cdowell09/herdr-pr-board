@@ -8,12 +8,23 @@ import (
 )
 
 // builtins is the single source for built-in reviewer IDs and for the agent
-// program each adapter runs when the user selects no --<id>-executable.
+// program repository setup must find on PATH.
 //
-// The adapter packages do not export that program name. Each adapter passes its
-// ID as agentadapter.Options.Name, and agentadapter.Run uses Name as the binary
-// when Binary is empty. Keep each executable below equal to the Name literal in
-// internal/<id>adapter. Add one row here with each new adapter.
+// Executable is the program the adapter launches when the user selects no
+// --<id>-executable. The adapter packages do not export that name. Most adapters
+// pass their ID as agentadapter.Options.Name, and agentadapter.Run uses Name as
+// the binary when Binary is empty. Four adapters differ. Keep this table equal
+// to these sources, and add one row with each new adapter:
+//
+//   - internal/antigravityadapter/run.go defaults its binary to "agy".
+//   - internal/mastraadapter/run.go finds "mastracode" and runs it with Node.
+//   - internal/hermesadapter/run.go runs an embedded bridge with "python3".
+//   - internal/cursoradapter/run.go runs an embedded bridge with "node".
+//
+// An empty Executable means PATH cannot show whether the reviewer is available.
+// The Hermes and Cursor adapters start a shared language runtime, and that
+// runtime does not prove the agent SDK is installed. Setup does not probe for
+// these reviewers, and it does not select one of them as the default.
 var builtins = []struct{ ID, Executable string }{
 	{"pi", "pi"},
 	{"codex", "codex"},
@@ -24,10 +35,22 @@ var builtins = []struct{ ID, Executable string }{
 	{"qodercli", "qodercli"},
 	{"copilot", "copilot"},
 	{"mastracode", "mastracode"},
-	{"hermes", "hermes"},
-	{"cursor", "cursor"},
-	{"antigravity", "antigravity"},
+	{"hermes", ""},
+	{"cursor", ""},
+	{"antigravity", "agy"},
 	{"grok", "grok"},
+}
+
+// DetectableExecutables returns each agent program repository setup probes on
+// PATH, in table order.
+func DetectableExecutables() []string {
+	executables := make([]string, 0, len(builtins))
+	for _, builtin := range builtins {
+		if builtin.Executable != "" {
+			executables = append(executables, builtin.Executable)
+		}
+	}
+	return executables
 }
 
 // BuiltinReviewers returns the commands available during repository setup.
@@ -39,30 +62,31 @@ func BuiltinReviewers(binary string) []Reviewer {
 	return reviewers
 }
 
-// BuiltinExecutable returns the agent program a built-in reviewer ID runs by
-// default. It returns an empty string for a custom reviewer ID.
-func BuiltinExecutable(id string) string {
-	for _, builtin := range builtins {
-		if builtin.ID == id {
-			return builtin.Executable
-		}
-	}
-	return ""
-}
-
 // Executable returns the agent program repository setup must find on PATH for
-// this reviewer. It returns an empty string when setup must not probe PATH.
-// A custom command and an explicit --<id>-executable path both name their own
-// program, so setup counts them as available.
+// this reviewer. An empty result means setup must not probe PATH, and setup
+// then reports no install status and does not select the reviewer as the
+// default. Setup does not probe three kinds of reviewer:
+//
+//   - A custom command, because it names its own program.
+//   - A nonempty --<id>-executable path, because it names its own program.
+//   - A reviewer whose adapter starts a shared language runtime.
+//
+// An empty --<id>-executable value keeps the adapter default, so setup probes
+// that default.
 func (r Reviewer) Executable() string {
 	builtin := r.Builtin()
 	if builtin == "" {
 		return ""
 	}
-	if _, selected := commandOption(r.Command, builtin+"-executable", false); selected {
+	if selected, _ := commandOption(r.Command, builtin+"-executable", false); selected != "" {
 		return ""
 	}
-	return BuiltinExecutable(builtin)
+	for _, entry := range builtins {
+		if entry.ID == builtin {
+			return entry.Executable
+		}
+	}
+	return ""
 }
 
 // Builtin identifies the selected native adapter without changing command arguments.

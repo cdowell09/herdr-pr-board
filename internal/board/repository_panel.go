@@ -95,8 +95,7 @@ func installedAgents(lookPath func(string) (string, error)) map[string]bool {
 		lookPath = exec.LookPath
 	}
 	installed := map[string]bool{}
-	for _, builtin := range config.BuiltinReviewers("") {
-		executable := config.BuiltinExecutable(builtin.ID)
+	for _, executable := range config.DetectableExecutables() {
 		if _, err := lookPath(executable); err == nil {
 			installed[executable] = true
 		}

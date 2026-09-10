@@ -44,6 +44,10 @@ func TestSetupDefaultsToAnInstalledAgentAndLabelsMissingOnes(t *testing.T) {
 		"installed agent wins":         {installed: []string{"claude"}, reviewer: "claude"},
 		"table order breaks ties":      {installed: []string{"grok", "codex"}, reviewer: "codex"},
 		"first builtin without a find": {reviewer: "pi", missing: true, hint: true},
+		// antigravityadapter starts agy, not a program named after its ID.
+		"antigravity starts agy": {installed: []string{"agy"}, reviewer: "antigravity"},
+		// The reviewer ID is not the program, so PATH holding it proves nothing.
+		"the ID is not the program": {installed: []string{"antigravity"}, reviewer: "pi", missing: true, hint: true},
 	} {
 		t.Run(name, func(t *testing.T) {
 			setup := setupWith(t, installedAgents(fakeLookPath(test.installed...)))
@@ -86,6 +90,26 @@ func TestSetupKeepsASavedReviewerWithAMissingProgram(t *testing.T) {
 	}
 }
 
+// The Hermes and Cursor adapters start a shared language runtime. PATH cannot
+// show whether the agent is installed, so setup reports no install status and
+// never selects one of them as the default.
+func TestSetupLeavesSharedRuntimeReviewersUnchecked(t *testing.T) {
+	if slices.Contains(config.DetectableExecutables(), "python3") || slices.Contains(config.DetectableExecutables(), "node") {
+		t.Fatal("setup probes a shared language runtime")
+	}
+	// Every agent program is absent, but both shared runtimes are present.
+	setup := setupWith(t, installedAgents(fakeLookPath("python3", "node")))
+	if setup.repo.Reviewer != "pi" {
+		t.Fatalf("a shared runtime selected %q as the default", setup.repo.Reviewer)
+	}
+	for _, id := range []string{"hermes", "cursor"} {
+		setup.repo.Reviewer = id
+		if label := setup.rows()[repositoryReviewerRow]; strings.Contains(label, "not installed") {
+			t.Fatalf("setup reported an install status it cannot know: %q", label)
+		}
+	}
+}
+
 // A custom command names its own program, so setup must not probe PATH for it.
 func TestSetupTreatsCustomCommandsAsAvailable(t *testing.T) {
 	cfg := testConfig()
@@ -100,6 +124,28 @@ func TestSetupTreatsCustomCommandsAsAvailable(t *testing.T) {
 	}
 }
 
+// The settings command uses the replaced probe, so a test controls the
+// detected programs without changing PATH.
+func TestRepositorySettingsCommandUsesTheReplacedProbe(t *testing.T) {
+	m := panelModel(t)
+	m.configPath = filepath.Join(t.TempDir(), "config.toml")
+	if _, err := config.Load(m.configPath); err != nil {
+		t.Fatal(err)
+	}
+	m.lookPath = fakeLookPath("grok")
+	message, ok := m.repositorySettingsCmd(true)().(repositorySettingsMsg)
+	if !ok {
+		t.Fatal("settings command returned another message")
+	}
+	if !message.installed["grok"] || len(message.installed) != 1 {
+		t.Fatalf("probe reported %v, want only grok", message.installed)
+	}
+	next, _, _ := m.updateRepository(message)
+	if next.reviewPanel.setup.repo.Reviewer != "grok" {
+		t.Fatalf("panel selected %q, want grok", next.reviewPanel.setup.repo.Reviewer)
+	}
+}
+
 // The probe runs inside the settings command, never on the update path, and
 // reads PATH through exec.LookPath when no test replaces it.
 func TestRepositorySettingsCommandProbesPath(t *testing.T) {
@@ -111,7 +157,6 @@ func TestRepositorySettingsCommandProbesPath(t *testing.T) {
 	if _, err := config.Load(m.configPath); err != nil {
 		t.Fatal(err)
 	}
-	m.lookPath = nil
 	message, ok := m.repositorySettingsCmd(true)().(repositorySettingsMsg)
 	if !ok {
 		t.Fatal("settings command returned another message")

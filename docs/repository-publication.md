@@ -21,6 +21,8 @@ Setup keeps a saved reviewer, even when its agent CLI is absent.
 The reviewer row shows `not installed` for an absent agent CLI.
 Setup shows an install hint when PATH holds no built-in agent CLI.
 Setup does not check a custom reviewer command.
+Setup does not check the Hermes and Cursor reviewers.
+Those adapters start a shared language runtime, which does not prove the agent is installed.
 Enable automatic launches only when you want unattended reviews.
 Enable Comments under GitHub permissions to allow comments.
 Permission allows publication but does not schedule publication.
