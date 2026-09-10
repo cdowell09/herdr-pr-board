@@ -10,6 +10,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"time"
 
@@ -18,6 +19,16 @@ import (
 )
 
 const ID = "cdowell09.pr-board"
+
+// Entrypoint names the manifest pane for this platform. Herdr 0.8 on Unix
+// resolves pane commands through PATH only, so the Unix pane starts through a
+// bash wrapper while the Windows pane runs the binary from the plugin root.
+func Entrypoint() string {
+	if runtime.GOOS == "windows" {
+		return "board-windows"
+	}
+	return "board"
+}
 
 // Open focuses the recorded board pane, or opens one dedicated tab.
 func Open(ctx context.Context) error {
@@ -46,7 +57,7 @@ func Open(ctx context.Context) error {
 			return err
 		}
 	}
-	command := hostCommand(ctx, "plugin", "pane", "open", "--plugin", ID, "--entrypoint", "board", "--placement", "tab", "--focus")
+	command := hostCommand(ctx, "plugin", "pane", "open", "--plugin", ID, "--entrypoint", Entrypoint(), "--placement", "tab", "--focus")
 	var output, diagnostics bytes.Buffer
 	bounded := &cli.LimitedWriter{Writer: &output, Remaining: 64 * 1024}
 	command.Stdout = bounded

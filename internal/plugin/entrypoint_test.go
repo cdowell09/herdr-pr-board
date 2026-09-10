@@ -4,23 +4,22 @@ import (
 	"context"
 	"fmt"
 	"github.com/cdowell09/herdr-pr-board/internal/testutil"
+	"github.com/pelletier/go-toml/v2"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"runtime"
+	"slices"
 	"strconv"
 	"strings"
 	"sync"
 	"testing"
 )
 
-const (
-	pluginID   = "cdowell09.pr-board"
-	entrypoint = "board"
-)
+const pluginID = "cdowell09.pr-board"
 
 func openCmd() string {
-	return "plugin pane open --plugin " + pluginID + " --entrypoint " + entrypoint + " --placement tab --focus"
+	return "plugin pane open --plugin " + pluginID + " --entrypoint " + Entrypoint() + " --placement tab --focus"
 }
 
 func TestMain(m *testing.M) {
@@ -269,6 +268,126 @@ func TestEntrypointsLeaveUserConfigUntouched(t *testing.T) {
 	if string(got) != want {
 		t.Fatalf("config.toml overwritten: %q", got)
 	}
+}
+
+// Herdr starts the manifest pane that Open names. A manifest without that pane
+// stops the board on a new installation.
+func TestEntrypointNamesTheManifestPaneForThisPlatform(t *testing.T) {
+	pane := manifestPaneByID(t, Entrypoint())
+	if !slices.Contains(pane.Platforms, hostPlatform()) {
+		t.Fatalf("pane %q serves %v, want %s", pane.ID, pane.Platforms, hostPlatform())
+	}
+}
+
+// Herdr 0.8 finds macOS and Linux pane commands on PATH only. It finds Windows
+// pane commands in the plugin root. Each platform needs the command it can run.
+func TestManifestDeclaresOneBoardPaneForEachPlatform(t *testing.T) {
+	wantCommand := map[string][]string{
+		"macos":   {"bash", "bin/run"},
+		"linux":   {"bash", "bin/run"},
+		"windows": {"bin/herdr-pr-board.exe", "--plugin-action", "run"},
+	}
+	platforms, panes := readManifest(t)
+	paneByPlatform := make(map[string]string)
+	for _, pane := range panes {
+		if pane.Title != "PR Board" || pane.Placement != "tab" {
+			t.Fatalf("pane %q = %q at %q, want the reusable %q tab", pane.ID, pane.Title, pane.Placement, "PR Board")
+		}
+		for _, platform := range pane.Platforms {
+			if other, ok := paneByPlatform[platform]; ok {
+				t.Fatalf("platform %q has panes %q and %q", platform, other, pane.ID)
+			}
+			paneByPlatform[platform] = pane.ID
+			if want := wantCommand[platform]; !slices.Equal(pane.Command, want) {
+				t.Fatalf("pane %q on %s = %v, want %v", pane.ID, platform, pane.Command, want)
+			}
+		}
+	}
+	for _, platform := range platforms {
+		if paneByPlatform[platform] == "" {
+			t.Fatalf("platform %q has no pane", platform)
+		}
+	}
+}
+
+// The macOS and Linux pane command must start the plugin binary in the plugin
+// root. Herdr runs it from the plugin root with HERDR_PLUGIN_ROOT set.
+func TestTheManifestPaneCommandStartsTheBoard(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("the Windows pane starts the native binary, not the wrapper")
+	}
+	root := t.TempDir()
+	if err := os.MkdirAll(filepath.Join(root, "bin"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	arguments := filepath.Join(root, "arguments")
+	fake := "#!/bin/sh\nprintf '%s\\n' \"$@\" >\"$PR_BOARD_TEST_ARGUMENTS\"\n"
+	if err := os.WriteFile(filepath.Join(root, "bin", "herdr-pr-board"), []byte(fake), 0o755); err != nil {
+		t.Fatal(err)
+	}
+
+	command := manifestPaneByID(t, Entrypoint()).Command
+	pane := exec.Command(command[0], command[1:]...)
+	pane.Dir = repoRoot(t)
+	pane.Env = append(os.Environ(), "HERDR_PLUGIN_ROOT="+root, "PR_BOARD_TEST_ARGUMENTS="+arguments)
+	if out, err := pane.CombinedOutput(); err != nil {
+		t.Fatalf("pane command %v failed: %v (%s)", command, err, out)
+	}
+
+	got, err := os.ReadFile(arguments)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if want := "--plugin-action\nrun\n"; string(got) != want {
+		t.Fatalf("the pane started the board with %q, want %q", got, want)
+	}
+}
+
+type manifestPane struct {
+	ID        string   `toml:"id"`
+	Title     string   `toml:"title"`
+	Placement string   `toml:"placement"`
+	Platforms []string `toml:"platforms"`
+	Command   []string `toml:"command"`
+}
+
+func readManifest(t *testing.T) ([]string, []manifestPane) {
+	t.Helper()
+	data, err := os.ReadFile(filepath.Join(repoRoot(t), "herdr-plugin.toml"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	var manifest struct {
+		Platforms []string       `toml:"platforms"`
+		Panes     []manifestPane `toml:"panes"`
+	}
+	if err := toml.Unmarshal(data, &manifest); err != nil {
+		t.Fatal(err)
+	}
+	if len(manifest.Platforms) == 0 || len(manifest.Panes) == 0 {
+		t.Fatal("herdr-plugin.toml declares no platforms or no panes")
+	}
+	return manifest.Platforms, manifest.Panes
+}
+
+func manifestPaneByID(t *testing.T, id string) manifestPane {
+	t.Helper()
+	_, panes := readManifest(t)
+	for _, pane := range panes {
+		if pane.ID == id {
+			return pane
+		}
+	}
+	t.Fatalf("the manifest declares no pane %q", id)
+	return manifestPane{}
+}
+
+// hostPlatform names this operating system the way the manifest names it.
+func hostPlatform() string {
+	if runtime.GOOS == "darwin" {
+		return "macos"
+	}
+	return runtime.GOOS
 }
 
 func repoRoot(t *testing.T) string {

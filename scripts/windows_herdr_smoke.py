@@ -202,7 +202,7 @@ def smoke(root, temporary):
             def open_fixture_board():
                 # Herdr 0.9 replaces inherited PATH with Windows registry values.
                 # Its pane API supplies an explicit PATH without changing the host.
-                host("plugin", "pane", "open", "--plugin", PLUGIN, "--entrypoint", "board",
+                host("plugin", "pane", "open", "--plugin", PLUGIN, "--entrypoint", "board-windows",
                      "--workspace", workspace_id, "--env", "PATH=" + env["PATH"])
                 return wait_for("fixture board pane record", lambda: record.read_text().strip() if record.exists() else None)
 

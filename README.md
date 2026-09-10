@@ -19,7 +19,7 @@ You must install Go before Herdr runs the build step.
 
 | Platform | Requirements |
 | --- | --- |
-| macOS and Linux | Herdr 0.8.0 or later. |
+| macOS and Linux | Herdr 0.8.0 or later; Bash on `PATH`. |
 | Windows x64 | Herdr 0.9.0 or later; Windows 10 version 1809 or later, or Windows 11. |
 
 Windows configuration and state directories must use local NTFS.
