@@ -2,6 +2,46 @@
 
 This file lists notable changes to PR Board.
 
+## 0.7.1 - 2026-09-10
+
+PR Board tells you when a review finishes and shows finding counts at a glance.
+
+### Highlights
+
+- Get a Herdr notification when a review completes, blocks, or fails. The board sends it for manual reviews. The monitor sends it for automatic reviews. The title names the outcome, the repository, and the PR number. A completed run lists the count at every severity.
+- Choose which outcomes notify with `review.notify`: `"all"`, `"problems"`, or `"off"`. PR Board reads the setting when a run finishes. A saved change applies to reviews that are already running.
+- Read finding counts in the REVIEW column. A completed review shows `P0:1 P1:2 P2:0 P3:3` in its row. The detail line shows the exact counts. A clean review keeps the check mark.
+- Review with Codex more reliably. Startup warnings no longer fail a review. Context-inheriting subagents keep the saved parent thread.
+
+See [review notifications](https://github.com/cdowell09/herdr-pr-board/blob/v0.7.1/docs/reviews.md#review-notifications) for the setting, the diagnostics, and the `herdr` CLI requirement.
+
+### Upgrade
+
+```sh
+herdr plugin install cdowell09/herdr-pr-board --ref v0.7.1
+```
+
+Reopen the board to load the new binary.
+Restart an older monitor after its active reviews finish.
+
+<details>
+<summary>Full changelog</summary>
+
+### Bug Fixes
+
+- Handle startup warnings and context forks (#146)
+
+### Features
+
+- Show finding severity counts in the REVIEW column (#149)
+- Notify through Herdr when a review run finishes (#148)
+
+### Refactoring
+
+- Simplify CI and discovery plumbing (#147)
+
+</details>
+
 ## 0.7.0 - 2026-09-10
 
 PR Board makes the first run faster to set up and adds six more review adapters.

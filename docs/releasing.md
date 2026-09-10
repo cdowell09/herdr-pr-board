@@ -54,6 +54,11 @@ git-cliff --unreleased --tag "v$version" --with-tag-message "$(cat "$highlights"
 The first git-cliff command generates the full changelog.
 The second git-cliff command previews only the next release notes.
 These commands do not create a Git tag.
+A lightweight tag on an older release has no highlights message.
+The first command then drops that release's highlights from `CHANGELOG.md`.
+In that case, do not run the first command.
+Run only the second command and insert its output after the file header.
+Keep every older section unchanged.
 Do not edit generated entries directly.
 Change `cliff.toml` when the generated format needs changes.
 
