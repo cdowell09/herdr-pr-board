@@ -12,26 +12,31 @@ func (m Model) WithVersion(version string) Model {
 	return m
 }
 
-// titleText returns the title bar text without the refresh status. The version
-// needs space, so the medium and wide tiers show it and the narrow tier omits
-// it.
-func (m Model) titleText() string {
+// versionSuffix returns the version part of the title bar. The version needs
+// space, so the medium and wide tiers show it and the narrow tier omits it.
+func (m Model) versionSuffix() string {
 	if m.version == "" || m.width < tierMedium {
-		return m.cfg.UI.Title
+		return ""
 	}
-	return m.cfg.UI.Title + " v" + m.version
+	return " v" + m.version
 }
 
-// renderTitle returns the title bar line. The status keeps its width, and the
-// title uses the remaining cells. This keeps the line inside the terminal.
+// renderTitle returns the title bar line. The version and the refresh status
+// keep their width, and the configured title uses the remaining cells. This
+// keeps the line inside the terminal and keeps the version visible.
 func (m Model) renderTitle() string {
 	status := ""
 	if m.loading {
 		status = refreshStatus
 	}
-	budget := m.width - lipgloss.Width(status)
+	version := m.versionSuffix()
+	budget := m.width - lipgloss.Width(status) - lipgloss.Width(version)
+	if budget < 1 {
+		version = ""
+		budget = m.width - lipgloss.Width(status)
+	}
 	if budget < 1 {
 		return warningStyle.Render(truncate(status, m.width))
 	}
-	return titleStyle.Render(truncate(m.titleText(), budget)) + warningStyle.Render(status)
+	return titleStyle.Render(truncate(m.cfg.UI.Title, budget)+version) + warningStyle.Render(status)
 }

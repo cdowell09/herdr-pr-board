@@ -51,8 +51,14 @@ class ValidateReleaseTest(unittest.TestCase):
             self.validate('version = "0.3.0"\n', "v0.3.0", "")
 
     def test_requires_the_go_version_constant(self):
-        with self.assertRaisesRegex(ValueError, "must define const Current"):
-            self.validate('version = "0.3.0"\n', "v0.3.0", "package version\n")
+        for source in ("package version\n", '/*\nconst Current = "0.3.0"\n*/\n'):
+            with self.subTest(source=source):
+                with self.assertRaisesRegex(ValueError, "must define one const Current"):
+                    self.validate('version = "0.3.0"\n', "v0.3.0", source)
+
+    def test_accepts_a_typed_go_version_constant(self):
+        source = 'package version\n\nconst Current string = "0.3.0"\n'
+        self.assertEqual(self.validate('version = "0.3.0"\n', "v0.3.0", source), "0.3.0")
 
     def test_ignores_version_text_in_multiline_string(self):
         manifest = '''description = """

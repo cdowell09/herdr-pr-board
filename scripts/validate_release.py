@@ -6,19 +6,21 @@ import tomllib
 from pathlib import Path
 
 VERSION_PATTERN = re.compile(r"^(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$")
-CONSTANT_PATTERN = re.compile(r'^const Current = "([^"]*)"$', re.MULTILINE)
+CONSTANT_PATTERN = re.compile(r'^const\s+Current(?:\s+string)?\s*=\s*"([^"]*)"\s*$', re.MULTILINE)
+COMMENT_PATTERN = re.compile(r"/\*.*?\*/", re.DOTALL)
 GO_VERSION_NAME = "internal/version/version.go"
 
 
 def read_go_version(source_path: Path) -> str:
+    """Return the version that the Go source declares in the Current constant."""
     try:
         source = source_path.read_text(encoding="utf-8")
     except OSError as error:
         raise ValueError(f"{GO_VERSION_NAME} is not readable: {error}") from error
-    match = CONSTANT_PATTERN.search(source)
-    if match is None:
-        raise ValueError(f'{GO_VERSION_NAME} must define const Current = "X.Y.Z"')
-    return match.group(1)
+    found = CONSTANT_PATTERN.findall(COMMENT_PATTERN.sub("", source))
+    if len(found) != 1:
+        raise ValueError(f'{GO_VERSION_NAME} must define one const Current = "X.Y.Z"')
+    return found[0]
 
 
 def validate(manifest_path: Path, tag: str) -> str:

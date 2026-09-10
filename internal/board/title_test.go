@@ -35,6 +35,26 @@ func TestTitleBarShowsTheVersionAtTheWideAndMediumTiers(t *testing.T) {
 	}
 }
 
+// TestTitleBarKeepsTheVersionWhenTheConfiguredTitleIsLong renders a title that
+// fills every cell the refresh status leaves. The version must stay visible.
+func TestTitleBarKeepsTheVersionWhenTheConfiguredTitleIsLong(t *testing.T) {
+	for _, width := range []int{tierMedium, tierWide, 160} {
+		model := layoutModel(t, width).WithVersion("0.6.0")
+		model.cfg.UI.Title = strings.Repeat("T", width-lipgloss.Width(refreshStatus))
+		model.loading = true
+		line := stripANSI(strings.Split(model.View(), "\n")[0])
+		if !strings.Contains(line, "v0.6.0") {
+			t.Fatalf("width %d: the long title hid the version: %q", width, line)
+		}
+		if !strings.Contains(line, "refresh") {
+			t.Fatalf("width %d: the long title hid the refresh status: %q", width, line)
+		}
+		if got := lipgloss.Width(line); got > width {
+			t.Fatalf("width %d: title line is %d cells wide: %q", width, got, line)
+		}
+	}
+}
+
 func TestTitleBarKeepsTheRefreshStatusInsideTheTerminal(t *testing.T) {
 	for _, width := range []int{12, 20, tierNarrow, tierMedium, tierWide, 160} {
 		for _, title := range []string{"Board", strings.Repeat("T", 67), strings.Repeat("T", 400)} {
