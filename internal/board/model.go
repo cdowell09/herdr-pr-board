@@ -3,7 +3,6 @@ package board
 import (
 	"context"
 	"fmt"
-	"os"
 	"os/exec"
 	"runtime"
 	"sort"
@@ -19,7 +18,6 @@ import (
 	"github.com/cdowell09/herdr-pr-board/internal/sidebar"
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
-	"github.com/charmbracelet/x/ansi"
 )
 
 const (
@@ -125,14 +123,6 @@ var keyHelp = []keyHelpEntry{
 	{"?", "help"},
 }
 
-// emptyViewSteps names the next action for a view that has no pull requests.
-// It repeats the key literals that the footer and the ? overlay use.
-var emptyViewSteps = []keyHelpEntry{
-	{"Tab", "next view"},
-	{"E", "edit config"},
-	{"r", "refresh"},
-}
-
 // documentedKeys lists every key literal the board and review guides must document.
 // The documentation drift test fails when one is missing. Add new bindings from
 // updateKey, updateFilter, or updateReviewKey here, to helpSections, and to the
@@ -167,7 +157,7 @@ type Model struct {
 	configPath       string
 	loader           discovery.Loader
 	openBrowser      func(url string) tea.Cmd
-	editConfig       func(path string) tea.Cmd
+	editConfig       func(path string) (notice string, cmd tea.Cmd)
 	refresh          time.Duration
 	views            []discovery.ViewData
 	active           int
@@ -545,10 +535,11 @@ func (m Model) updateKey(key tea.KeyMsg) (tea.Model, tea.Cmd) {
 			m.warning = appendWarning(m.warning, "configuration editor is unavailable")
 			return m, nil
 		}
-		// The editor takes the terminal, so this frame is the last one the
-		// user reads until the editor exits.
-		m.editorNotice = editorNotice()
-		return m, m.editConfig(m.configPath)
+		notice, command := m.editConfig(m.configPath)
+		// The launch owns the notice, so the footer names the executable
+		// that the board runs.
+		m.editorNotice = notice
+		return m, command
 	case "r":
 		requests := m.currentView().View.SearchRequestCount(len(m.cfg.GitHub.Scopes), m.cfg.GitHub.LimitPerScope)
 		if !m.loading && m.rates.Search.HasCapacity(requests) {
@@ -736,7 +727,7 @@ func (m Model) renderTable(lay boardLayout) string {
 		if m.filter != "" {
 			return dimStyle.Render("No pull requests match the filter.") + "\n"
 		}
-		return m.renderEmptyView()
+		return m.renderEmptyView(lay)
 	}
 
 	cols := m.tableLayout()
@@ -834,37 +825,6 @@ func packKeyPairs(entries []keyHelpEntry, width int) []string {
 	return lines
 }
 
-// emptyViewMessage explains why a view has no pull requests. Each default view
-// gets tailored text. Every other view names the query that found no results.
-func emptyViewMessage(view config.View) string {
-	switch view.ID {
-	case config.ViewAuthored:
-		return "You have no open pull requests."
-	case config.ViewReview:
-		return "No open pull requests wait for your review."
-	case config.ViewAll:
-		return "No open pull requests are in the configured scopes."
-	}
-	return fmt.Sprintf("No pull requests match %q.", view.Query)
-}
-
-// renderEmptyView explains the empty view and names the next keys. The text
-// wraps at the terminal width, so no width removes a key.
-func (m Model) renderEmptyView() string {
-	width := max(1, m.width)
-	var lines []string
-	for _, line := range strings.Split(ansi.Wrap(emptyViewMessage(m.currentView().View), width, ""), "\n") {
-		lines = append(lines, dimStyle.Render(line))
-	}
-	steps := emptyViewSteps
-	if len(m.views) < 2 {
-		// One view has no next view, so Tab does nothing.
-		steps = steps[1:]
-	}
-	lines = append(lines, packKeyPairs(steps, width)...)
-	return strings.Join(lines, "\n") + "\n"
-}
-
 func (m Model) currentView() discovery.ViewData {
 	if len(m.views) == 0 {
 		return discovery.ViewData{}
@@ -943,49 +903,6 @@ func (m Model) refreshConfigCmd(cfg config.Config, loader discovery.Loader, refr
 		snapshot := loader.RefreshAll(ctx)
 		return configRefreshMsg{cfg: cfg, loader: loader, refresh: refresh, snapshot: snapshot, epoch: epoch, selectedURL: selectedURL}
 	}
-}
-
-func editConfigCmd(path string) tea.Cmd {
-	if strings.TrimSpace(path) == "" {
-		return func() tea.Msg {
-			return configEditMsg{err: fmt.Errorf("config path is unavailable")}
-		}
-	}
-	return tea.ExecProcess(editorCommand(path), func(err error) tea.Msg {
-		if err != nil {
-			return configEditMsg{err: fmt.Errorf("%s: editor: %w", path, err)}
-		}
-		cfg, err := config.LoadExisting(path)
-		if err != nil {
-			return configEditMsg{err: fmt.Errorf("%s: %w", path, err)}
-		}
-		return configEditMsg{cfg: cfg}
-	})
-}
-
-// resolveEditor returns the editor executable for the configuration file. It
-// is the only resolution point, so the footer notice and the launched program
-// cannot disagree.
-func resolveEditor() string {
-	if editor := strings.TrimSpace(os.Getenv("VISUAL")); editor != "" {
-		return editor
-	}
-	if editor := strings.TrimSpace(os.Getenv("EDITOR")); editor != "" {
-		return editor
-	}
-	if runtime.GOOS == "windows" {
-		return "notepad.exe"
-	}
-	return "vi"
-}
-
-// editorNotice tells the user which editor E opens and how to change it.
-func editorNotice() string {
-	return "Opening config in " + resolveEditor() + ". Set $VISUAL or $EDITOR to change."
-}
-
-func editorCommand(path string) *exec.Cmd {
-	return exec.Command(resolveEditor(), path)
 }
 
 func openBrowserCmd(url string) tea.Cmd {

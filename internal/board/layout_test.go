@@ -458,16 +458,32 @@ func flatten(value string) string {
 	return strings.Join(strings.Fields(value), "")
 }
 
+// defaultView returns a copy of the default view with this identifier.
+func defaultView(t *testing.T, id string) config.View {
+	t.Helper()
+	view, ok := config.DefaultView(id)
+	if !ok {
+		t.Fatalf("no default view %q", id)
+	}
+	return view
+}
+
 func TestEmptyViewsExplainTheViewAndNameTheNextKeys(t *testing.T) {
 	custom := config.View{ID: "team", Title: "Team", Query: "is:open label:team", Scope: config.ScopeGlobal}
+	editedQuery := defaultView(t, config.ViewAuthored)
+	editedQuery.Query = "is:open author:@me label:bug"
+	editedScope := defaultView(t, config.ViewAll)
+	editedScope.Scope = config.ScopeGlobal
 	cases := []struct {
 		view config.View
 		want string
 	}{
-		{config.View{ID: config.ViewAuthored, Title: "Opened by me", Query: "is:open author:@me"}, "You have no open pull requests."},
-		{config.View{ID: config.ViewReview, Title: "Review requested", Query: "is:open review-requested:@me"}, "No open pull requests wait for your review."},
-		{config.View{ID: config.ViewAll, Title: "All open", Query: "is:open"}, "No open pull requests are in the configured scopes."},
+		{defaultView(t, config.ViewAuthored), "You have no open pull requests."},
+		{defaultView(t, config.ViewReview), "No open pull requests wait for your review."},
+		{defaultView(t, config.ViewAll), "No open pull requests are in the configured scopes."},
 		{custom, `No pull requests match "is:open label:team".`},
+		{editedQuery, `No pull requests match "is:open author:@me label:bug".`},
+		{editedScope, `No pull requests match "is:open".`},
 	}
 	for _, tc := range cases {
 		for _, width := range []int{30, 40, 60, 80, 120} {
@@ -497,8 +513,7 @@ func TestEmptyViewsExplainTheViewAndNameTheNextKeys(t *testing.T) {
 }
 
 func TestEmptyViewNamesTabOnlyWhenAnotherViewExists(t *testing.T) {
-	only := config.View{ID: config.ViewAll, Title: "All open", Query: "is:open"}
-	single := stripANSI(emptyViewModel(t, 80, only).View())
+	single := stripANSI(emptyViewModel(t, 80, defaultView(t, config.ViewAll)).View())
 	if strings.Contains(single, "Tab next view") {
 		t.Fatalf("one view offers a next view:\n%s", single)
 	}
@@ -510,8 +525,7 @@ func TestEmptyViewNamesTabOnlyWhenAnotherViewExists(t *testing.T) {
 }
 
 func TestEmptyViewKeepsLoadingFilterAndErrorText(t *testing.T) {
-	view := config.View{ID: config.ViewAuthored, Title: "Opened by me", Query: "is:open author:@me"}
-	model := emptyViewModel(t, 80, view)
+	model := emptyViewModel(t, 80, defaultView(t, config.ViewAuthored))
 
 	model.loading = true
 	if got := stripANSI(model.renderTable(model.boardLayout())); !strings.Contains(got, "Loading pull requests…") {
@@ -528,5 +542,42 @@ func TestEmptyViewKeepsLoadingFilterAndErrorText(t *testing.T) {
 	model.views[0].Err = errors.New("timeout")
 	if got := stripANSI(model.renderTable(model.boardLayout())); !strings.Contains(got, "GitHub query failed: timeout") {
 		t.Fatalf("error text changed: %q", got)
+	}
+}
+
+// TestEmptyViewFitsShortTerminalsAndKeepsTheKeys covers a long custom query in
+// a small pane. The empty state must never push the tabs off the screen,
+// because the mouse rows assume that the tabs stay at their rendered row.
+func TestEmptyViewFitsShortTerminalsAndKeepsTheKeys(t *testing.T) {
+	long := config.View{ID: "team", Title: "Team", Scope: config.ScopeGlobal,
+		Query: "is:open " + strings.Repeat("label:needs-a-very-long-triage-label ", 8)}
+	for _, width := range []int{30, 40, 60, 80} {
+		for _, height := range []int{15, 20, 24, 30} {
+			model := emptyViewModel(t, width, long, defaultView(t, config.ViewAll))
+			model.height = height
+			rendered := stripANSI(model.View())
+			lines := strings.Split(rendered, "\n")
+			if len(lines) > height {
+				t.Fatalf("width %d height %d: rendered %d lines:\n%s", width, height, len(lines), rendered)
+			}
+			for _, pair := range []string{"Tab next view", "E edit config", "r refresh"} {
+				if !strings.Contains(rendered, pair) {
+					t.Fatalf("width %d height %d: missing %q:\n%s", width, height, pair, rendered)
+				}
+			}
+			for _, line := range lines {
+				if got := lipgloss.Width(line); got > width {
+					t.Fatalf("width %d height %d: line is %d cells wide:\n%q", width, height, got, line)
+				}
+			}
+			tabs := stripANSI(strings.Split(model.View(), "\n")[tabRowY])
+			label := model.tabLabel(0, model.views[0])
+			if !strings.Contains(tabs, label) {
+				t.Fatalf("width %d height %d: tab row %q lost label %q", width, height, tabs, label)
+			}
+			if index, ok := model.tabAtX(lipgloss.Width(tabs[:strings.Index(tabs, label)])); !ok || index != 0 {
+				t.Fatalf("width %d height %d: tabAtX = %d, %v, want 0", width, height, index, ok)
+			}
+		}
 	}
 }

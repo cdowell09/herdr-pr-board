@@ -3,6 +3,7 @@ package board
 import (
 	"context"
 	"errors"
+	"io"
 	"path/filepath"
 	"regexp"
 	"runtime"
@@ -359,9 +360,9 @@ func TestModelConfigShortcutReloadsCompleteConfig(t *testing.T) {
 		{View: next.Views[1]},
 	}}}
 	var editedPath string
-	model.editConfig = func(path string) tea.Cmd {
+	model.editConfig = func(path string) (string, tea.Cmd) {
 		editedPath = path
-		return func() tea.Msg { return configEditMsg{cfg: next} }
+		return "", func() tea.Msg { return configEditMsg{cfg: next} }
 	}
 
 	updated, command := model.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'E'}})
@@ -1103,7 +1104,7 @@ func fallbackEditor() string {
 }
 
 // TestEditorResolutionNamesTheLaunchedExecutable covers every resolution path
-// and proves that the footer notice names the executable that the board runs.
+// and proves that the notice names the executable that the board runs.
 func TestEditorResolutionNamesTheLaunchedExecutable(t *testing.T) {
 	visual := "/Applications/Visual Studio Code.app/Contents/MacOS/Electron"
 	cases := []struct {
@@ -1125,15 +1126,50 @@ func TestEditorResolutionNamesTheLaunchedExecutable(t *testing.T) {
 				t.Fatalf("resolveEditor() = %q, want %q", got, tc.want)
 			}
 			path := filepath.Join(t.TempDir(), "config.toml")
-			command := editorCommand(path)
-			if len(command.Args) != 2 || command.Args[0] != tc.want || command.Args[1] != path {
-				t.Fatalf("editor command = %#v, want %q %q", command.Args, tc.want, path)
+			launch := newEditorLaunch(path)
+			if args := launch.command.Args; len(args) != 2 || args[0] != tc.want || args[1] != path {
+				t.Fatalf("editor command = %#v, want %q %q", args, tc.want, path)
 			}
 			want := "Opening config in " + tc.want + ". Set $VISUAL or $EDITOR to change."
-			if got := editorNotice(); got != want {
-				t.Fatalf("editorNotice() = %q, want %q", got, want)
+			if launch.notice != want {
+				t.Fatalf("notice = %q, want %q", launch.notice, want)
+			}
+			notice, command := editConfigCmd(path)
+			if notice != want || command == nil {
+				t.Fatalf("editConfigCmd notice = %q, want %q", notice, want)
 			}
 		})
+	}
+}
+
+// TestEditorLaunchWritesTheNoticeToTheReleasedTerminal covers the frame that
+// the board cannot show. Bubble Tea leaves the alternate screen before it runs
+// the editor, so the launch writes the notice to the terminal itself. The
+// write comes first, so a missing editor still names itself.
+func TestEditorLaunchWritesTheNoticeToTheReleasedTerminal(t *testing.T) {
+	t.Setenv("VISUAL", "herdr-pr-board-editor-that-does-not-exist")
+	t.Setenv("EDITOR", "")
+	launch := newEditorLaunch(filepath.Join(t.TempDir(), "config.toml"))
+	var terminal strings.Builder
+	launch.SetStdin(strings.NewReader(""))
+	launch.SetStdout(&terminal)
+	launch.SetStderr(io.Discard)
+	if err := launch.Run(); err == nil {
+		t.Fatal("a missing editor reported success")
+	}
+	if got := strings.TrimRight(terminal.String(), "\r\n"); got != launch.notice {
+		t.Fatalf("the terminal received %q, want %q", got, launch.notice)
+	}
+}
+
+func TestEditConfigCommandStaysSilentWithoutAPath(t *testing.T) {
+	notice, command := editConfigCmd("  ")
+	if notice != "" {
+		t.Fatalf("announced an editor for an unavailable path: %q", notice)
+	}
+	message, ok := command().(configEditMsg)
+	if !ok || message.err == nil {
+		t.Fatalf("message = %#v, want a configuration edit failure", message)
 	}
 }
 
@@ -1144,9 +1180,10 @@ func TestEditKeyAnnouncesTheEditorAndValidationReplacesTheNotice(t *testing.T) {
 	model.configPath = filepath.Join(t.TempDir(), "config.toml")
 	model.loading = false
 	launched := ""
-	model.editConfig = func(path string) tea.Cmd {
-		launched = resolveEditor()
-		return nil
+	model.editConfig = func(path string) (string, tea.Cmd) {
+		launch := newEditorLaunch(path)
+		launched = launch.command.Args[0]
+		return launch.notice, nil
 	}
 
 	updated, _ := model.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("E")})

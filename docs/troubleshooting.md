@@ -199,7 +199,8 @@ Opening config in vi. Set $VISUAL or $EDITOR to change.
 ```
 
 The message names the same executable that the board runs.
-It stays on the screen while the editor runs.
+The board leaves its screen before the editor starts.
+It writes the same line to the terminal, above the editor.
 
 The board validates the file after the editor exits.
 It reloads valid changes and refreshes all views.
