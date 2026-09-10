@@ -172,6 +172,7 @@ type Model struct {
 	loader           discovery.Loader
 	openBrowser      func(url string) tea.Cmd
 	editConfig       func(path string) (notice string, cmd tea.Cmd)
+	lookPath         func(string) (string, error) // repository setup probe; nil selects exec.LookPath
 	refresh          time.Duration
 	views            []discovery.ViewData
 	active           int

@@ -76,7 +76,7 @@ func TestActiveViewRevisionChangeInvalidatesAutomaticStatus(t *testing.T) {
 
 func TestAutomaticPublicationSelectorUsesRenderedRow(t *testing.T) {
 	m := panelModel(t)
-	setup, err := newRepositorySetup(m.cfg, m.reviewPanel.pr.Repository)
+	setup, err := newRepositorySetup(m.cfg, m.reviewPanel.pr.Repository, installedAgents(fakeLookPath("pi")))
 	if err != nil {
 		t.Fatal(err)
 	}

@@ -109,6 +109,13 @@ Custom programs keep their own instruction interface.
 Press `v` to open the selected PR's review history.
 The panel opens repository setup when the repository has no saved settings.
 Choose a reviewer and save the settings.
+Setup looks for each built-in agent CLI on PATH when it opens.
+The reviewer row starts at the first built-in reviewer that PATH holds.
+Setup keeps a saved reviewer, even when its agent CLI is absent.
+The reviewer row shows `not installed` for an absent agent CLI.
+Setup shows an install hint when PATH holds no built-in agent CLI.
+This check reads PATH only. It sends no GitHub request.
+Setup does not check a custom reviewer command.
 The setup header shows that manual reviews are ready when automatic launches are off.
 It names Enter to save the settings and `n` to run the review.
 Press `n` in the review panel to start the review.

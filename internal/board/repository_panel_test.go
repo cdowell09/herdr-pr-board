@@ -115,7 +115,7 @@ func TestPublicationControlsTargetLatestCompletion(t *testing.T) {
 func TestNarrowSetupKeepsEveryPermissionIndicatorVisible(t *testing.T) {
 	m := panelModel(t)
 	m.width = 30
-	setup, err := newRepositorySetup(m.cfg, "acme/repo")
+	setup, err := newRepositorySetup(m.cfg, "acme/repo", installedAgents(fakeLookPath("pi")))
 	if err != nil {
 		t.Fatal(err)
 	}

@@ -7,23 +7,62 @@ import (
 	"strings"
 )
 
+// builtins is the single source for built-in reviewer IDs and for the agent
+// program each adapter runs when the user selects no --<id>-executable.
+//
+// The adapter packages do not export that program name. Each adapter passes its
+// ID as agentadapter.Options.Name, and agentadapter.Run uses Name as the binary
+// when Binary is empty. Keep each executable below equal to the Name literal in
+// internal/<id>adapter. Add one row here with each new adapter.
+var builtins = []struct{ ID, Executable string }{
+	{"pi", "pi"},
+	{"codex", "codex"},
+	{"claude", "claude"},
+	{"qwen", "qwen"},
+	{"omp", "omp"},
+	{"kimi", "kimi"},
+	{"qodercli", "qodercli"},
+	{"copilot", "copilot"},
+	{"mastracode", "mastracode"},
+	{"hermes", "hermes"},
+	{"cursor", "cursor"},
+	{"antigravity", "antigravity"},
+	{"grok", "grok"},
+}
+
 // BuiltinReviewers returns the commands available during repository setup.
 func BuiltinReviewers(binary string) []Reviewer {
-	return []Reviewer{
-		{ID: "pi", Command: []string{binary, "--pi-reviewer"}},
-		{ID: "codex", Command: []string{binary, "--codex-reviewer"}},
-		{ID: "claude", Command: []string{binary, "--claude-reviewer"}},
-		{ID: "qwen", Command: []string{binary, "--qwen-reviewer"}},
-		{ID: "omp", Command: []string{binary, "--omp-reviewer"}},
-		{ID: "kimi", Command: []string{binary, "--kimi-reviewer"}},
-		{ID: "qodercli", Command: []string{binary, "--qodercli-reviewer"}},
-		{ID: "copilot", Command: []string{binary, "--copilot-reviewer"}},
-		{ID: "mastracode", Command: []string{binary, "--mastracode-reviewer"}},
-		{ID: "hermes", Command: []string{binary, "--hermes-reviewer"}},
-		{ID: "cursor", Command: []string{binary, "--cursor-reviewer"}},
-		{ID: "antigravity", Command: []string{binary, "--antigravity-reviewer"}},
-		{ID: "grok", Command: []string{binary, "--grok-reviewer"}},
+	reviewers := make([]Reviewer, 0, len(builtins))
+	for _, builtin := range builtins {
+		reviewers = append(reviewers, Reviewer{ID: builtin.ID, Command: []string{binary, "--" + builtin.ID + "-reviewer"}})
 	}
+	return reviewers
+}
+
+// BuiltinExecutable returns the agent program a built-in reviewer ID runs by
+// default. It returns an empty string for a custom reviewer ID.
+func BuiltinExecutable(id string) string {
+	for _, builtin := range builtins {
+		if builtin.ID == id {
+			return builtin.Executable
+		}
+	}
+	return ""
+}
+
+// Executable returns the agent program repository setup must find on PATH for
+// this reviewer. It returns an empty string when setup must not probe PATH.
+// A custom command and an explicit --<id>-executable path both name their own
+// program, so setup counts them as available.
+func (r Reviewer) Executable() string {
+	builtin := r.Builtin()
+	if builtin == "" {
+		return ""
+	}
+	if _, selected := commandOption(r.Command, builtin+"-executable", false); selected {
+		return ""
+	}
+	return BuiltinExecutable(builtin)
 }
 
 // Builtin identifies the selected native adapter without changing command arguments.

@@ -80,6 +80,9 @@ func (m Model) repositoryContent() []repositoryLine {
 			row = label + left + "▏" + right
 		}
 		add(prefix+row, i)
+		if i == repositoryReviewerRow && s.noAgentInstalled() {
+			add("No agent CLI found on PATH. Install one, then reopen settings.", -1)
+		}
 		if i == skillRow && s.selectedReviewer().Builtin() != "" {
 			add("A custom prompt replaces default criteria. A skill adds requirements.", -1)
 			add("New relative paths start in the configuration directory.", -1)

@@ -11,6 +11,12 @@ The first review action opens repository settings when the repository has no sav
 The panel groups settings under Reviews, GitHub permissions, Automatic posting, Global views, and Advanced.
 The rows keep that order.
 Select a reviewer under Reviews with the arrow keys or Space.
+Setup looks for each built-in agent CLI on PATH when it opens.
+The reviewer row starts at the first built-in reviewer that PATH holds.
+Setup keeps a saved reviewer, even when its agent CLI is absent.
+The reviewer row shows `not installed` for an absent agent CLI.
+Setup shows an install hint when PATH holds no built-in agent CLI.
+Setup does not check a custom reviewer command.
 Enable automatic launches only when you want unattended reviews.
 Enable Comments under GitHub permissions to allow comments.
 Permission allows publication but does not schedule publication.
