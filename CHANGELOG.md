@@ -2,6 +2,63 @@
 
 This file lists notable changes to PR Board.
 
+## 0.7.0 - 2026-09-10
+
+PR Board makes the first run faster to set up and adds six more review adapters.
+
+### Highlights
+
+- Open the board on Herdr 0.8 macOS and Linux. The pane now starts through the bash wrapper, so a fresh install no longer fails with `No viable candidates found in PATH`.
+- Set up reviews faster. Repository setup finds installed agent CLIs and starts at one you have, puts essentials before the prompt and skill files, and shows that manual reviews are ready without monitor noise.
+- Choose Copilot, Mastra Code, Hermes, Cursor, Antigravity, or Grok alongside the seven existing adapters.
+- Find your way around. Press `?` for a help overlay, read tailored text and next keys on an empty view, and see the editor name before `E` opens it.
+- Diagnose faster. `--version` prints the version and build revision, the title bar shows the version, and an authentication failure names `gh auth login` instead of the raw 401 body.
+
+See [agent compatibility](https://github.com/cdowell09/herdr-pr-board/blob/v0.7.0/docs/agent-compatibility.md) for the new adapters' CLI versions, authentication, and assessed limitations.
+See [reviewer detection](https://github.com/cdowell09/herdr-pr-board/blob/v0.7.0/docs/reviews.md#detect-installed-agent-clis) for the PATH rules.
+
+### Upgrade
+
+```sh
+herdr plugin install cdowell09/herdr-pr-board --ref v0.7.0
+```
+
+Reopen the board to load the new binary.
+Restart an older monitor after its active reviews finish.
+
+<details>
+<summary>Full changelog</summary>
+
+### Bug Fixes
+
+- Replace raw 401 body with a gh auth login hint (#136)
+- Normalize repository-settings JSON keys and TOML spacing (#137)
+- Start the Unix pane through the bash wrapper (#144)
+
+### Documentation
+
+- First-run onboarding walkthrough (#124)
+- Add ADR 0002 and core user journeys (#130)
+- Explain the Go prerequisite in README (#135)
+- Trim README polish and refresh board screenshots (#143)
+
+### Features
+
+- Add Copilot and Mastra review adapters (#108)
+- Add Hermes, Cursor, Antigravity, and Grok reviewers (#109)
+- Invite manual reviews before automation (#134)
+- Add a ? help overlay and fix the footer meta line (#138)
+- Put setup essentials before advanced files (#139)
+- Explain empty views and announce the editor (#141)
+- Detect installed agent CLIs and show reviewer position (#140)
+- Add --version and show the version in the title bar (#142)
+
+### Testing
+
+- Fix Windows fixture readiness races (#107)
+
+</details>
+
 ## 0.6.0 - 2026-09-08
 
 PR Board adds native Windows support and more ways to configure agent reviews.
