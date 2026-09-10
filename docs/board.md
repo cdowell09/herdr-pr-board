@@ -8,6 +8,23 @@ The plugin supplies these default views:
 
 You can add, remove, rename, or move views in `config.toml`.
 
+A view with no pull requests shows text for that view and the next keys:
+
+| View | Text |
+| --- | --- |
+| **Opened by me** | `You have no open pull requests.` |
+| **Review requested** | `No open pull requests wait for your review.` |
+| **All open** | `No open pull requests are in the configured scopes.` |
+| A view that you add | `No pull requests match "<query>".` |
+
+A default view keeps its text while it keeps the default query and scope.
+A default view with a changed query or scope names the query.
+Each empty view names `Tab` for the next view, `E` to edit the configuration, and `r` to refresh.
+The board omits `Tab` when the configuration has one view.
+The text wraps on narrow terminals. No width removes a key.
+A short terminal makes the text shorter. Then it shows the keys without the actions.
+The filter, loading, and error messages replace this text.
+
 The board shows the URL of the selected PR.
 
 The CI column uses a symbol and a color:
@@ -85,6 +102,8 @@ The filter ignores letter case and makes no GitHub requests.
 Press `E` to edit the active configuration while the board runs.
 The board uses `$VISUAL`, then `$EDITOR`.
 The fallback editor is Notepad on Windows and `vi` on macOS and Linux.
+The footer names the editor before it starts. For example: `Opening config in vi. Set $VISUAL or $EDITOR to change.`
+The board also writes this line to the terminal that the editor uses.
 It validates the file after the editor exits. It reloads valid changes and refreshes all views.
 It keeps the previous configuration when the editor or validation fails.
 

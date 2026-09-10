@@ -7,6 +7,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/cdowell09/herdr-pr-board/internal/config"
 	"github.com/cdowell09/herdr-pr-board/internal/discovery"
 	gh "github.com/cdowell09/herdr-pr-board/internal/github"
 	tea "github.com/charmbracelet/bubbletea"
@@ -431,5 +432,171 @@ func TestModelNarrowLayoutsFitStaleAndErrorLines(t *testing.T) {
 				}
 			}
 		}
+	}
+}
+
+// emptyViewModel builds a board where every view has no pull requests.
+func emptyViewModel(t *testing.T, width int, views ...config.View) Model {
+	t.Helper()
+	cfg := testConfig()
+	cfg.Views = views
+	model, err := NewModel(cfg, fakeLoader{}, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for i := range model.views {
+		model.views[i].UpdatedAt = time.Now()
+	}
+	model.loading = false
+	model.width, model.height = width, 30
+	return model
+}
+
+// flatten removes the line breaks that wrapping adds, so one assertion covers
+// every terminal width.
+func flatten(value string) string {
+	return strings.Join(strings.Fields(value), "")
+}
+
+// defaultView returns a copy of the default view with this identifier.
+func defaultView(t *testing.T, id string) config.View {
+	t.Helper()
+	view, ok := config.DefaultView(id)
+	if !ok {
+		t.Fatalf("no default view %q", id)
+	}
+	return view
+}
+
+func TestEmptyViewsExplainTheViewAndNameTheNextKeys(t *testing.T) {
+	custom := config.View{ID: "team", Title: "Team", Query: "is:open label:team", Scope: config.ScopeGlobal}
+	editedQuery := defaultView(t, config.ViewAuthored)
+	editedQuery.Query = "is:open author:@me label:bug"
+	editedScope := defaultView(t, config.ViewAll)
+	editedScope.Scope = config.ScopeGlobal
+	cases := []struct {
+		view config.View
+		want string
+	}{
+		{defaultView(t, config.ViewAuthored), "You have no open pull requests."},
+		{defaultView(t, config.ViewReview), "No open pull requests wait for your review."},
+		{defaultView(t, config.ViewAll), "No open pull requests are in the configured scopes."},
+		{custom, `No pull requests match "is:open label:team".`},
+		{editedQuery, `No pull requests match "is:open author:@me label:bug".`},
+		{editedScope, `No pull requests match "is:open".`},
+	}
+	for _, tc := range cases {
+		for _, width := range []int{30, 40, 60, 80, 120} {
+			model := emptyViewModel(t, width, tc.view, custom)
+			rendered := stripANSI(model.View())
+			if !strings.Contains(flatten(rendered), flatten(tc.want)) {
+				t.Fatalf("view %q width %d: missing %q:\n%s", tc.view.ID, width, tc.want, rendered)
+			}
+			if strings.Contains(rendered, "No pull requests in this view.") {
+				t.Fatalf("view %q width %d: kept the untailored text:\n%s", tc.view.ID, width, rendered)
+			}
+			for _, pair := range []string{"Tab next view", "E edit config", "r refresh"} {
+				if !strings.Contains(rendered, pair) {
+					t.Fatalf("view %q width %d: missing %q:\n%s", tc.view.ID, width, pair, rendered)
+				}
+			}
+			for _, line := range strings.Split(rendered, "\n") {
+				if got := lipgloss.Width(line); got > width {
+					t.Fatalf("view %q width %d: line is %d cells wide:\n%q", tc.view.ID, width, got, line)
+				}
+			}
+			if lines := len(strings.Split(rendered, "\n")); lines > model.height {
+				t.Fatalf("view %q width %d: rendered %d lines in a %d-line terminal", tc.view.ID, width, lines, model.height)
+			}
+		}
+	}
+}
+
+func TestEmptyViewNamesTabOnlyWhenAnotherViewExists(t *testing.T) {
+	single := stripANSI(emptyViewModel(t, 80, defaultView(t, config.ViewAll)).View())
+	if strings.Contains(single, "Tab next view") {
+		t.Fatalf("one view offers a next view:\n%s", single)
+	}
+	for _, pair := range []string{"E edit config", "r refresh"} {
+		if !strings.Contains(single, pair) {
+			t.Fatalf("one view drops %q:\n%s", pair, single)
+		}
+	}
+}
+
+func TestEmptyViewKeepsLoadingFilterAndErrorText(t *testing.T) {
+	model := emptyViewModel(t, 80, defaultView(t, config.ViewAuthored))
+
+	model.loading = true
+	if got := stripANSI(model.renderTable(model.boardLayout())); !strings.Contains(got, "Loading pull requests…") {
+		t.Fatalf("loading text changed: %q", got)
+	}
+
+	model.loading = false
+	model.filter = "nothing"
+	if got := stripANSI(model.renderTable(model.boardLayout())); !strings.Contains(got, "No pull requests match the filter.") {
+		t.Fatalf("filter text changed: %q", got)
+	}
+
+	model.filter = ""
+	model.views[0].Err = errors.New("timeout")
+	if got := stripANSI(model.renderTable(model.boardLayout())); !strings.Contains(got, "GitHub query failed: timeout") {
+		t.Fatalf("error text changed: %q", got)
+	}
+}
+
+// TestEmptyViewFitsShortTerminalsAndKeepsTheKeys covers a long custom query in
+// a small pane. The empty state must never push the tabs off the screen,
+// because the mouse rows assume that the tabs stay at their rendered row.
+func TestEmptyViewFitsShortTerminalsAndKeepsTheKeys(t *testing.T) {
+	long := config.View{ID: "team", Title: "Team", Scope: config.ScopeGlobal,
+		Query: "is:open " + strings.Repeat("label:needs-a-very-long-triage-label ", 8)}
+	for _, width := range []int{30, 40, 60, 80} {
+		for height := 10; height <= 30; height++ {
+			model := emptyViewModel(t, width, long, defaultView(t, config.ViewAll))
+			model.height = height
+			rendered := stripANSI(model.View())
+			lines := strings.Split(rendered, "\n")
+			if len(lines) > height {
+				t.Fatalf("width %d height %d: rendered %d lines:\n%s", width, height, len(lines), rendered)
+			}
+			for _, line := range lines {
+				if got := lipgloss.Width(line); got > width {
+					t.Fatalf("width %d height %d: line is %d cells wide:\n%q", width, height, got, line)
+				}
+			}
+			label := model.tabLabel(0, model.views[0])
+			tabs := stripANSI(lines[tabRowY])
+			start := strings.Index(tabs, label)
+			if start < 0 {
+				t.Fatalf("width %d height %d: tab row %q lost label %q", width, height, tabs, label)
+			}
+			if index, ok := model.tabAtX(lipgloss.Width(tabs[:start])); !ok || index != 0 {
+				t.Fatalf("width %d height %d: tabAtX = %d, %v, want 0", width, height, index, ok)
+			}
+			if height < 12 {
+				// A short pane drops the actions, then the keys.
+				continue
+			}
+			for _, pair := range []string{"Tab next view", "E edit config", "r refresh"} {
+				if !strings.Contains(rendered, pair) {
+					t.Fatalf("width %d height %d: missing %q:\n%s", width, height, pair, rendered)
+				}
+			}
+		}
+	}
+}
+
+// TestEmptyViewKeepsTheKeysWithoutTheActions covers the pane that holds the
+// keys but not the actions next to them.
+func TestEmptyViewKeepsTheKeysWithoutTheActions(t *testing.T) {
+	model := emptyViewModel(t, 30, defaultView(t, config.ViewAll), defaultView(t, config.ViewAuthored))
+	model.height = 11
+	rendered := stripANSI(model.View())
+	if !strings.Contains(rendered, "Tab · E · r") {
+		t.Fatalf("a short pane dropped the keys:\n%s", rendered)
+	}
+	if lines := strings.Split(rendered, "\n"); len(lines) > model.height {
+		t.Fatalf("rendered %d lines in a %d-line terminal:\n%s", len(lines), model.height, rendered)
 	}
 }

@@ -21,13 +21,19 @@ const (
 	ScopeGlobal     ScopeMode = "global"
 	ScopeConfigured ScopeMode = "configured"
 
+	// ViewAuthored, ViewReview, and ViewAll are the identifiers of the three
+	// default views. The board tailors empty-view text for each one.
+	ViewAuthored = "authored"
+	ViewReview   = "review"
+	ViewAll      = "all"
+
 	defaultTitle             = "Pull Requests"
 	defaultRefreshInterval   = "5m"
 	defaultLimitPerScope     = 100
 	defaultMaxConcurrency    = 4
 	defaultCIBatchSize       = 25
 	defaultSidebarTTL        = "15m"
-	defaultSidebarReview     = "review"
+	defaultSidebarReview     = ViewReview
 	defaultReviewConcurrency = 1
 	defaultReviewTimeout     = "30m"
 
@@ -40,25 +46,7 @@ limit_per_scope = %d
 max_concurrency = %d
 ci_batch_size = %d
 scopes = ["user:@me"]
-
-[[views]]
-id = "authored"
-title = "Opened by me"
-query = "is:open author:@me"
-scope = %q
-
-[[views]]
-id = "review"
-title = "Review requested"
-query = "is:open review-requested:@me"
-scope = %q
-
-[[views]]
-id = "all"
-title = "All open"
-query = "is:open"
-scope = %q
-
+%s
 [sidebar]
 enabled = true
 ttl = %q
@@ -72,6 +60,15 @@ timeout = %q
 )
 
 var (
+	// defaultViews are the views that a new configuration file contains.
+	// DefaultFile renders them, so a caller can compare a configured view
+	// against the default that it started from.
+	defaultViews = []View{
+		{ID: ViewAuthored, Title: "Opened by me", Query: "is:open author:@me", Scope: ScopeGlobal},
+		{ID: ViewReview, Title: "Review requested", Query: "is:open review-requested:@me", Scope: ScopeGlobal},
+		{ID: ViewAll, Title: "All open", Query: "is:open", Scope: ScopeConfigured},
+	}
+
 	DefaultFile = fmt.Sprintf(
 		defaultFileTemplate,
 		defaultTitle,
@@ -79,9 +76,7 @@ var (
 		defaultLimitPerScope,
 		defaultMaxConcurrency,
 		defaultCIBatchSize,
-		ScopeGlobal,
-		ScopeGlobal,
-		ScopeConfigured,
+		defaultViewsSection(),
 		defaultSidebarTTL,
 		defaultSidebarReview,
 		defaultReviewConcurrency,
@@ -89,6 +84,26 @@ var (
 	)
 	idPattern = regexp.MustCompile(`^[a-z][a-z0-9_-]*$`)
 )
+
+// defaultViewsSection renders the views of a new configuration file.
+func defaultViewsSection() string {
+	var section strings.Builder
+	for _, view := range defaultViews {
+		fmt.Fprintf(&section, "\n[[views]]\nid = %q\ntitle = %q\nquery = %q\nscope = %q\n", view.ID, view.Title, view.Query, view.Scope)
+	}
+	return section.String()
+}
+
+// DefaultView returns the default view with this identifier. A caller uses it
+// to find out whether a configured view keeps the default query and scope.
+func DefaultView(id string) (View, bool) {
+	for _, view := range defaultViews {
+		if view.ID == id {
+			return view, true
+		}
+	}
+	return View{}, false
+}
 
 type Config struct {
 	Review       ReviewConfig  `toml:"review"`

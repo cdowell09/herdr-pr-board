@@ -3,7 +3,6 @@ package board
 import (
 	"context"
 	"fmt"
-	"os"
 	"os/exec"
 	"runtime"
 	"sort"
@@ -28,11 +27,17 @@ const (
 	sidebarReportTimeout = 15 * time.Second
 )
 
+// tableHeaderRows is the height of the table header: the column row and its
+// bottom border. A view with no rows renders neither, so its text has these
+// rows too.
+const tableHeaderRows = 2
+
 // boardLayout is the row geometry shared by rendering and mouse hit-testing.
 type boardLayout struct {
 	firstPRRow     int
 	selectedURLRow int
 	visibleRows    int
+	emptyRows      int
 }
 
 func (m Model) boardLayout() boardLayout {
@@ -44,13 +49,21 @@ func (m Model) boardLayout() boardLayout {
 	if pr, ok := m.selectedPR(); ok {
 		detailRows = len(m.selectedReviewLines(pr))
 	}
-	visibleRows := max(1, m.height-firstPRRow-3-len(m.footerHelpLines())-detailRows)
+	// budget is the space between the first PR row and the footer. A view with
+	// no rows renders no table header, so it keeps those rows too.
+	budget := m.height - firstPRRow - 3 - len(m.footerHelpLines()) - detailRows
+	visibleRows := max(1, budget)
 	rows := m.filteredPRs()
 	selectedURLRow := firstPRRow
 	if len(rows) > 0 {
 		selectedURLRow = firstPRRow + 1 + min(visibleRows, max(0, len(rows)-m.offset))
 	}
-	return boardLayout{firstPRRow: firstPRRow, selectedURLRow: selectedURLRow, visibleRows: visibleRows}
+	return boardLayout{
+		firstPRRow:     firstPRRow,
+		selectedURLRow: selectedURLRow,
+		visibleRows:    visibleRows,
+		emptyRows:      max(1, budget+tableHeaderRows),
+	}
 }
 
 var (
@@ -158,7 +171,7 @@ type Model struct {
 	configPath       string
 	loader           discovery.Loader
 	openBrowser      func(url string) tea.Cmd
-	editConfig       func(path string) tea.Cmd
+	editConfig       func(path string) (notice string, cmd tea.Cmd)
 	refresh          time.Duration
 	views            []discovery.ViewData
 	active           int
@@ -168,6 +181,7 @@ type Model struct {
 	width            int
 	height           int
 	filter           string
+	editorNotice     string
 	editing          bool
 	helpOverlay      bool
 	loading          bool
@@ -395,6 +409,8 @@ func (m Model) updateFilter(key tea.KeyMsg) (tea.Model, tea.Cmd) {
 }
 
 func (m Model) updateConfig(message configEditMsg) (tea.Model, tea.Cmd) {
+	// The editor exited, so the validation result replaces the launch notice.
+	m.editorNotice = ""
 	if message.err != nil {
 		m.warning = appendWarning(m.warning, "configuration edit failed: "+message.err.Error())
 		return m, nil
@@ -533,7 +549,11 @@ func (m Model) updateKey(key tea.KeyMsg) (tea.Model, tea.Cmd) {
 			m.warning = appendWarning(m.warning, "configuration editor is unavailable")
 			return m, nil
 		}
-		return m, m.editConfig(m.configPath)
+		notice, command := m.editConfig(m.configPath)
+		// The launch owns the notice, so the footer names the executable
+		// that the board runs.
+		m.editorNotice = notice
+		return m, command
 	case "r":
 		requests := m.currentView().View.SearchRequestCount(len(m.cfg.GitHub.Scopes), m.cfg.GitHub.LimitPerScope)
 		if !m.loading && m.rates.Search.HasCapacity(requests) {
@@ -721,7 +741,7 @@ func (m Model) renderTable(lay boardLayout) string {
 		if m.filter != "" {
 			return dimStyle.Render("No pull requests match the filter.") + "\n"
 		}
-		return dimStyle.Render("No pull requests in this view.") + "\n"
+		return m.renderEmptyView(lay)
 	}
 
 	cols := m.tableLayout()
@@ -746,6 +766,10 @@ func (m Model) renderFooter() string {
 	// Collect the meta parts, then join them. Prefixing a separator to each
 	// part leaves a leading separator when an earlier part is absent.
 	var parts []string
+	if m.editorNotice != "" {
+		// Keep the notice first. A narrow terminal truncates the tail.
+		parts = append(parts, m.editorNotice)
+	}
 	if m.monitorError != "" {
 		parts = append(parts, reviewText(m.monitorError))
 	}
@@ -777,14 +801,45 @@ func (m Model) renderFooter() string {
 // bright and actions dim so the two never blend together.
 func (m Model) footerHelpLines() []string {
 	width := max(1, m.width)
+	lines := packLines(keyPairs(keyHelp), width)
+
+	if m.editing {
+		lines = append(lines, dimStyle.Render("filter: ")+truncate(m.filter+"▌", max(1, width-8)))
+	} else if m.filter != "" {
+		lines = append(lines, dimStyle.Render("filter: ")+truncate(m.filter, max(1, width-8)))
+	}
+	return lines
+}
+
+// keyPairs renders each control as a bright key and a dim action.
+func keyPairs(entries []keyHelpEntry) []string {
+	parts := make([]string, 0, len(entries))
+	for _, entry := range entries {
+		parts = append(parts, keyStyle.Render(entry.keys)+" "+dimStyle.Render(entry.action))
+	}
+	return parts
+}
+
+// keyLabels renders only the key literals. A pane that is too short for the
+// actions keeps every key this way.
+func keyLabels(entries []keyHelpEntry) []string {
+	parts := make([]string, 0, len(entries))
+	for _, entry := range entries {
+		parts = append(parts, keyStyle.Render(entry.keys))
+	}
+	return parts
+}
+
+// packLines puts as many parts on each line as the width holds. A part never
+// breaks, so no width separates a key from its action.
+func packLines(parts []string, width int) []string {
 	separator := dimStyle.Render(" · ")
 	var lines []string
 	current := ""
-	for _, entry := range keyHelp {
-		pair := keyStyle.Render(entry.keys) + " " + dimStyle.Render(entry.action)
-		candidate := pair
+	for _, part := range parts {
+		candidate := part
 		if current != "" {
-			candidate = current + separator + pair
+			candidate = current + separator + part
 		}
 		if lipgloss.Width(candidate) <= width {
 			current = candidate
@@ -793,16 +848,10 @@ func (m Model) footerHelpLines() []string {
 		if current != "" {
 			lines = append(lines, current)
 		}
-		current = pair
+		current = part
 	}
 	if current != "" {
 		lines = append(lines, current)
-	}
-
-	if m.editing {
-		lines = append(lines, dimStyle.Render("filter: ")+truncate(m.filter+"▌", max(1, width-8)))
-	} else if m.filter != "" {
-		lines = append(lines, dimStyle.Render("filter: ")+truncate(m.filter, max(1, width-8)))
 	}
 	return lines
 }
@@ -885,38 +934,6 @@ func (m Model) refreshConfigCmd(cfg config.Config, loader discovery.Loader, refr
 		snapshot := loader.RefreshAll(ctx)
 		return configRefreshMsg{cfg: cfg, loader: loader, refresh: refresh, snapshot: snapshot, epoch: epoch, selectedURL: selectedURL}
 	}
-}
-
-func editConfigCmd(path string) tea.Cmd {
-	if strings.TrimSpace(path) == "" {
-		return func() tea.Msg {
-			return configEditMsg{err: fmt.Errorf("config path is unavailable")}
-		}
-	}
-	return tea.ExecProcess(editorCommand(path), func(err error) tea.Msg {
-		if err != nil {
-			return configEditMsg{err: fmt.Errorf("%s: editor: %w", path, err)}
-		}
-		cfg, err := config.LoadExisting(path)
-		if err != nil {
-			return configEditMsg{err: fmt.Errorf("%s: %w", path, err)}
-		}
-		return configEditMsg{cfg: cfg}
-	})
-}
-
-func editorCommand(path string) *exec.Cmd {
-	editor := strings.TrimSpace(os.Getenv("VISUAL"))
-	if editor == "" {
-		editor = strings.TrimSpace(os.Getenv("EDITOR"))
-	}
-	if editor == "" {
-		editor = "vi"
-		if runtime.GOOS == "windows" {
-			editor = "notepad.exe"
-		}
-	}
-	return exec.Command(editor, path)
 }
 
 func openBrowserCmd(url string) tea.Cmd {

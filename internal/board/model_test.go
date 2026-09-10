@@ -3,6 +3,7 @@ package board
 import (
 	"context"
 	"errors"
+	"io"
 	"path/filepath"
 	"regexp"
 	"runtime"
@@ -359,9 +360,9 @@ func TestModelConfigShortcutReloadsCompleteConfig(t *testing.T) {
 		{View: next.Views[1]},
 	}}}
 	var editedPath string
-	model.editConfig = func(path string) tea.Cmd {
+	model.editConfig = func(path string) (string, tea.Cmd) {
 		editedPath = path
-		return func() tea.Msg { return configEditMsg{cfg: next} }
+		return "", func() tea.Msg { return configEditMsg{cfg: next} }
 	}
 
 	updated, command := model.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'E'}})
@@ -474,34 +475,6 @@ func TestModelConfigEditRespectsSearchCapacity(t *testing.T) {
 	}
 	if !strings.Contains(model.warning, "rate limit exhausted") {
 		t.Fatalf("warning = %q", model.warning)
-	}
-}
-
-func TestEditorCommandPrefersVisual(t *testing.T) {
-	visual := "/Applications/Visual Studio Code.app/Contents/MacOS/Electron"
-	t.Setenv("EDITOR", "nano")
-	t.Setenv("VISUAL", visual)
-
-	command := editorCommand("/tmp/config.toml")
-	if command.Path != visual {
-		t.Fatalf("editor = %q, want %q", command.Path, visual)
-	}
-	if len(command.Args) != 2 || command.Args[1] != "/tmp/config.toml" {
-		t.Fatalf("editor args = %#v, want editor path", command.Args)
-	}
-}
-
-func TestEditorCommandFallsBackToPlatformEditor(t *testing.T) {
-	t.Setenv("VISUAL", "")
-	t.Setenv("EDITOR", "")
-
-	command := editorCommand("config.toml")
-	want := "vi"
-	if runtime.GOOS == "windows" {
-		want = "notepad.exe"
-	}
-	if filepath.Base(command.Path) != want || len(command.Args) != 2 || command.Args[1] != "config.toml" {
-		t.Fatalf("editor command = %#v, want vi config.toml", command.Args)
 	}
 }
 
@@ -1118,5 +1091,132 @@ func TestFailedConfigReloadPreservesSearchObservation(t *testing.T) {
 	view := updated.(Model).views[0]
 	if view.View.Title != "Renamed" || len(view.PRs) != 1 || view.PRs[0].Title != "Retained" || !view.UpdatedAt.Equal(observed) || !view.ObservedAt.Equal(observed) {
 		t.Fatalf("reloaded view=%+v", view)
+	}
+}
+
+// fallbackEditor is the executable the board uses when neither $VISUAL nor
+// $EDITOR names one.
+func fallbackEditor() string {
+	if runtime.GOOS == "windows" {
+		return "notepad.exe"
+	}
+	return "vi"
+}
+
+// TestEditorResolutionNamesTheLaunchedExecutable covers every resolution path
+// and proves that the notice names the executable that the board runs.
+func TestEditorResolutionNamesTheLaunchedExecutable(t *testing.T) {
+	visual := "/Applications/Visual Studio Code.app/Contents/MacOS/Electron"
+	cases := []struct {
+		name   string
+		visual string
+		editor string
+		want   string
+	}{
+		{"visual wins", visual, "nano", visual},
+		{"editor follows visual", "", "vim", "vim"},
+		{"blank values fall back", "   ", "\t", fallbackEditor()},
+		{"unset values fall back", "", "", fallbackEditor()},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Setenv("VISUAL", tc.visual)
+			t.Setenv("EDITOR", tc.editor)
+			if got := resolveEditor(); got != tc.want {
+				t.Fatalf("resolveEditor() = %q, want %q", got, tc.want)
+			}
+			path := filepath.Join(t.TempDir(), "config.toml")
+			launch := newEditorLaunch(path)
+			if args := launch.command.Args; len(args) != 2 || args[0] != tc.want || args[1] != path {
+				t.Fatalf("editor command = %#v, want %q %q", args, tc.want, path)
+			}
+			want := "Opening config in " + tc.want + ". Set $VISUAL or $EDITOR to change."
+			if launch.notice != want {
+				t.Fatalf("notice = %q, want %q", launch.notice, want)
+			}
+			notice, command := editConfigCmd(path)
+			if notice != want || command == nil {
+				t.Fatalf("editConfigCmd notice = %q, want %q", notice, want)
+			}
+		})
+	}
+}
+
+// TestEditorLaunchWritesTheNoticeToTheReleasedTerminal covers the frame that
+// the board cannot show. Bubble Tea leaves the alternate screen before it runs
+// the editor, so the launch writes the notice to the terminal itself. The
+// write comes first, so a missing editor still names itself.
+func TestEditorLaunchWritesTheNoticeToTheReleasedTerminal(t *testing.T) {
+	t.Setenv("VISUAL", "herdr-pr-board-editor-that-does-not-exist")
+	t.Setenv("EDITOR", "")
+	launch := newEditorLaunch(filepath.Join(t.TempDir(), "config.toml"))
+	var terminal strings.Builder
+	launch.SetStdin(strings.NewReader(""))
+	launch.SetStdout(&terminal)
+	launch.SetStderr(io.Discard)
+	if err := launch.Run(); err == nil {
+		t.Fatal("a missing editor reported success")
+	}
+	if got := strings.TrimRight(terminal.String(), "\r\n"); got != launch.notice {
+		t.Fatalf("the terminal received %q, want %q", got, launch.notice)
+	}
+}
+
+func TestEditConfigCommandStaysSilentWithoutAPath(t *testing.T) {
+	notice, command := editConfigCmd("  ")
+	if notice != "" {
+		t.Fatalf("announced an editor for an unavailable path: %q", notice)
+	}
+	message, ok := command().(configEditMsg)
+	if !ok || message.err == nil {
+		t.Fatalf("message = %#v, want a configuration edit failure", message)
+	}
+}
+
+func TestEditKeyAnnouncesTheEditorAndValidationReplacesTheNotice(t *testing.T) {
+	t.Setenv("VISUAL", "")
+	t.Setenv("EDITOR", "")
+	model := layoutModel(t, 120)
+	model.configPath = filepath.Join(t.TempDir(), "config.toml")
+	model.loading = false
+	launched := ""
+	model.editConfig = func(path string) (string, tea.Cmd) {
+		launch := newEditorLaunch(path)
+		launched = launch.command.Args[0]
+		return launch.notice, nil
+	}
+
+	updated, _ := model.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("E")})
+	announced := updated.(Model)
+	notice := "Opening config in " + fallbackEditor() + ". Set $VISUAL or $EDITOR to change."
+	if launched != fallbackEditor() {
+		t.Fatalf("launched %q, want %q", launched, fallbackEditor())
+	}
+	if footer := stripANSI(announced.renderFooter()); !strings.Contains(footer, notice) {
+		t.Fatalf("footer missing %q:\n%s", notice, footer)
+	}
+
+	after, _ := announced.Update(configEditMsg{err: errors.New("editor: exit status 1")})
+	footer := stripANSI(after.(Model).renderFooter())
+	if strings.Contains(footer, notice) {
+		t.Fatalf("the notice outlived the editor:\n%s", footer)
+	}
+	if !strings.Contains(footer, "configuration edit failed: editor: exit status 1") {
+		t.Fatalf("footer missing the validation message:\n%s", footer)
+	}
+}
+
+func TestEditKeyStaysSilentWhenNoEditorLaunches(t *testing.T) {
+	model := layoutModel(t, 120)
+	model.loading = false
+	model.editConfig = nil
+
+	updated, _ := model.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("E")})
+	footer := stripANSI(updated.(Model).renderFooter())
+	if strings.Contains(footer, "Opening config in") {
+		t.Fatalf("announced an editor that does not open:\n%s", footer)
+	}
+	if !strings.Contains(footer, "configuration editor is unavailable") {
+		t.Fatalf("footer missing the unavailable message:\n%s", footer)
 	}
 }
