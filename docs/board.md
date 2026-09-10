@@ -8,6 +8,20 @@ The plugin supplies these default views:
 
 You can add, remove, rename, or move views in `config.toml`.
 
+A view with no pull requests shows text for that view and the next keys:
+
+| View | Text |
+| --- | --- |
+| **Opened by me** | `You have no open pull requests.` |
+| **Review requested** | `No open pull requests wait for your review.` |
+| **All open** | `No open pull requests are in the configured scopes.` |
+| A view that you add | `No pull requests match "<query>".` |
+
+Each empty view names `Tab` for the next view, `E` to edit the configuration, and `r` to refresh.
+The board omits `Tab` when the configuration has one view.
+The text wraps on narrow terminals. No width removes a key.
+The filter, loading, and error messages replace this text.
+
 The board shows the URL of the selected PR.
 
 The CI column uses a symbol and a color:

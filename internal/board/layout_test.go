@@ -7,6 +7,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/cdowell09/herdr-pr-board/internal/config"
 	"github.com/cdowell09/herdr-pr-board/internal/discovery"
 	gh "github.com/cdowell09/herdr-pr-board/internal/github"
 	tea "github.com/charmbracelet/bubbletea"
@@ -431,5 +432,101 @@ func TestModelNarrowLayoutsFitStaleAndErrorLines(t *testing.T) {
 				}
 			}
 		}
+	}
+}
+
+// emptyViewModel builds a board where every view has no pull requests.
+func emptyViewModel(t *testing.T, width int, views ...config.View) Model {
+	t.Helper()
+	cfg := testConfig()
+	cfg.Views = views
+	model, err := NewModel(cfg, fakeLoader{}, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for i := range model.views {
+		model.views[i].UpdatedAt = time.Now()
+	}
+	model.loading = false
+	model.width, model.height = width, 30
+	return model
+}
+
+// flatten removes the line breaks that wrapping adds, so one assertion covers
+// every terminal width.
+func flatten(value string) string {
+	return strings.Join(strings.Fields(value), "")
+}
+
+func TestEmptyViewsExplainTheViewAndNameTheNextKeys(t *testing.T) {
+	custom := config.View{ID: "team", Title: "Team", Query: "is:open label:team", Scope: config.ScopeGlobal}
+	cases := []struct {
+		view config.View
+		want string
+	}{
+		{config.View{ID: config.ViewAuthored, Title: "Opened by me", Query: "is:open author:@me"}, "You have no open pull requests."},
+		{config.View{ID: config.ViewReview, Title: "Review requested", Query: "is:open review-requested:@me"}, "No open pull requests wait for your review."},
+		{config.View{ID: config.ViewAll, Title: "All open", Query: "is:open"}, "No open pull requests are in the configured scopes."},
+		{custom, `No pull requests match "is:open label:team".`},
+	}
+	for _, tc := range cases {
+		for _, width := range []int{30, 40, 60, 80, 120} {
+			model := emptyViewModel(t, width, tc.view, custom)
+			rendered := stripANSI(model.View())
+			if !strings.Contains(flatten(rendered), flatten(tc.want)) {
+				t.Fatalf("view %q width %d: missing %q:\n%s", tc.view.ID, width, tc.want, rendered)
+			}
+			if strings.Contains(rendered, "No pull requests in this view.") {
+				t.Fatalf("view %q width %d: kept the untailored text:\n%s", tc.view.ID, width, rendered)
+			}
+			for _, pair := range []string{"Tab next view", "E edit config", "r refresh"} {
+				if !strings.Contains(rendered, pair) {
+					t.Fatalf("view %q width %d: missing %q:\n%s", tc.view.ID, width, pair, rendered)
+				}
+			}
+			for _, line := range strings.Split(rendered, "\n") {
+				if got := lipgloss.Width(line); got > width {
+					t.Fatalf("view %q width %d: line is %d cells wide:\n%q", tc.view.ID, width, got, line)
+				}
+			}
+			if lines := len(strings.Split(rendered, "\n")); lines > model.height {
+				t.Fatalf("view %q width %d: rendered %d lines in a %d-line terminal", tc.view.ID, width, lines, model.height)
+			}
+		}
+	}
+}
+
+func TestEmptyViewNamesTabOnlyWhenAnotherViewExists(t *testing.T) {
+	only := config.View{ID: config.ViewAll, Title: "All open", Query: "is:open"}
+	single := stripANSI(emptyViewModel(t, 80, only).View())
+	if strings.Contains(single, "Tab next view") {
+		t.Fatalf("one view offers a next view:\n%s", single)
+	}
+	for _, pair := range []string{"E edit config", "r refresh"} {
+		if !strings.Contains(single, pair) {
+			t.Fatalf("one view drops %q:\n%s", pair, single)
+		}
+	}
+}
+
+func TestEmptyViewKeepsLoadingFilterAndErrorText(t *testing.T) {
+	view := config.View{ID: config.ViewAuthored, Title: "Opened by me", Query: "is:open author:@me"}
+	model := emptyViewModel(t, 80, view)
+
+	model.loading = true
+	if got := stripANSI(model.renderTable(model.boardLayout())); !strings.Contains(got, "Loading pull requests…") {
+		t.Fatalf("loading text changed: %q", got)
+	}
+
+	model.loading = false
+	model.filter = "nothing"
+	if got := stripANSI(model.renderTable(model.boardLayout())); !strings.Contains(got, "No pull requests match the filter.") {
+		t.Fatalf("filter text changed: %q", got)
+	}
+
+	model.filter = ""
+	model.views[0].Err = errors.New("timeout")
+	if got := stripANSI(model.renderTable(model.boardLayout())); !strings.Contains(got, "GitHub query failed: timeout") {
+		t.Fatalf("error text changed: %q", got)
 	}
 }

@@ -21,13 +21,19 @@ const (
 	ScopeGlobal     ScopeMode = "global"
 	ScopeConfigured ScopeMode = "configured"
 
+	// ViewAuthored, ViewReview, and ViewAll are the identifiers of the three
+	// default views. The board tailors empty-view text for each one.
+	ViewAuthored = "authored"
+	ViewReview   = "review"
+	ViewAll      = "all"
+
 	defaultTitle             = "Pull Requests"
 	defaultRefreshInterval   = "5m"
 	defaultLimitPerScope     = 100
 	defaultMaxConcurrency    = 4
 	defaultCIBatchSize       = 25
 	defaultSidebarTTL        = "15m"
-	defaultSidebarReview     = "review"
+	defaultSidebarReview     = ViewReview
 	defaultReviewConcurrency = 1
 	defaultReviewTimeout     = "30m"
 
@@ -42,19 +48,19 @@ ci_batch_size = %d
 scopes = ["user:@me"]
 
 [[views]]
-id = "authored"
+id = %q
 title = "Opened by me"
 query = "is:open author:@me"
 scope = %q
 
 [[views]]
-id = "review"
+id = %q
 title = "Review requested"
 query = "is:open review-requested:@me"
 scope = %q
 
 [[views]]
-id = "all"
+id = %q
 title = "All open"
 query = "is:open"
 scope = %q
@@ -79,8 +85,11 @@ var (
 		defaultLimitPerScope,
 		defaultMaxConcurrency,
 		defaultCIBatchSize,
+		ViewAuthored,
 		ScopeGlobal,
+		ViewReview,
 		ScopeGlobal,
+		ViewAll,
 		ScopeConfigured,
 		defaultSidebarTTL,
 		defaultSidebarReview,

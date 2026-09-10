@@ -19,6 +19,7 @@ import (
 	"github.com/cdowell09/herdr-pr-board/internal/sidebar"
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
+	"github.com/charmbracelet/x/ansi"
 )
 
 const (
@@ -122,6 +123,14 @@ var keyHelp = []keyHelpEntry{
 	{"v", "reviews"},
 	{"E", "config"},
 	{"?", "help"},
+}
+
+// emptyViewSteps names the next action for a view that has no pull requests.
+// It repeats the key literals that the footer and the ? overlay use.
+var emptyViewSteps = []keyHelpEntry{
+	{"Tab", "next view"},
+	{"E", "edit config"},
+	{"r", "refresh"},
 }
 
 // documentedKeys lists every key literal the board and review guides must document.
@@ -721,7 +730,7 @@ func (m Model) renderTable(lay boardLayout) string {
 		if m.filter != "" {
 			return dimStyle.Render("No pull requests match the filter.") + "\n"
 		}
-		return dimStyle.Render("No pull requests in this view.") + "\n"
+		return m.renderEmptyView()
 	}
 
 	cols := m.tableLayout()
@@ -777,10 +786,24 @@ func (m Model) renderFooter() string {
 // bright and actions dim so the two never blend together.
 func (m Model) footerHelpLines() []string {
 	width := max(1, m.width)
+	lines := packKeyPairs(keyHelp, width)
+
+	if m.editing {
+		lines = append(lines, dimStyle.Render("filter: ")+truncate(m.filter+"▌", max(1, width-8)))
+	} else if m.filter != "" {
+		lines = append(lines, dimStyle.Render("filter: ")+truncate(m.filter, max(1, width-8)))
+	}
+	return lines
+}
+
+// packKeyPairs renders each control as a bright key and a dim action, then
+// puts as many pairs on each line as the width holds. A pair never breaks, so
+// no width separates a key from its action.
+func packKeyPairs(entries []keyHelpEntry, width int) []string {
 	separator := dimStyle.Render(" · ")
 	var lines []string
 	current := ""
-	for _, entry := range keyHelp {
+	for _, entry := range entries {
 		pair := keyStyle.Render(entry.keys) + " " + dimStyle.Render(entry.action)
 		candidate := pair
 		if current != "" {
@@ -798,13 +821,38 @@ func (m Model) footerHelpLines() []string {
 	if current != "" {
 		lines = append(lines, current)
 	}
-
-	if m.editing {
-		lines = append(lines, dimStyle.Render("filter: ")+truncate(m.filter+"▌", max(1, width-8)))
-	} else if m.filter != "" {
-		lines = append(lines, dimStyle.Render("filter: ")+truncate(m.filter, max(1, width-8)))
-	}
 	return lines
+}
+
+// emptyViewMessage explains why a view has no pull requests. Each default view
+// gets tailored text. Every other view names the query that found no results.
+func emptyViewMessage(view config.View) string {
+	switch view.ID {
+	case config.ViewAuthored:
+		return "You have no open pull requests."
+	case config.ViewReview:
+		return "No open pull requests wait for your review."
+	case config.ViewAll:
+		return "No open pull requests are in the configured scopes."
+	}
+	return fmt.Sprintf("No pull requests match %q.", view.Query)
+}
+
+// renderEmptyView explains the empty view and names the next keys. The text
+// wraps at the terminal width, so no width removes a key.
+func (m Model) renderEmptyView() string {
+	width := max(1, m.width)
+	var lines []string
+	for _, line := range strings.Split(ansi.Wrap(emptyViewMessage(m.currentView().View), width, ""), "\n") {
+		lines = append(lines, dimStyle.Render(line))
+	}
+	steps := emptyViewSteps
+	if len(m.views) < 2 {
+		// One view has no next view, so Tab does nothing.
+		steps = steps[1:]
+	}
+	lines = append(lines, packKeyPairs(steps, width)...)
+	return strings.Join(lines, "\n") + "\n"
 }
 
 func (m Model) currentView() discovery.ViewData {
