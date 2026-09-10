@@ -191,6 +191,16 @@ herdr plugin unlink cdowell09.pr-board
 Press `E` to open the active `config.toml` file in an editor.
 The board uses `$VISUAL`, then `$EDITOR`.
 The fallback editor is Notepad on Windows and `vi` on macOS and Linux.
+
+Before the editor starts, the footer names it:
+
+```
+Opening config in vi. Set $VISUAL or $EDITOR to change.
+```
+
+The message names the same executable that the board runs.
+It stays on the screen while the editor runs.
+
 The board validates the file after the editor exits.
 It reloads valid changes and refreshes all views.
 

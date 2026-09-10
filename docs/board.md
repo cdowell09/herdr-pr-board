@@ -99,6 +99,7 @@ The filter ignores letter case and makes no GitHub requests.
 Press `E` to edit the active configuration while the board runs.
 The board uses `$VISUAL`, then `$EDITOR`.
 The fallback editor is Notepad on Windows and `vi` on macOS and Linux.
+The footer names the editor before it starts. For example: `Opening config in vi. Set $VISUAL or $EDITOR to change.`
 It validates the file after the editor exits. It reloads valid changes and refreshes all views.
 It keeps the previous configuration when the editor or validation fails.
 

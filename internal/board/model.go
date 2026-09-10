@@ -177,6 +177,7 @@ type Model struct {
 	width            int
 	height           int
 	filter           string
+	editorNotice     string
 	editing          bool
 	helpOverlay      bool
 	loading          bool
@@ -404,6 +405,8 @@ func (m Model) updateFilter(key tea.KeyMsg) (tea.Model, tea.Cmd) {
 }
 
 func (m Model) updateConfig(message configEditMsg) (tea.Model, tea.Cmd) {
+	// The editor exited, so the validation result replaces the launch notice.
+	m.editorNotice = ""
 	if message.err != nil {
 		m.warning = appendWarning(m.warning, "configuration edit failed: "+message.err.Error())
 		return m, nil
@@ -542,6 +545,9 @@ func (m Model) updateKey(key tea.KeyMsg) (tea.Model, tea.Cmd) {
 			m.warning = appendWarning(m.warning, "configuration editor is unavailable")
 			return m, nil
 		}
+		// The editor takes the terminal, so this frame is the last one the
+		// user reads until the editor exits.
+		m.editorNotice = editorNotice()
 		return m, m.editConfig(m.configPath)
 	case "r":
 		requests := m.currentView().View.SearchRequestCount(len(m.cfg.GitHub.Scopes), m.cfg.GitHub.LimitPerScope)
@@ -755,6 +761,10 @@ func (m Model) renderFooter() string {
 	// Collect the meta parts, then join them. Prefixing a separator to each
 	// part leaves a leading separator when an earlier part is absent.
 	var parts []string
+	if m.editorNotice != "" {
+		// Keep the notice first. A narrow terminal truncates the tail.
+		parts = append(parts, m.editorNotice)
+	}
 	if m.monitorError != "" {
 		parts = append(parts, reviewText(m.monitorError))
 	}
@@ -953,18 +963,29 @@ func editConfigCmd(path string) tea.Cmd {
 	})
 }
 
+// resolveEditor returns the editor executable for the configuration file. It
+// is the only resolution point, so the footer notice and the launched program
+// cannot disagree.
+func resolveEditor() string {
+	if editor := strings.TrimSpace(os.Getenv("VISUAL")); editor != "" {
+		return editor
+	}
+	if editor := strings.TrimSpace(os.Getenv("EDITOR")); editor != "" {
+		return editor
+	}
+	if runtime.GOOS == "windows" {
+		return "notepad.exe"
+	}
+	return "vi"
+}
+
+// editorNotice tells the user which editor E opens and how to change it.
+func editorNotice() string {
+	return "Opening config in " + resolveEditor() + ". Set $VISUAL or $EDITOR to change."
+}
+
 func editorCommand(path string) *exec.Cmd {
-	editor := strings.TrimSpace(os.Getenv("VISUAL"))
-	if editor == "" {
-		editor = strings.TrimSpace(os.Getenv("EDITOR"))
-	}
-	if editor == "" {
-		editor = "vi"
-		if runtime.GOOS == "windows" {
-			editor = "notepad.exe"
-		}
-	}
-	return exec.Command(editor, path)
+	return exec.Command(resolveEditor(), path)
 }
 
 func openBrowserCmd(url string) tea.Cmd {
