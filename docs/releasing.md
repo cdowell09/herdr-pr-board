@@ -1,6 +1,9 @@
 # Release PR Board
 
 Use a Git tag that matches the version in `herdr-plugin.toml`.
+The manifest is the source of truth for the version.
+`internal/version/version.go` holds the same version for the binary.
+`bin/herdr-pr-board --version` prints that version and the build revision.
 
 ## Versioning
 
@@ -30,7 +33,7 @@ Use Conventional Commit subjects for merged changes.
 The changelog omits `chore(release):` commits.
 Keep feature and bug-fix changes separate from release preparation.
 
-1. Change `version` in `herdr-plugin.toml`.
+1. Change `version` in `herdr-plugin.toml` and `Current` in `internal/version/version.go`. The two values must be the same.
 2. Write `docs/releases/vX.Y.Z.md` with the release summary and feature highlights.
 3. Generate `CHANGELOG.md` with the new version and highlights.
 4. Review the highlights and generated entries against the commits since the previous release.
@@ -102,6 +105,8 @@ git push origin "v$version"
 The release workflow validates every pushed tag.
 It accepts only the `vX.Y.Z` form.
 It compares the tag with the manifest version.
+It also compares the manifest version with `Current` in `internal/version/version.go`.
+A difference between those two values fails the release.
 
 The workflow creates the GitHub release only after validation succeeds.
 A failed validation does not create a GitHub release.

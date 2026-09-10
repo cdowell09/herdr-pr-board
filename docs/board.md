@@ -162,6 +162,8 @@ The board adapts to the terminal width:
 | 60–79 cells | No author or updated columns. |
 | Fewer than 60 cells | PR, CI, REV, and title columns. |
 
+The title bar shows the plugin version at 80 cells or more.
+A narrower terminal omits the version and keeps the configured title.
 The selected PR URL stays visible at every width.
 The full review and posted details wrap below the URL.
 The board truncates column text by terminal cell width.

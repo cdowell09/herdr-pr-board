@@ -9,9 +9,14 @@ Check versions and current status:
 ```sh
 herdr --version
 herdr plugin list --plugin cdowell09.pr-board
+bin/herdr-pr-board --version
 gh --version
 gh auth status
 ```
+
+Run `bin/herdr-pr-board --version` from the plugin source directory.
+It prints the plugin version and the build revision on one line.
+The board also shows the version in the title bar at 80 cells or more.
 
 ## Troubleshooting
 

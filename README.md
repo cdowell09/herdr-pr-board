@@ -157,6 +157,8 @@ Snapshots include PRs, CI, submitted reviews, observation times, rates, and stru
 Partial results return a nonzero status.
 See [JSON snapshots](docs/json-snapshots.md) for the versioned contract.
 
+Run `bin/herdr-pr-board --version` to print the plugin version and the build revision.
+
 Use the [headless monitor](docs/monitor.md) to share discovery observations without keeping a board open.
 
 ## Reference and development

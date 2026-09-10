@@ -169,6 +169,7 @@ type Model struct {
 	reviewGeneration uint64
 	cfg              config.Config
 	configPath       string
+	version          string
 	loader           discovery.Loader
 	openBrowser      func(url string) tea.Cmd
 	editConfig       func(path string) (notice string, cmd tea.Cmd)
@@ -233,6 +234,22 @@ func NewModelWithConfigPath(cfg config.Config, configPath string, loader discove
 		reporter:    reporter,
 		epoch:       1,
 	}, nil
+}
+
+// WithVersion shows the version in the title bar. The caller supplies the
+// version, which keeps build information out of the board.
+func (m Model) WithVersion(version string) Model {
+	m.version = version
+	return m
+}
+
+// titleText returns the title bar text. The version needs space, so the medium
+// and wide tiers show it and the narrow tier omits it.
+func (m Model) titleText() string {
+	if m.version == "" || m.width < tierMedium {
+		return m.cfg.UI.Title
+	}
+	return m.cfg.UI.Title + " v" + m.version
 }
 
 func (m Model) Init() tea.Cmd {
@@ -696,7 +713,7 @@ func (m Model) View() string {
 	if m.loading {
 		status = warningStyle.Render("  refreshing…")
 	}
-	output.WriteString(titleStyle.Render(m.cfg.UI.Title) + status + "\n")
+	output.WriteString(titleStyle.Render(truncate(m.titleText(), m.width)) + status + "\n")
 	output.WriteString(m.renderTabs() + "\n")
 	if notice := m.renderStaleNotice(); notice != "" {
 		output.WriteString(notice + "\n")
