@@ -104,6 +104,32 @@ A bare agent CLI command does not implement the PR Board reviewer contract autom
 A custom adapter must read the input and write the validated result described below.
 Custom programs keep their own instruction interface.
 
+## Detect installed agent CLIs
+
+Repository setup looks for each built-in agent CLI on PATH when it opens.
+This check reads PATH only. It sends no GitHub request.
+
+Setup starts at the first available reviewer, in configuration order.
+A custom reviewer command is always available, because it names its own program.
+A built-in reviewer is available when its agent CLI is on PATH.
+Configured reviewers come before the built-in reviewers that your configuration omits.
+Setup keeps a saved reviewer, even when its agent CLI is absent.
+
+The reviewer row shows `not installed` for an absent built-in agent CLI.
+Each missing reviewer still cycles normally, so you can select one before you install it.
+Setup shows this hint below the row when it finds no built-in agent CLI:
+
+```text
+No agent CLI found on PATH. Install one, then reopen settings.
+```
+
+Setup does not check two kinds of reviewer.
+It does not check a custom reviewer command.
+It also does not check the Hermes and Cursor reviewers.
+Those adapters start a shared language runtime, which does not prove the agent is installed.
+Setup shows no install status for an unchecked reviewer.
+It also does not select an unchecked built-in reviewer as the default.
+
 ## Use the review panel
 
 Press `v` to open the selected PR's review history.
@@ -113,15 +139,7 @@ The reviewer row shows the selection, its position, and the total.
 `Reviewer: claude (3/13)` selects the third reviewer of 13.
 Press Right or Space to select the next reviewer.
 Press Left to select the previous reviewer.
-Setup looks for each built-in agent CLI on PATH when it opens.
-The reviewer row starts at the first built-in reviewer that PATH holds.
-Setup keeps a saved reviewer, even when its agent CLI is absent.
-The reviewer row shows `not installed` for an absent agent CLI.
-Setup shows an install hint when PATH holds no built-in agent CLI.
-This check reads PATH only. It sends no GitHub request.
-Setup does not check a custom reviewer command.
-Setup does not check the Hermes and Cursor reviewers.
-Those adapters start a shared language runtime, which does not prove the agent is installed.
+See [detect installed agent CLIs](#detect-installed-agent-clis) for the default selection and the install status.
 The setup header shows that manual reviews are ready when automatic launches are off.
 It names Enter to save the settings and `n` to run the review.
 Press `n` in the review panel to start the review.

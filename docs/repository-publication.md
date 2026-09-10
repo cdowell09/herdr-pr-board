@@ -15,14 +15,9 @@ The reviewer row shows the selection, its position, and the total.
 `Reviewer: claude (3/13)` selects the third reviewer of 13.
 Press Right or Space to select the next reviewer.
 Press Left to select the previous reviewer.
-Setup looks for each built-in agent CLI on PATH when it opens.
-The reviewer row starts at the first built-in reviewer that PATH holds.
-Setup keeps a saved reviewer, even when its agent CLI is absent.
+Setup starts at the first available reviewer and keeps a saved selection.
 The reviewer row shows `not installed` for an absent agent CLI.
-Setup shows an install hint when PATH holds no built-in agent CLI.
-Setup does not check a custom reviewer command.
-Setup does not check the Hermes and Cursor reviewers.
-Those adapters start a shared language runtime, which does not prove the agent is installed.
+See [detect installed agent CLIs](reviews.md#detect-installed-agent-clis) for the PATH rules and the install hint.
 Enable automatic launches only when you want unattended reviews.
 Enable Comments under GitHub permissions to allow comments.
 Permission allows publication but does not schedule publication.

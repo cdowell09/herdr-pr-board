@@ -110,6 +110,55 @@ func TestSetupLeavesSharedRuntimeReviewersUnchecked(t *testing.T) {
 	}
 }
 
+// A custom command is always available, so it wins the default over a built-in
+// reviewer that PATH holds. Setup takes the first available reviewer in
+// configuration order, and configured reviewers come before missing built-ins.
+func TestSetupDefaultsToACustomReviewerBeforeAnInstalledBuiltin(t *testing.T) {
+	for name, test := range map[string]struct {
+		reviewers []config.Reviewer
+		reviewer  string
+	}{
+		"a custom command comes first": {reviewers: []config.Reviewer{{ID: "agent", Command: []string{"fake-reviewer"}}}, reviewer: "agent"},
+		"only built-ins":               {reviewer: "claude"},
+	} {
+		t.Run(name, func(t *testing.T) {
+			cfg := testConfig()
+			cfg.Reviewers = test.reviewers
+			setup, err := newRepositorySetup(cfg, "acme/repo", installedAgents(fakeLookPath("claude")))
+			if err != nil {
+				t.Fatal(err)
+			}
+			if setup.repo.Reviewer != test.reviewer {
+				t.Fatalf("default reviewer %q, want %q", setup.repo.Reviewer, test.reviewer)
+			}
+		})
+	}
+}
+
+// A custom command needs no built-in agent CLI, so the install hint must stay
+// hidden while setup selects one.
+func TestSetupHidesTheInstallHintForACustomCommand(t *testing.T) {
+	cfg := testConfig()
+	cfg.Reviewers = []config.Reviewer{{ID: "agent", Command: []string{"fake-reviewer"}}}
+	setup, err := newRepositorySetup(cfg, "acme/repo", installedAgents(fakeLookPath()))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if setup.repo.Reviewer != "agent" {
+		t.Fatalf("default reviewer %q, want the custom command", setup.repo.Reviewer)
+	}
+	m := panelModel(t)
+	m.reviewPanel.setup = setup
+	if view := stripANSI(m.View()); strings.Contains(view, noAgentHint) {
+		t.Fatalf("install hint appeared for a custom command:\n%s", view)
+	}
+	// The same setup shows the hint once a built-in reviewer is selected.
+	setup.repo.Reviewer = "pi"
+	if view := stripANSI(m.View()); !strings.Contains(view, noAgentHint) {
+		t.Fatalf("install hint missing for a built-in reviewer:\n%s", view)
+	}
+}
+
 // A custom command names its own program, so setup must not probe PATH for it.
 func TestSetupTreatsCustomCommandsAsAvailable(t *testing.T) {
 	cfg := testConfig()

@@ -52,8 +52,23 @@ func (s *repositorySetup) missing(reviewer config.Reviewer) bool {
 	return executable != "" && !s.installed[executable]
 }
 
-// noAgentInstalled reports that PATH holds no built-in agent program.
-func (s *repositorySetup) noAgentInstalled() bool { return len(s.installed) == 0 }
+// available reports that setup can select a reviewer as the default. A custom
+// command names its own program, so it always counts as available. A built-in
+// reviewer needs its agent program on PATH. A built-in reviewer that setup
+// cannot probe stays unavailable, because PATH cannot prove that it runs.
+func (s *repositorySetup) available(reviewer config.Reviewer) bool {
+	if reviewer.Builtin() == "" {
+		return true
+	}
+	executable := reviewer.Executable()
+	return executable != "" && s.installed[executable]
+}
+
+// noAgentInstalled reports that PATH holds no built-in agent program while a
+// built-in reviewer is selected. A custom command needs no built-in program.
+func (s *repositorySetup) noAgentInstalled() bool {
+	return len(s.installed) == 0 && s.selectedReviewer().Builtin() != ""
+}
 
 // Monitor state matters only when this repository or the global views ask for
 // automatic launches. Manual reviews need no monitor.
@@ -138,11 +153,12 @@ func newRepositorySetup(cfg config.Config, name string, installed map[string]boo
 		s.files[reviewer.ID] = reviewinstructions.Files{Prompt: prompt, Skill: skill}
 	}
 	// A saved selection stays, even when its program is absent. Only a repository
-	// with no saved reviewer takes the first reviewer whose program PATH holds.
+	// with no saved reviewer takes the first available reviewer, in configuration
+	// order. The first reviewer stays the default when none is available.
 	if s.repo.Reviewer == "" {
 		s.repo.Reviewer = s.reviewers[0].ID
 		for _, reviewer := range s.reviewers {
-			if executable := reviewer.Executable(); executable != "" && installed[executable] {
+			if s.available(reviewer) {
 				s.repo.Reviewer = reviewer.ID
 				break
 			}
