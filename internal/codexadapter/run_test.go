@@ -22,10 +22,14 @@ func TestCodexCommandIsolationAndSchema(t *testing.T) {
 	if cmd.Path != "/configured/codex" || cmd.Env != nil {
 		t.Fatalf("executable or authentication environment changed: %#v", cmd)
 	}
-	for _, flag := range []string{"exec", "--json", "--ephemeral", "--ignore-user-config", "--ignore-rules"} {
+	for _, flag := range []string{"exec", "--json", "--ignore-user-config", "--ignore-rules"} {
 		if !slices.Contains(cmd.Args, flag) {
 			t.Fatalf("missing %s: %v", flag, cmd.Args)
 		}
+	}
+	// Context-inheriting subagents need a persisted parent thread.
+	if slices.Contains(cmd.Args, "--ephemeral") {
+		t.Fatal("ephemeral execution prevents subagents from inheriting review context")
 	}
 	pairs := [][2]string{
 		{"--sandbox", "read-only"}, {"--color", "never"}, {"--output-schema", filepath.Join(work, "result-schema.json")},

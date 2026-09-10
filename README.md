@@ -124,6 +124,7 @@ You can edit the same `prompt_file` and `skill_file` selections directly in TOML
 See [review instructions](docs/review-instructions.md) for complete examples, file rules, and precedence.
 
 Reviews run in temporary checkouts at captured revisions and return validated local findings.
+Codex saves native session history so subagents can inherit review context.
 The review prompt prohibits source changes, setup scripts, and direct GitHub publication.
 Defaults keep launches manual and findings local.
 

@@ -27,7 +27,8 @@ func command(binary, _, work, checkout string) (*exec.Cmd, error) {
 	if err := os.WriteFile(schema, []byte(agentadapter.ResultSchema), 0600); err != nil {
 		return nil, err
 	}
-	args := []string{"exec", "--json", "--ephemeral", "--ignore-user-config", "--ignore-rules", "--sandbox", "read-only", "--color", "never", "--output-schema", schema,
+	// Ephemeral sessions cannot fork review context into subagents.
+	args := []string{"exec", "--json", "--ignore-user-config", "--ignore-rules", "--sandbox", "read-only", "--color", "never", "--output-schema", schema,
 		"-c", `approval_policy="never"`,
 		"-c", `project_doc_max_bytes=0`,
 		"-c", "projects." + strconv.Quote(checkout) + `.trust_level="untrusted"`,

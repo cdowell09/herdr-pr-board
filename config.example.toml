@@ -80,6 +80,7 @@ timeout = "30m"
 # [[reviewers]]
 # id = "pi"
 # command = ["/absolute/path/to/herdr-pr-board", "--pi-reviewer"]
+# Codex saves native session history so subagents can inherit review context.
 # Other adapters use --codex-reviewer, --claude-reviewer, --omp-reviewer,
 # --kimi-reviewer, --qodercli-reviewer, --qwen-reviewer, --copilot-reviewer, --mastracode-reviewer,
 # --hermes-reviewer, --cursor-reviewer, --antigravity-reviewer, or --grok-reviewer.
