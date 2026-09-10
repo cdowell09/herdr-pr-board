@@ -159,6 +159,63 @@ func TestSetupHidesTheInstallHintForACustomCommand(t *testing.T) {
 	}
 }
 
+// The install hint tells the user to install an agent CLI. Setup must show it
+// only for a reviewer whose agent CLI it probed and did not find.
+func TestInstallHintOnlyCoversAProbedReviewer(t *testing.T) {
+	for name, test := range map[string]struct {
+		reviewer config.Reviewer
+		hint     bool
+	}{
+		"probed and absent":     {reviewer: config.Reviewer{ID: "pi", Command: []string{"board", "--pi-reviewer"}}, hint: true},
+		"custom command":        {reviewer: config.Reviewer{ID: "agent", Command: []string{"fake-reviewer"}}},
+		"shared runtime":        {reviewer: config.Reviewer{ID: "hermes", Command: []string{"board", "--hermes-reviewer"}}},
+		"selected executable":   {reviewer: config.Reviewer{ID: "claude", Command: []string{"board", "--claude-reviewer", "--claude-executable", "/opt/claude"}}},
+		"empty executable kept": {reviewer: config.Reviewer{ID: "codex", Command: []string{"board", "--codex-reviewer", "--codex-executable="}}, hint: true},
+	} {
+		t.Run(name, func(t *testing.T) {
+			cfg := testConfig()
+			cfg.Reviewers = []config.Reviewer{test.reviewer}
+			cfg.Repositories = []config.Repository{{Name: "acme/repo", Reviewer: test.reviewer.ID}}
+			setup, err := newRepositorySetup(cfg, "acme/repo", installedAgents(fakeLookPath()))
+			if err != nil {
+				t.Fatal(err)
+			}
+			m := panelModel(t)
+			m.reviewPanel.setup = setup
+			view := stripANSI(m.View())
+			if strings.Contains(view, noAgentHint) != test.hint {
+				t.Fatalf("install hint present=%v, want %v:\n%s", !test.hint, test.hint, view)
+			}
+		})
+	}
+}
+
+// Setup takes the first available reviewer in configuration order. When no
+// reviewer is available it keeps the first configured reviewer, rather than
+// replacing the user's own choice with an equally absent built-in.
+func TestSetupFallsBackToTheFirstConfiguredReviewer(t *testing.T) {
+	hermes := config.Reviewer{ID: "hermes", Command: []string{"board", "--hermes-reviewer"}}
+	for name, test := range map[string]struct {
+		installed []string
+		reviewer  string
+	}{
+		"nothing available keeps the configured reviewer": {reviewer: "hermes"},
+		"an installed agent wins over an unchecked one":   {installed: []string{"claude"}, reviewer: "claude"},
+	} {
+		t.Run(name, func(t *testing.T) {
+			cfg := testConfig()
+			cfg.Reviewers = []config.Reviewer{hermes}
+			setup, err := newRepositorySetup(cfg, "acme/repo", installedAgents(fakeLookPath(test.installed...)))
+			if err != nil {
+				t.Fatal(err)
+			}
+			if setup.repo.Reviewer != test.reviewer {
+				t.Fatalf("default reviewer %q, want %q", setup.repo.Reviewer, test.reviewer)
+			}
+		})
+	}
+}
+
 // A custom command names its own program, so setup must not probe PATH for it.
 func TestSetupTreatsCustomCommandsAsAvailable(t *testing.T) {
 	cfg := testConfig()

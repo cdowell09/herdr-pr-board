@@ -64,10 +64,12 @@ func (s *repositorySetup) available(reviewer config.Reviewer) bool {
 	return executable != "" && s.installed[executable]
 }
 
-// noAgentInstalled reports that PATH holds no built-in agent program while a
-// built-in reviewer is selected. A custom command needs no built-in program.
+// noAgentInstalled reports that PATH holds no built-in agent program while the
+// selected reviewer needs one. Setup stays silent for a reviewer it does not
+// probe, because it cannot know whether that reviewer runs. A custom command, a
+// shared language runtime, and a selected --<id>-executable all stay silent.
 func (s *repositorySetup) noAgentInstalled() bool {
-	return len(s.installed) == 0 && s.selectedReviewer().Builtin() != ""
+	return len(s.installed) == 0 && s.missing(*s.selectedReviewer())
 }
 
 // Monitor state matters only when this repository or the global views ask for
