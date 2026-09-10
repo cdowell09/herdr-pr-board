@@ -37,17 +37,27 @@ The CI column uses a symbol and a color:
 | `–` | Dim | The PR has no checks. |
 | `?` | Dim | The plugin cannot get the check status. |
 
-The **REV** column uses the same symbols for local PR Board reviews:
+The **REVIEW** column shows local PR Board reviews for the current revision.
+A completed review with findings shows the finding count for each severity:
+
+```
+P0:1 P1:2 P2:0 P3:3
+```
+
+The counts are in severity order from P0 to P3. A count of 10 or more shows `+`.
+A P0 count above zero is red. A P1 count above zero is yellow. Zero counts are dim.
+Every other state uses the CI symbols:
 
 | Symbol | Meaning |
 | --- | --- |
-| `✓` | The current revision has a completed local review. |
+| `✓` | The current revision has a completed local review with no findings. |
 | `●` | A review is running, queued, waiting for a slot, or awaiting dispatch. |
 | `✗` | The current revision has a failed, blocked, or abandoned review. |
 | `–` | No local review is active or complete for this revision. |
 | `?` | Local review status or the current revision is unavailable. |
 
 Select a PR to read its full review status below the URL.
+The detail line shows the exact count for each severity, or `no findings`.
 Local status updates each second without GitHub requests.
 
 The **POSTED** column shows submitted reviews from your authenticated GitHub account:
@@ -160,8 +170,10 @@ The board adapts to the terminal width:
 | 100–119 cells | All columns with compact repository and author columns. |
 | 80–99 cells | No author column. |
 | 60–79 cells | No author or updated columns. |
-| Fewer than 60 cells | PR, CI, REV, and title columns. |
+| Fewer than 60 cells | PR, CI, REVIEW, and title columns. |
 
+The REVIEW column keeps 19 cells at every width. The title column absorbs the difference.
+Below 100 cells, the title column shows only a few characters.
 The title bar shows the plugin version at 80 cells or more.
 A narrower terminal omits the version and keeps the configured title.
 The selected PR URL stays visible at every width.

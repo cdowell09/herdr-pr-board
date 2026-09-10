@@ -14,7 +14,10 @@ import (
 	tea "github.com/charmbracelet/bubbletea"
 )
 
-type reviewRowSummary struct{ state, detail, posted, postedDetail string }
+type reviewRowSummary struct {
+	state, detail, posted, postedDetail string
+	findings                            reviewmemory.SeverityCounts // set for a completed review
+}
 
 type reviewOverviewRow struct {
 	identity reviewmemory.Identity
@@ -160,7 +163,8 @@ func localReviewSummary(pr gh.PullRequest, runs []reviewmemory.Run, active map[s
 		summary.state = string(latest.Status)
 		switch latest.Status {
 		case reviewmemory.Completed:
-			summary.detail = "Completed locally"
+			summary.findings = reviewmemory.CountSeverities(latest.Findings)
+			summary.detail = "Completed locally · " + findingsDetail(summary.findings)
 		case reviewmemory.Failed, reviewmemory.Blocked, reviewmemory.Abandoned:
 			summary.detail = string(latest.Status) + " · explicit retry required"
 		default:

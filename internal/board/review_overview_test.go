@@ -26,6 +26,12 @@ func TestLocalReviewOverviewStates(t *testing.T) {
 	run := func(status reviewmemory.Status) reviewmemory.Run {
 		return reviewmemory.Run{ID: "run", Identity: id, Outcome: reviewmemory.Outcome{Status: status}}
 	}
+	withFindings := func(run reviewmemory.Run, severities ...string) reviewmemory.Run {
+		for _, severity := range severities {
+			run.Findings = append(run.Findings, reviewmemory.Finding{Severity: severity, Title: "t", Body: "b"})
+		}
+		return run
+	}
 	for _, tc := range []struct {
 		name          string
 		runs          []reviewmemory.Run
@@ -39,7 +45,8 @@ func TestLocalReviewOverviewStates(t *testing.T) {
 		{name: "full", decision: ready, monitor: monitorReady, active: map[string]bool{"another-pr": true}, state: "waiting", detail: "Waiting for review slot"},
 		{name: "stopped", decision: ready, monitor: monitor.Status{State: monitor.Stopped}, active: map[string]bool{"another-pr": true}, state: "none", detail: "Automatic reviews: start the monitor"},
 		{name: "running", runs: []reviewmemory.Run{run(reviewmemory.Running)}, active: map[string]bool{"run": true}, state: "running", detail: "Running"},
-		{name: "completed", runs: []reviewmemory.Run{run(reviewmemory.Completed)}, state: "completed", detail: "Completed locally"},
+		{name: "completed", runs: []reviewmemory.Run{run(reviewmemory.Completed)}, state: "completed", detail: "Completed locally · no findings"},
+		{name: "completed with findings", runs: []reviewmemory.Run{withFindings(run(reviewmemory.Completed), "P1", "P0", "P3", "P3")}, state: "completed", detail: "Completed locally · P0:1 P1:1 P2:0 P3:2"},
 		{name: "failed", runs: []reviewmemory.Run{run(reviewmemory.Failed)}, state: "failed", detail: "failed · explicit retry required"},
 		{name: "blocked", runs: []reviewmemory.Run{run(reviewmemory.Blocked)}, state: "blocked", detail: "blocked · explicit retry required"},
 		{name: "abandoned", runs: []reviewmemory.Run{run(reviewmemory.Abandoned)}, state: "abandoned", detail: "abandoned · explicit retry required"},
@@ -121,7 +128,7 @@ func TestOverviewRefreshesAllRowsWithoutOpeningReviewPanel(t *testing.T) {
 	if got := m.rowReviewSummary(pr); got.state != "completed" || got.posted != "PR Board" {
 		t.Fatalf("%+v", got)
 	}
-	if view := stripANSI(m.View()); !strings.Contains(view, "REV") || !strings.Contains(view, "PR Board") || !strings.Contains(view, "Completed locally") {
+	if view := stripANSI(m.View()); !strings.Contains(view, "REVIEW") || !strings.Contains(view, "PR Board") || !strings.Contains(view, "Completed locally") {
 		t.Fatalf("overview hidden: %s", view)
 	}
 	backend.snapshot.Active = map[string]bool{"local": true}

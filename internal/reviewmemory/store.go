@@ -12,6 +12,7 @@ import (
 	"os"
 	"path/filepath"
 	"regexp"
+	"slices"
 	"strings"
 	"sync"
 	"time"
@@ -194,7 +195,7 @@ func validateHistory(h history) error {
 
 func validOutcome(o Outcome) bool {
 	for _, f := range o.Findings {
-		if f.Severity != "P0" && f.Severity != "P1" && f.Severity != "P2" && f.Severity != "P3" {
+		if !slices.Contains(Severities[:], f.Severity) {
 			return false
 		}
 		if strings.TrimSpace(f.Title) == "" || strings.TrimSpace(f.Body) == "" || f.Line < 0 || (f.Line > 0 && strings.TrimSpace(f.Path) == "") {

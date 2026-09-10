@@ -24,6 +24,10 @@ _Avoid_: Live state
 An external program that performs a PR review on the user's behalf.
 _Avoid_: Monitor
 
+**Revision**:
+A PR's captured head commit and target branch.
+_Avoid_: Head, commit, version
+
 **Review run**:
 One attempt to review a PR at a captured head commit and target branch.
 _Avoid_: Published review
@@ -31,6 +35,18 @@ _Avoid_: Published review
 **Review completion**:
 A successful review run with recorded findings, whether or not those findings are published.
 _Avoid_: Publication
+
+**Finding**:
+One issue a reviewer reports at a severity, belonging to a review completion.
+_Avoid_: Comment, issue, result
+
+**Severity**:
+A finding's rank from P0, the most severe, to P3.
+_Avoid_: Priority, level
+
+**Clean review**:
+A review completion with no findings at any severity.
+_Avoid_: Passed review, empty review
 
 **Review eligibility**:
 Whether a PR needs review under the user's configured rules and recorded review history.

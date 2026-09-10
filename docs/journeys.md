@@ -27,7 +27,7 @@ It is not an actor in these journeys.
 5. The monitor scans the selected views and finds eligible PRs.
 6. The monitor dispatches a reviewer for each eligible PR at its captured revision.
 7. PR Board validates the reviewer result and records findings locally.
-8. The human reads the REV column and opens the review panel to read findings.
+8. The human reads the REVIEW column and opens the review panel to read findings.
 9. The human publishes findings, or a saved after-review action publishes them automatically.
 10. A new head commit makes the PR eligible again, and the journey repeats from step 5.
 
