@@ -311,7 +311,7 @@ func TestInstructionEditorKeepsCursorVisibleAndCancelsDraft(t *testing.T) {
 	s := m.reviewPanel.setup
 	s.repo.Reviewer = "pi"
 	s.row = s.promptRow()
-	s.toggle()
+	s.toggle(1)
 	path := strings.Repeat("日本語/", 30) + "left"
 	for _, key := range []tea.KeyMsg{{Type: tea.KeyRunes, Runes: []rune(path)}, {Type: tea.KeyRunes, Runes: []rune("q")}, {Type: tea.KeySpace}} {
 		next, _ := m.Update(key)

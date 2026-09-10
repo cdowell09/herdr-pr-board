@@ -109,6 +109,10 @@ Custom programs keep their own instruction interface.
 Press `v` to open the selected PR's review history.
 The panel opens repository setup when the repository has no saved settings.
 Choose a reviewer and save the settings.
+The reviewer row shows the selection, its position, and the total.
+`Reviewer: claude (3/13)` selects the third reviewer of 13.
+Press Right or Space to select the next reviewer.
+Press Left to select the previous reviewer.
 Setup looks for each built-in agent CLI on PATH when it opens.
 The reviewer row starts at the first built-in reviewer that PATH holds.
 Setup keeps a saved reviewer, even when its agent CLI is absent.
@@ -163,6 +167,8 @@ An older or unavailable owner cannot accept the request.
 
 Press `s` in the panel to edit repository settings.
 Use the arrow keys and Space to change settings.
+On the reviewer row, Left selects the previous reviewer.
+Right and Space select the next reviewer.
 
 The settings panel separates reviews, GitHub permissions, automatic posting, global views, and advanced files.
 The rows keep that order.

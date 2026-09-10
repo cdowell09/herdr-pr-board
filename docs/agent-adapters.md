@@ -39,6 +39,8 @@ See [review instructions](review-instructions.md) for scope, precedence, and fil
 Open the review panel with `v` and open repository settings.
 Setup looks for each built-in agent CLI on PATH when it opens.
 The reviewer row starts at the first built-in reviewer that PATH holds.
+The reviewer row shows the selection, its position, and the total.
+Press Right or Space to select the next reviewer. Press Left to go back.
 The reviewer row shows `not installed` for an absent agent CLI.
 Select `codex` or `claude` in the reviewer row.
 Save the settings.

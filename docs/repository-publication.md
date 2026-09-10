@@ -11,6 +11,10 @@ The first review action opens repository settings when the repository has no sav
 The panel groups settings under Reviews, GitHub permissions, Automatic posting, Global views, and Advanced.
 The rows keep that order.
 Select a reviewer under Reviews with the arrow keys or Space.
+The reviewer row shows the selection, its position, and the total.
+`Reviewer: claude (3/13)` selects the third reviewer of 13.
+Press Right or Space to select the next reviewer.
+Press Left to select the previous reviewer.
 Setup looks for each built-in agent CLI on PATH when it opens.
 The reviewer row starts at the first built-in reviewer that PATH holds.
 Setup keeps a saved reviewer, even when its agent CLI is absent.

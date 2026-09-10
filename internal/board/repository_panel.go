@@ -2,6 +2,7 @@ package board
 
 import (
 	"context"
+	"fmt"
 	"os"
 	"os/exec"
 	"slices"
@@ -234,8 +235,10 @@ func (m Model) updateRepositoryKey(key tea.KeyMsg) (tea.Model, tea.Cmd) {
 		s.offset = len(m.repositoryContent())
 		m.clampRepositoryOffset()
 		return m, nil
-	case "left", "right", " ":
-		s.toggle()
+	case "left":
+		s.toggle(-1)
+	case "right", " ":
+		s.toggle(1)
 	case "enter":
 		s.saving = true
 		automatic := s.automatic
@@ -252,7 +255,10 @@ func (m Model) updateRepositoryKey(key tea.KeyMsg) (tea.Model, tea.Cmd) {
 	return m, nil
 }
 
-func (s *repositorySetup) toggle() {
+// toggle changes the selected row. Only the reviewer row has an order, so step
+// selects the next reviewer for 1 and the previous reviewer for -1. Every other
+// row ignores step and keeps one action for the left, right, and Space keys.
+func (s *repositorySetup) toggle(step int) {
 	if view, ok := s.globalView(s.row); ok {
 		if i := slices.Index(s.automatic.Selected, view.ID); i >= 0 {
 			s.automatic.Selected = slices.Delete(s.automatic.Selected, i, i+1)
@@ -263,11 +269,9 @@ func (s *repositorySetup) toggle() {
 	}
 	switch s.row {
 	case repositoryReviewerRow:
-		for i, r := range s.reviewers {
-			if r.ID == s.repo.Reviewer {
-				s.repo.Reviewer = s.reviewers[(i+1)%len(s.reviewers)].ID
-				break
-			}
+		count := len(s.reviewers)
+		if i := s.reviewerIndex(); i >= 0 {
+			s.repo.Reviewer = s.reviewers[((i+step)%count+count)%count].ID
 		}
 	case repositoryAutomaticRow:
 		s.repo.AutoLaunch = !s.repo.AutoLaunch
@@ -342,9 +346,15 @@ func (s *repositorySetup) rows() []string {
 	return append(rows, "Prompt file: "+prompt, "Skill file: "+skill)
 }
 
-// The reviewer row names the selection and its install status.
+// reviewerIndex reports the position of the selected reviewer in the cycle.
+func (s *repositorySetup) reviewerIndex() int {
+	return slices.IndexFunc(s.reviewers, func(r config.Reviewer) bool { return r.ID == s.repo.Reviewer })
+}
+
+// The reviewer row names the selection, its position in the cycle, and its
+// install status. The position tells the user how many reviewers remain.
 func (s *repositorySetup) reviewerLabel() string {
-	label := "Reviewer: " + s.repo.Reviewer
+	label := fmt.Sprintf("Reviewer: %s (%d/%d)", s.repo.Reviewer, s.reviewerIndex()+1, len(s.reviewers))
 	if s.missing(*s.selectedReviewer()) {
 		label += " · not installed"
 	}

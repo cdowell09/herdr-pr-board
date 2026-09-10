@@ -263,7 +263,7 @@ func TestOnboardingSaveAndStatusRefresh(t *testing.T) {
 	setup.repo.AutoLaunch = true
 	setup.repo.PublishActions = []config.PublicationAction{config.PublishComment}
 	setup.row = repositoryViewsRow + 1
-	setup.toggle() // The explicitly selected existing review view.
+	setup.toggle(1) // The explicitly selected existing review view.
 	updated, save := m.Update(tea.KeyMsg{Type: tea.KeyEnter})
 	m = updated.(Model)
 	updated, _ = m.Update(save())

@@ -229,7 +229,7 @@ func (m Model) updateRepositoryMouse(message tea.MouseMsg) (tea.Model, tea.Cmd) 
 		index := event.Y - len(header)
 		if index >= 0 && index < size && start+index < len(lines) && lines[start+index].row >= 0 {
 			s.row = lines[start+index].row
-			s.toggle()
+			s.toggle(1)
 		}
 	}
 	m.clampRepositoryOffset()
@@ -237,7 +237,7 @@ func (m Model) updateRepositoryMouse(message tea.MouseMsg) (tea.Model, tea.Cmd) 
 }
 
 func (m Model) repositoryHelp() []string {
-	text := "↑↓ select · Space change · Enter save · PgUp/Dn scroll · Esc cancel"
+	text := "↑↓ select · ←→ Space change · Enter save · PgUp/Dn scroll · Esc cancel"
 	if m.reviewPanel.setup.editing != nil {
 		text = "Type or paste path · Enter use · Ctrl+U clear · Esc discard"
 	}
