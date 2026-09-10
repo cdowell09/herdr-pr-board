@@ -111,7 +111,9 @@ A bare agent command does not satisfy the reviewer contract.
 
 ## Codex execution
 
-Codex runs in ephemeral JSON mode with a read-only sandbox and no approval prompts.
+Codex runs in JSON mode with a read-only sandbox and no approval prompts.
+Codex saves native session history so subagents can inherit review context.
+Native session history uses the normal Codex storage location.
 The command disables automatic project instructions, hooks, plugins, skills, web search, and user configuration settings.
 The checkout is explicitly untrusted, which disables its project configuration.
 The selected skill arrives in the review prompt.

@@ -42,6 +42,10 @@ func finalText(data []byte) ([]byte, error) {
 			}
 			started = true
 		case "item.started", "item.updated", "item.completed":
+			// Codex emits startup warnings as completed error items before the turn.
+			if thread && !started && event.Type == "item.completed" && event.Item != nil && event.Item.Type == "error" {
+				continue
+			}
 			if !started || event.Item == nil || event.Item.Type == "" {
 				return nil, errors.New("codex emitted an invalid turn item")
 			}

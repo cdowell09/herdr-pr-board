@@ -66,3 +66,25 @@ func TestCodexKeepsFinalMessageWhileSettlingItems(t *testing.T) {
 		t.Fatalf("latest message=%s error=%v", final, err)
 	}
 }
+
+func TestCodexStartupWarning(t *testing.T) {
+	warning := `{"type":"item.completed","item":{"id":"item_0","type":"error","message":"Under-development features enabled: skip_host_skill_discovery."}}`
+	events := strings.Replace(completedEvents, `{"type":"turn.started"}`, warning+`{"type":"turn.started"}`, 1)
+	final, err := finalText([]byte(events))
+	if err != nil || string(final) != `{"version":1}` {
+		t.Fatalf("final=%s error=%v", final, err)
+	}
+	for name, invalid := range map[string]string{
+		"before thread":      warning + completedEvents,
+		"unfinished warning": strings.Replace(events, `"type":"item.completed"`, `"type":"item.started"`, 1),
+		"early message":      strings.Replace(events, `"type":"error"`, `"type":"agent_message"`, 1),
+		"missing turn":       strings.Replace(events, `{"type":"turn.started"}`, "", 1),
+		"missing completion": strings.Split(events, `{"type":"turn.completed"`)[0],
+	} {
+		t.Run(name, func(t *testing.T) {
+			if _, err := finalText([]byte(invalid)); err == nil {
+				t.Fatal("accepted invalid stream")
+			}
+		})
+	}
+}
