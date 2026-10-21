@@ -250,6 +250,29 @@ func TestFrameTitleNamesTheViewAndItsCount(t *testing.T) {
 	}
 }
 
+// TestFrameKeepsShortMessagesInside covers messages that replace the table.
+// Each one fits inside the frame, so the right side stays on screen.
+func TestFrameKeepsShortMessagesInside(t *testing.T) {
+	for _, width := range []int{22, 34} {
+		for name, setup := range map[string]func(*Model){
+			"loading":  func(m *Model) { m.loading = true },
+			"no match": func(m *Model) { m.filter = "nothing" },
+			"error":    func(m *Model) { m.views[0].Err = errors.New("timeout while searching") },
+		} {
+			model := emptyViewModel(t, width, defaultView(t, config.ViewAuthored))
+			setup(&model)
+			for _, line := range strings.Split(stripANSI(model.renderTable(model.boardLayout())), "\n") {
+				if line == "" {
+					continue
+				}
+				if lipgloss.Width(line) != width || !strings.HasSuffix(line, "│") && !strings.HasSuffix(line, "╮") && !strings.HasSuffix(line, "╯") {
+					t.Fatalf("%s width %d: line outside the frame: %q", name, width, line)
+				}
+			}
+		}
+	}
+}
+
 // TestSharedRepositoryHeaderIsBoldAccentWithCount covers the group header
 // that names the shared repository.
 func TestSharedRepositoryHeaderIsBoldAccentWithCount(t *testing.T) {

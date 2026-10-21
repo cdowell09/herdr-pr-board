@@ -12,6 +12,84 @@ import (
 	"github.com/charmbracelet/x/ansi"
 )
 
+// renderTable draws the table area in a rounded frame. The top edge takes the
+// blank row under the tabs and names the view. The bottom edge closes the
+// table above the URL row. The frame adds no rows, so the board geometry and
+// the mouse rows stay the same.
+func (m Model) renderTable(lay boardLayout) string {
+	header, lines := m.tableBody(lay)
+	width := m.tableWidth()
+	side := frameStyle.Render("│")
+	var output strings.Builder
+	output.WriteString(m.frameTop() + "\n")
+	if header != "" {
+		output.WriteString(side + padCells(header, width) + side + "\n")
+		output.WriteString(frameStyle.Render("├"+strings.Repeat("─", width)+"┤") + "\n")
+	}
+	for _, line := range lines {
+		// Every line fits inside the frame, so no message pushes the right
+		// side off the row.
+		output.WriteString(side + padCells(ansi.Truncate(line, width, "…"), width) + side + "\n")
+	}
+	output.WriteString(frameStyle.Render("╰"+strings.Repeat("─", width)+"╯") + "\n")
+	return output.String()
+}
+
+// tableWidth is the width inside the table frame.
+func (m Model) tableWidth() int { return max(1, m.width-2) }
+
+// frameTop returns the top frame edge with the view title and its count, for
+// example "Opened by me (4)". An active filter shows its matches, for example
+// "Opened by me (2 of 4)".
+func (m Model) frameTop() string {
+	view := m.currentView()
+	count := strconv.Itoa(len(view.PRs))
+	if m.filter != "" {
+		count = fmt.Sprintf("%d of %d", len(m.filteredPRs()), len(view.PRs))
+	}
+	width := m.tableWidth()
+	// "─ " before and " " after the title keep it clear of the corners.
+	title := truncate(fmt.Sprintf("%s (%s)", view.View.Title, count), max(0, width-3))
+	if width < 4 {
+		return frameStyle.Render("╭" + strings.Repeat("─", width) + "╮")
+	}
+	fill := max(0, width-3-lipgloss.Width(title))
+	return frameStyle.Render("╭─ ") + keyStyle.Render(title) + frameStyle.Render(" "+strings.Repeat("─", fill)+"╮")
+}
+
+// tableBody returns the column header and the lines under it. A view without
+// rows has no header, and its message takes the header rows.
+func (m Model) tableBody(lay boardLayout) (header string, lines []string) {
+	view := m.currentView()
+	width := m.tableWidth()
+	if view.Err != nil && len(view.PRs) == 0 {
+		return "", []string{errorStyle.Render(truncate("GitHub query failed: "+view.Err.Error(), width))}
+	}
+	rows := m.filteredPRs()
+	if len(rows) == 0 {
+		if m.loading {
+			return "", []string{dimStyle.Render("Loading pull requests…")}
+		}
+		if m.filter != "" {
+			return "", []string{dimStyle.Render("No pull requests match the filter.")}
+		}
+		return "", m.renderEmptyView(lay)
+	}
+
+	cols := m.tableLayout(lay.repository != "")
+	if lay.repository != "" {
+		group := fmt.Sprintf("%s%s (%d)", strings.Repeat(" ", gutterWidth), lay.repository, len(rows))
+		lines = append(lines, groupStyle.Render(truncate(group, width)))
+	}
+	end := min(m.offset+lay.visibleRows, len(rows))
+	// One clock reading per render keeps every row's age consistent.
+	now := time.Now()
+	for i := m.offset; i < end; i++ {
+		lines = append(lines, m.renderPRRow(rows[i], cols, i == m.cursor, now))
+	}
+	return m.renderHeader(cols), lines
+}
+
 // tableLayout picks column sizes for the current terminal width. A width of
 // zero hides the column. The title absorbs all remaining width.
 //
