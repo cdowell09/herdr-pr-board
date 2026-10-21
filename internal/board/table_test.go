@@ -133,15 +133,16 @@ func TestSelectedRowHighlightSpansTheFullRow(t *testing.T) {
 		lines := strings.Split(m.View(), "\n")
 		lay := m.boardLayout()
 		selected := lines[lay.firstPRRow+1]
-		if plain := stripANSI(selected); !strings.HasPrefix(plain, " ▌ ") || lipgloss.Width(plain) != width {
+		if plain := stripANSI(selected); !strings.HasPrefix(plain, "│ ▌ ") || lipgloss.Width(plain) != width {
 			t.Fatalf("width %d: selected row = %q", width, plain)
 		}
 		for _, segment := range strings.Split(selected, "\x1b[0m") {
-			if stripANSI(segment) != "" && !strings.Contains(segment, "48;5;237") {
+			// The frame sides keep the frame color.
+			if plain := stripANSI(segment); plain != "" && plain != "│" && !strings.Contains(segment, "48;5;237") {
 				t.Fatalf("width %d: segment %q loses the selection background in %q", width, segment, selected)
 			}
 		}
-		if plain := stripANSI(lines[lay.firstPRRow]); !strings.HasPrefix(plain, "   ") {
+		if plain := stripANSI(lines[lay.firstPRRow]); !strings.HasPrefix(plain, "│   ") {
 			t.Fatalf("width %d: unselected row = %q", width, plain)
 		}
 	}
@@ -172,7 +173,7 @@ func TestUpdatedAgesAlignToTheRightEdge(t *testing.T) {
 	lines := strings.Split(stripANSI(m.View()), "\n")
 	lay := m.boardLayout()
 	for i, want := range []string{"30m", "1h", "6w"} {
-		if row := lines[lay.firstPRRow+i]; !strings.HasSuffix(row, " "+want) || lipgloss.Width(row) != m.width {
+		if row := lines[lay.firstPRRow+i]; !strings.HasSuffix(insideFrame(row), " "+want) || lipgloss.Width(row) != m.width {
 			t.Fatalf("row %d = %q, want age %q at the right edge", i, row, want)
 		}
 	}

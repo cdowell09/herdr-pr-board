@@ -36,12 +36,11 @@ func emptyViewMessage(view config.View) string {
 }
 
 // renderEmptyView explains the empty view and names the next keys, centered
-// in the table area. The text wraps at the terminal width, so no width removes
-// a key. The whole state keeps only the rows that the table area holds, so
-// neither a long query nor a short pane can push the tabs off the screen and
-// invalidate the mouse rows.
-func (m Model) renderEmptyView(lay boardLayout) string {
-	width, budget := max(1, m.width), max(1, lay.emptyRows)
+// in the table frame. It returns exactly the rows of the table area. The text
+// wraps at the frame width, so no width removes a key. A long query or a short
+// pane cannot push the tabs off the screen and invalidate the mouse rows.
+func (m Model) renderEmptyView(lay boardLayout) []string {
+	width, budget := m.tableWidth(), max(1, lay.emptyRows)
 	steps := emptyViewSteps
 	if len(m.views) < 2 {
 		// One view has no next view, so Tab does nothing.
@@ -71,6 +70,8 @@ func (m Model) renderEmptyView(lay boardLayout) string {
 	for i, line := range lines {
 		lines[i] = strings.Repeat(" ", max(0, width-lipgloss.Width(line))/2) + line
 	}
-	top := strings.Repeat("\n", max(0, budget-len(lines))/2)
-	return top + strings.Join(lines, "\n") + "\n"
+	// Blank rows above and below center the text and fill the frame.
+	top := make([]string, max(0, budget-len(lines))/2)
+	lines = append(top, lines...)
+	return append(lines, make([]string, max(0, budget-len(lines)))...)
 }

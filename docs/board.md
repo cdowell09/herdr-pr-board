@@ -10,7 +10,11 @@ You can add, remove, rename, or move views in `config.toml`.
 Each tab shows the view title and its PR count, for example `Opened by me (4)`.
 A dim dot separates the tabs. The number keys `1`–`9` select the tabs in order.
 
-A view with no pull requests shows text for that view and the next keys in the middle of the table area:
+A rounded frame encloses the table.
+The top edge of the frame shows the title and the PR count of the active view, for example `Opened by me (4)`.
+When a filter is active, the top edge shows the matches, for example `Opened by me (2 of 4)`.
+
+A view with no pull requests shows text for that view and the next keys in the middle of the frame:
 
 | View | Text |
 | --- | --- |
@@ -33,7 +37,7 @@ The selected row has a background color across the full table width.
 A `▌` mark in the left gutter identifies the selected row.
 
 When all rows in the current view belong to one repository, the board hides the **REPOSITORY** column.
-A dim line under the header names the repository, for example `all in acme/api`.
+A bold line in the accent color under the header names the repository and its PR count, for example `acme/api (4)`.
 The filter can cause this change. A short terminal keeps the column instead of the line.
 
 The **UPDATED** column shows the time since the last PR update: `now`, `5m`, `3h`, `2d`, or `6w`.
@@ -69,7 +73,7 @@ Every other state uses these symbols:
 `◉` has the pending color, but its shape is different from pending CI.
 
 Select a PR to read its local reviews in the review region below the URL.
-A rule closes the table above the URL, so the table and the region read as two areas.
+The bottom edge of the frame closes the table above the URL, so the table and the region read as two areas.
 The region shows one labeled row for each topic:
 
 | Label | Content |

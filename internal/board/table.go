@@ -41,7 +41,7 @@ func (m Model) tableLayout(sharedRepository bool) tableLayout {
 	if sharedRepository {
 		layout.repo = 0
 	}
-	layout.title = max(0, m.width-layout.fixedWidth())
+	layout.title = max(0, m.tableWidth()-layout.fixedWidth())
 	return layout
 }
 
@@ -103,10 +103,10 @@ func (m Model) renderHeader(layout tableLayout) string {
 		b.WriteString(" ")
 		b.WriteString(padCells("UPDATED", updatedColumnWidth))
 	}
-	return headerStyle.Width(m.width).Render(truncate(b.String(), m.width))
+	return headerStyle.Width(m.tableWidth()).Render(truncate(b.String(), m.tableWidth()))
 }
 
-// renderPRRow renders one table row across the full width. A selected row
+// renderPRRow renders one table row across the width inside the frame. A selected row
 // shows the accent edge in the gutter and the selection background in every
 // cell.
 func (m Model) renderPRRow(pr gh.PullRequest, layout tableLayout, selected bool, now time.Time) string {
@@ -158,8 +158,8 @@ func (m Model) renderPRRow(pr gh.PullRequest, layout tableLayout, selected bool,
 	for _, s := range spans {
 		b.WriteString(s.style.Inherit(base).Render(s.text))
 	}
-	line := ansi.Truncate(b.String(), m.width, "…")
-	if padding := m.width - lipgloss.Width(line); padding > 0 {
+	line := ansi.Truncate(b.String(), m.tableWidth(), "…")
+	if padding := m.tableWidth() - lipgloss.Width(line); padding > 0 {
 		line += base.Render(strings.Repeat(" ", padding))
 	}
 	return line
