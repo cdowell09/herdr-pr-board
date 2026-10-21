@@ -75,9 +75,11 @@ func (m Model) boardHints() [][]keyHint {
 	return m.hintRows(slices.Concat(keyHelp, m.shortcutHelp()), budget)
 }
 
-// zoomHints are the controls of the zoomed detail pane footer.
+// zoomHints are the controls of the zoomed detail pane footer. They leave
+// the pane's two edges, its URL, one review row, and the meta line. A
+// shorter screen drops the bottom edge first, so one review row stays.
 func (m Model) zoomHints() [][]keyHint {
-	return m.hintRows(slices.Concat(zoomKeyHelp, m.shortcutHelp()), m.height-4)
+	return m.hintRows(slices.Concat(zoomKeyHelp, m.shortcutHelp()), m.height-5)
 }
 
 // keyHint is one rendered footer control and the key literal it names.

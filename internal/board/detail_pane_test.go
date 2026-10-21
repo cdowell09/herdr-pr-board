@@ -154,14 +154,15 @@ func TestShortZoomKeepsAReviewRow(t *testing.T) {
 	m.views[0].PRs[0].Author = "lin"
 	m.setRegionRuns(completedRun(3))
 	m = press(m, runes("v"))
-	for _, size := range [][2]int{{80, 10}, {50, 12}, {30, 10}, {50, 8}} {
+	for _, size := range [][2]int{{80, 10}, {50, 12}, {30, 10}, {50, 8}, {50, 7}, {30, 8}, {40, 5}, {30, 6}, {12, 8}} {
 		next, _ := m.Update(tea.WindowSizeMsg{Width: size[0], Height: size[1]})
 		m = next.(Model)
 		if _, rows := m.zoomViewport(); rows < 1 {
 			t.Fatalf("%v: zoom has %d review rows:\n%s", size, rows, stripANSI(m.View()))
 		}
 		m = press(m, runes("G"))
-		if view := stripANSI(m.View()); !strings.Contains(view, "Diagnostics") {
+		section := m.regionLines(true)
+		if last, view := stripANSI(section[len(section)-1]), stripANSI(m.View()); !strings.Contains(view, last) {
 			t.Fatalf("%v: G did not reach the details:\n%s", size, view)
 		}
 		m = press(m, runes("g"))

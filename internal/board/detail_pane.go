@@ -32,7 +32,7 @@ func (m Model) renderPane(height int) []string {
 	row := func(line string) string {
 		return side + " " + padCells(ansi.Truncate(line, inner, "…"), inner) + " " + side
 	}
-	facts, title, review := m.paneRows(height)
+	facts, title, bottom, review := m.paneRows(height)
 	lines := []string{m.paneTop(pr), row(urlStyle.Render(reviewText(pr.URL)))}
 	if title {
 		lines = append(lines, row(keyStyle.Render(reviewText(pr.Title))))
@@ -46,7 +46,9 @@ func (m Model) renderPane(height int) []string {
 	for _, line := range m.regionViewport(m.regionLines(m.zoom), review) {
 		lines = append(lines, row(line))
 	}
-	lines = append(lines, frameStyle.Render("╰"+strings.Repeat("─", max(0, m.width-2))+"╯"))
+	if bottom {
+		lines = append(lines, frameStyle.Render("╰"+strings.Repeat("─", max(0, m.width-2))+"╯"))
+	}
 	lines = lines[:min(len(lines), max(0, height))]
 	// A pane narrower than its frame and padding cuts each row at the screen edge.
 	for i, line := range lines {
@@ -56,22 +58,26 @@ func (m Model) renderPane(height int) []string {
 }
 
 // paneRows returns the optional parts that fit a pane of height rows and the
-// review rows that they leave. The edges and the URL always show. The title
-// and the review rule come next, then the facts, while one review row stays.
-func (m Model) paneRows(height int) (facts []string, title bool, review int) {
-	review = height - 3
-	if review-2 >= 1 {
+// review rows that they leave. The top edge and the URL always show. The
+// bottom edge comes next, then the title and the review rule, then the
+// facts, while one review row stays.
+func (m Model) paneRows(height int) (facts []string, title, bottom bool, review int) {
+	review = height - 2
+	if review-1 >= 1 {
+		bottom, review = true, review-1
+	}
+	if bottom && review-2 >= 1 {
 		title, review = true, review-2
 		if f := m.paneFacts(m.region.pr); review-len(f) >= 1 {
 			facts, review = f, review-len(f)
 		}
 	}
-	return facts, title, max(0, review)
+	return facts, title, bottom, max(0, review)
 }
 
 // paneReviewRows is the height of the review section in a pane of height rows.
 func (m Model) paneReviewRows(height int) int {
-	_, _, review := m.paneRows(height)
+	_, _, _, review := m.paneRows(height)
 	return review
 }
 
