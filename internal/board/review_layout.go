@@ -45,9 +45,6 @@ func (m Model) regionLines(full bool) []string {
 		lines = append(lines, rule(text, suffix, m.width, style))
 	}
 	body := keyStyle.Bold(false)
-	if status := m.reviewJobs[r.pr.URL]; status != "" {
-		add("Request: "+status, keyStyle)
-	}
 	if r.message != "" {
 		add("Status: "+r.message, warningStyle)
 	}
@@ -145,7 +142,7 @@ func (m Model) regionLines(full bool) []string {
 	if len(s.runs) == 0 {
 		heading("Reviews", "", keyStyle)
 		if s.loaded {
-			add("No local review runs · n run", body)
+			add("No local review runs", body)
 		} else {
 			add("Loading local reviews…", reviewSecondaryStyle)
 		}

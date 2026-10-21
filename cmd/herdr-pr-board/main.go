@@ -21,6 +21,7 @@ import (
 	"github.com/cdowell09/herdr-pr-board/internal/plugin"
 	"github.com/cdowell09/herdr-pr-board/internal/publication"
 	"github.com/cdowell09/herdr-pr-board/internal/review"
+	"github.com/cdowell09/herdr-pr-board/internal/shortcut"
 	"github.com/cdowell09/herdr-pr-board/internal/sidebar"
 	"github.com/cdowell09/herdr-pr-board/internal/version"
 	tea "github.com/charmbracelet/bubbletea"
@@ -176,7 +177,7 @@ func run(args []string, stdout, stderr io.Writer) int {
 	if err != nil {
 		return fail(stderr, err)
 	}
-	model = model.WithVersion(version.Current)
+	model = model.WithVersion(version.Current).WithShortcutLauncher(shortcut.Launcher{Binary: os.Getenv("HERDR_BIN_PATH")}.Launch)
 	binary, err := os.Executable()
 	if err != nil {
 		return fail(stderr, err)
@@ -193,7 +194,7 @@ func run(args []string, stdout, stderr io.Writer) int {
 		}
 	}()
 	if reviews != nil {
-		model = model.WithReviews(reviewCtx, reviews).WithPublications(stateDir, publisher).WithNotifications(notifier)
+		model = model.WithReviews(reviewCtx, reviews).WithPublications(stateDir, publisher)
 	}
 	if _, err := tea.NewProgram(model, tea.WithAltScreen(), tea.WithMouseCellMotion()).Run(); err != nil {
 		return fail(stderr, err)

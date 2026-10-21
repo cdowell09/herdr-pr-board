@@ -1,6 +1,7 @@
 package board
 
 import (
+	"slices"
 	"strings"
 
 	tea "github.com/charmbracelet/bubbletea"
@@ -30,7 +31,7 @@ var helpSections = []helpSection{
 		{"Enter", "keep the filter and finish it"},
 		{"Backspace", "remove one filter character, or finish an empty filter"},
 		{"Ctrl+U Esc", "clear the filter"},
-		{"r R", "refresh one view or all views"},
+		{"Ctrl+R R", "refresh one view or all views"},
 		{"E", "edit the configuration"},
 		{"click", "select a PR, or open the selected PR"},
 		{"click a footer key", "press that key"},
@@ -38,8 +39,6 @@ var helpSections = []helpSection{
 		{"q Ctrl+C", "close the board"},
 	}},
 	{"Review region", []keyHelpEntry{
-		{"n", "start a review"},
-		{"N", "repeat a review"},
 		{"t", "stop the newest active review"},
 		{"s", "edit repository settings"},
 		{"c", "publish a comment"},
@@ -66,7 +65,11 @@ func (m Model) helpOverlayLines() []string {
 			lines = append(lines, indent+style.Render(line))
 		}
 	}
-	for i, section := range helpSections {
+	sections := helpSections
+	if shortcuts := m.shortcutHelp(); len(shortcuts) > 0 {
+		sections = append(slices.Clip(sections), helpSection{"Command shortcuts", shortcuts})
+	}
+	for i, section := range sections {
 		if i > 0 {
 			lines = append(lines, "")
 		}

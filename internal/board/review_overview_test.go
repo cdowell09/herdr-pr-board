@@ -165,10 +165,6 @@ func TestOverviewDropsOldEpochAndRevisionAndCapturesCandidates(t *testing.T) {
 	if got := m.rowReviewSummary(pr); got.state != "unknown" || got.posted != "?" {
 		t.Fatalf("old result applied to new revision: %+v", got)
 	}
-	m.reviewJobs[pr.URL] = "queued"
-	if got := m.rowReviewSummary(pr); got.state != "queued" {
-		t.Fatalf("manual request invisible: %+v", got)
-	}
 }
 
 func TestOverviewKeepsSelectionVisibleWhenDetailGrows(t *testing.T) {

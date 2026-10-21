@@ -230,9 +230,9 @@ func TestPublicationActionsAskForConfirmation(t *testing.T) {
 	if !strings.Contains(stripANSI(m.View()), "request changes acme/repo#1? enter/y") {
 		t.Fatalf("x did not show the confirmation prompt:\n%s", stripANSI(m.View()))
 	}
-	next, cmd := m.Update(runes("n"))
+	next, cmd := m.Update(runes("t"))
 	m = next.(Model)
-	if cmd != nil || m.reviewJobs[m.region.pr.URL] != "" || strings.Contains(stripANSI(m.View()), "enter/y") {
+	if cmd != nil || len(m.stopping) != 0 || strings.Contains(stripANSI(m.View()), "enter/y") {
 		t.Fatal("another key did not cancel the confirmation without acting")
 	}
 	// A mouse press outside the footer controls also cancels.

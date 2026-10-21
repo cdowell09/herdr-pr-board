@@ -612,7 +612,7 @@ func TestModelDoesNotRefreshWhenSearchRateIsExhausted(t *testing.T) {
 	model.loading = false
 	model.rates.Search = gh.RateResource{Limit: 30, Remaining: 0, Reset: time.Now().Add(time.Minute)}
 
-	updated, command := model.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'r'}})
+	updated, command := model.Update(tea.KeyMsg{Type: tea.KeyCtrlR})
 	model = updated.(Model)
 	if command != nil {
 		t.Fatal("active refresh returned a command with an exhausted search rate limit")

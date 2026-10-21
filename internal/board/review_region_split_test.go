@@ -202,12 +202,7 @@ func TestShortTerminalCollapsesTheRegionAndZoomStillWorks(t *testing.T) {
 
 func TestBoardKeysActOnTheSelectedPR(t *testing.T) {
 	m := splitModel(t, &reviewFake{})
-	next, cmd := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("n")})
-	m = next.(Model)
-	if cmd == nil || m.reviewJobs[m.region.pr.URL] != "queued" || !strings.Contains(stripANSI(m.View()), "Request: queued") {
-		t.Fatalf("n did not queue a review from the board:\n%s", stripANSI(m.View()))
-	}
-	next, cmd = m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("s")})
+	next, cmd := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("s")})
 	m = next.(Model)
 	if cmd == nil || !m.region.settingsLoading {
 		t.Fatal("s did not load repository settings from the board")
@@ -261,9 +256,9 @@ func TestZoomWithoutLocalReviewsExplainsTheStateDirectory(t *testing.T) {
 	if zoomed := next.(Model); zoomed.zoom || !strings.Contains(zoomed.warning, "HERDR_PLUGIN_STATE_DIR") {
 		t.Fatalf("v without reviews: zoom=%v warning=%q", zoomed.zoom, zoomed.warning)
 	}
-	next, _ = m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("n")})
+	next, _ = m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("s")})
 	if !strings.Contains(next.(Model).warning, "HERDR_PLUGIN_STATE_DIR") {
-		t.Fatal("n without reviews stayed silent")
+		t.Fatal("s without reviews stayed silent")
 	}
 }
 
@@ -467,10 +462,10 @@ func TestInFlightActionsPinTheRegionAcrossAReorder(t *testing.T) {
 		// The user can still move on; the region and the next action follow.
 		next, _ := m.Update(tea.KeyMsg{Type: tea.KeyUp})
 		m = next.(Model)
-		next, cmd := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("n")})
+		next, cmd := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("s")})
 		m = next.(Model)
-		if m.region.pr.Number != 2 || cmd == nil || m.reviewJobs[m.region.pr.URL] != "queued" {
-			t.Fatalf("%s: navigation during the action left n on the old PR: region=%d jobs=%v", name, m.region.pr.Number, m.reviewJobs)
+		if m.region.pr.Number != 2 || cmd == nil || !m.region.settingsLoading {
+			t.Fatalf("%s: navigation during the action left s on the old PR: region=%d", name, m.region.pr.Number)
 		}
 	}
 	// An idle region follows the selection, which keeps its PR across the reorder.
@@ -509,9 +504,9 @@ func TestPinnedPRThatLeavesTheViewYieldsToTheSelection(t *testing.T) {
 	if m.region.pr.Number != 2 || shown != m.region.pr.URL {
 		t.Fatalf("displayed %q while actions target %s", shown, m.region.pr.URL)
 	}
-	next, cmd := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("n")})
-	if cmd == nil || next.(Model).reviewJobs[m.region.pr.URL] != "queued" {
-		t.Fatal("n did not target the displayed PR")
+	next, cmd := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("s")})
+	if cmd == nil || !next.(Model).region.settingsLoading || next.(Model).region.pr.Number != 2 {
+		t.Fatal("s did not target the displayed PR")
 	}
 }
 

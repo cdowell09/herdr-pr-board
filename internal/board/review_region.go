@@ -8,8 +8,6 @@ import (
 	"github.com/cdowell09/herdr-pr-board/internal/config"
 	gh "github.com/cdowell09/herdr-pr-board/internal/github"
 	"github.com/cdowell09/herdr-pr-board/internal/monitor"
-	"github.com/cdowell09/herdr-pr-board/internal/review"
-	"github.com/cdowell09/herdr-pr-board/internal/reviewflow"
 	"github.com/cdowell09/herdr-pr-board/internal/reviewmemory"
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/x/ansi"
@@ -18,7 +16,6 @@ import (
 type ReviewBackend interface {
 	Stop(string) error
 	Snapshot() (reviewmemory.Snapshot, error)
-	Review(context.Context, review.Request, func(string)) (reviewmemory.Run, error)
 	RunDirectory(string) string
 }
 
@@ -80,24 +77,9 @@ func userInput(message tea.Msg) bool {
 	return false
 }
 
-type reviewDoneMsg struct {
-	url          string
-	run          reviewmemory.Run
-	err          error
-	notification error
-}
-
 func (m Model) WithReviews(ctx context.Context, backend ReviewBackend) Model {
 	m.reviews, m.reviewContext = backend, ctx
-	m.reviewJobs, m.publishing, m.stopping = map[string]string{}, map[string]bool{}, map[string]string{}
-	return m
-}
-
-// WithNotifications sends a review notification when a manual review finishes.
-// A nil notifier sends none. The first failed notification of a board session
-// appears in the review region status line and the board footer.
-func (m Model) WithNotifications(notifier reviewflow.Notifier) Model {
-	m.notifier = notifier
+	m.publishing, m.stopping = map[string]bool{}, map[string]string{}
 	return m
 }
 
@@ -140,27 +122,8 @@ func (m Model) syncRegion(cmd tea.Cmd) (tea.Model, tea.Cmd) {
 }
 
 func (m Model) updateReview(message tea.Msg) (Model, tea.Cmd, bool) {
-	switch msg := message.(type) {
-	case reviewStoppedMsg:
+	if msg, ok := message.(reviewStoppedMsg); ok {
 		return m.updateReviewStopped(msg)
-	case reviewDoneMsg:
-		delete(m.reviewJobs, msg.url)
-		message := string(msg.run.Status)
-		if msg.err != nil {
-			message = msg.err.Error()
-		}
-		if msg.notification != nil && !m.notifyWarn {
-			m.notifyWarn = true
-			message += "; review notifications unavailable: " + msg.notification.Error()
-		}
-		m.warning = "review: " + message
-		if m.region != nil && m.region.pr.URL == msg.url {
-			m.region.message = message
-			m.clampRegionOffset()
-			cmd := m.requestOverview()
-			return m, cmd, true
-		}
-		return m, nil, true
 	}
 	return m, nil, false
 }
@@ -169,7 +132,7 @@ func (m Model) updateReview(message tea.Msg) (Model, tea.Cmd, bool) {
 // The board and the zoomed region share them.
 func (m Model) updateReviewAction(key tea.KeyMsg) (tea.Model, tea.Cmd, bool) {
 	switch key.String() {
-	case "n", "N", "t", "s", "c", "a", "x":
+	case "t", "s", "c", "a", "x":
 	default:
 		return m, nil, false
 	}
@@ -179,7 +142,6 @@ func (m Model) updateReviewAction(key tea.KeyMsg) (tea.Model, tea.Cmd, bool) {
 		}
 		return m, nil, true
 	}
-	r := m.region
 	switch key.String() {
 	case "s":
 		cmd := m.repositorySettingsCmd()
@@ -197,27 +159,7 @@ func (m Model) updateReviewAction(key tea.KeyMsg) (tea.Model, tea.Cmd, bool) {
 		next, cmd := m.armPublication(config.PublishRequestChanges)
 		return next, cmd, true
 	}
-	if r.settingsLoading {
-		return m, nil, true
-	}
-	if _, exists := m.cfg.RepositoryFor(r.pr.Repository); !exists {
-		cmd := m.repositorySettingsCmd()
-		return m, cmd, true
-	}
-	url := r.pr.URL
-	if m.reviewJobs[url] != "" {
-		r.message = "A review request is already queued or running."
-		m.clampRegionOffset()
-		return m, nil, true
-	}
-	m.reviewJobs[url] = "queued"
-	r.message = ""
-	m.clampRegionOffset()
-	backend, publisher, notifier, ctx, rerun := m.reviews, m.publications, m.notifier, m.reviewContext, key.String() == "N"
-	return m, func() tea.Msg {
-		result, err := reviewflow.Run(ctx, backend, publisher, notifier, review.Request{URL: url, Rerun: rerun}, nil)
-		return reviewDoneMsg{url: url, run: result.Run, err: err, notification: result.Notification}
-	}, true
+	return m, nil, true
 }
 
 // zoomIn shows the region at full height. Without local reviews it explains
@@ -259,6 +201,9 @@ func (m Model) updateZoomKey(key tea.KeyMsg) (tea.Model, tea.Cmd) {
 	case "enter", "o":
 		return m, m.openBrowser(m.region.pr.URL)
 	default:
+		if shortcut, ok := m.shortcut(key.String()); ok {
+			return m, m.launchShortcut(shortcut, m.region.pr)
+		}
 		m.scrollRegionKey(key.String())
 	}
 	return m, nil

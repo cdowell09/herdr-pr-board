@@ -6,6 +6,7 @@ import (
 	"strings"
 	"unicode/utf8"
 
+	"github.com/cdowell09/herdr-pr-board/internal/config"
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
 )
@@ -23,7 +24,6 @@ var keyHelp = []keyHelpEntry{
 	{"Enter", "open"},
 	{"/", "filter"},
 	{"j/k", "scroll"},
-	{"n", "run"},
 	{"s", "settings"},
 	{"v", "zoom"},
 	{"?", "help"},
@@ -34,8 +34,6 @@ var zoomKeyHelp = []keyHelpEntry{
 	{"v", "board"},
 	{"j/k", "scroll"},
 	{"g/G", "ends"},
-	{"n", "run"},
-	{"N", "rerun"},
 	{"t", "stop"},
 	{"c", "comment"},
 	{"a", "approve"},
@@ -46,15 +44,13 @@ var zoomKeyHelp = []keyHelpEntry{
 }
 
 // documentedKeys lists every key literal the board and review guides must document.
-// The documentation drift test fails when one is missing. Add new bindings from
-// updateKey, updateFilter, updateZoomKey, or updateReviewAction here, to
-// helpSections, and to the corresponding guide.
-var documentedKeys = []string{
-	"1", "9", "Tab", "Shift+Tab", "h", "l", "←", "→",
-	"j", "k", "↑", "↓", "g", "G", "Home", "End", "PgUp", "PgDn",
-	"/", "?", "Enter", "Ctrl+U", "Esc", "Backspace", "E", "v",
-	"n", "N", "s", "t", "c", "a", "x", "y", "r", "R", "o", "q", "Ctrl+C",
-}
+// The documentation drift test fails when one is missing. Add a new
+// single-character binding to config.ReservedKeys and other bindings here, then
+// to helpSections and the corresponding guide.
+var documentedKeys = append([]string{
+	"1", "9", "Tab", "Shift+Tab", "←", "→", "↑", "↓", "Home", "End", "PgUp", "PgDn",
+	"Enter", "Ctrl+U", "Esc", "Backspace", "Ctrl+R", "Ctrl+C",
+}, config.ReservedKeys...)
 
 // footerHelpLines renders the board controls and, while a filter is set,
 // the filter row under them.
@@ -84,12 +80,12 @@ func (m Model) boardHints() [][]keyHint {
 	if m.editing || m.filter != "" {
 		budget-- // the filter row follows the controls
 	}
-	return m.hintRows(keyHelp, budget)
+	return m.hintRows(slices.Concat(keyHelp, m.shortcutHelp()), budget)
 }
 
 // zoomHints are the controls of the zoomed review region footer.
 func (m Model) zoomHints() [][]keyHint {
-	return m.hintRows(zoomKeyHelp, m.height-4)
+	return m.hintRows(slices.Concat(zoomKeyHelp, m.shortcutHelp()), m.height-4)
 }
 
 // keyHint is one rendered footer control and the key literal it names.
@@ -205,15 +201,12 @@ func (m Model) renderFooter(help []string) string {
 	if m.confirm != nil {
 		parts = append(parts, m.confirm.prompt())
 	}
-	if m.editorNotice != "" {
+	if m.notice != "" {
 		// Keep the notice first. A narrow terminal truncates the tail.
-		parts = append(parts, m.editorNotice)
+		parts = append(parts, m.notice)
 	}
 	if m.monitorError != "" {
 		parts = append(parts, reviewText(m.monitorError))
-	}
-	if len(m.reviewJobs) > 0 {
-		parts = append(parts, fmt.Sprintf("%d review requests", len(m.reviewJobs)))
 	}
 	// A collapsed region cannot show its status line, so the footer does.
 	if m.region != nil && m.region.message != "" && !m.zoom && !m.regionSplit() {

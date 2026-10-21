@@ -13,7 +13,7 @@ import (
 var emptyViewSteps = []keyHelpEntry{
 	{"Tab", "next view"},
 	{"E", "edit config"},
-	{"r", "refresh"},
+	{"Ctrl+R", "refresh"},
 }
 
 // emptyViewMessage explains why a view has no pull requests. A default view

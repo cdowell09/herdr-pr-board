@@ -47,8 +47,9 @@ The board refreshes every five minutes by default.
 | `↑`, `↓`, or click a PR | Select a PR. |
 | `Enter`, `o`, click the URL, or click the selected PR | Open the selected PR in a browser. |
 | `/` | Filter the PRs locally. The filter matches the REVIEW and CI cells too. |
-| `r` / `R` | Refresh the current view / all views. |
-| `n`, `s` | Start a review or edit repository settings for the selected PR. |
+| `Ctrl+R` / `R` | Refresh the current view / all views. |
+| `s` | Edit repository settings for the selected PR. |
+| A command shortcut key | Run your command for the selected PR in a new Herdr pane. |
 | `j`, `k` | Scroll the review region under the table. |
 | `v` | Zoom the review region to the full height. |
 | `E` | Edit configuration and reload valid changes. |
@@ -94,6 +95,25 @@ Each view must have a unique ID.
 See [configuration](docs/configuration.md) for defaults, validation, refresh settings, API budgeting, and Herdr sidebar counts.
 Use [config.example.toml](config.example.toml) as the complete configuration reference.
 
+## Run your own command for a PR
+
+A **command shortcut** is a key that runs your command for the selected PR in a new Herdr pane.
+Add one to `config.toml`:
+
+```toml
+[[shortcuts]]
+key   = "r"
+name  = "Pi review"
+run   = 'pi --skill ~/.agents/skills/code-review "Use the code-review skill to review {url}."'
+where = "tab"   # or "split"
+cwd   = "~"     # optional
+```
+
+`run` can contain `{url}`, `{repo}`, and `{number}`.
+`where = "tab"` opens a new focused tab. `where = "split"` splits the board pane to the right.
+The board does not track the command after it starts.
+See [command shortcuts](docs/configuration.md#command-shortcuts) for validation rules.
+
 ## Review with an agent
 
 Built-in adapters support Pi, Codex, Claude Code, Qwen Code, Oh My Pi, Kimi, and Qoder CLI.
@@ -104,14 +124,13 @@ See [agent compatibility](docs/agent-compatibility.md) for native version requir
 PR Board shows a Herdr notification when a review completes, blocks, or fails.
 See [review notifications](docs/reviews.md#review-notifications) to limit or disable them.
 
-Select a PR and press `n`.
-Repository setup opens when the repository has no saved settings.
+Select a PR and press `s` to open repository setup.
 Choose a reviewer and save the settings.
 
 Setup looks for installed agent CLIs and starts at the first one it finds.
 
-Press `n` to run the review.
-Press `s` to change settings later.
+Enable [automatic reviews](docs/automatic-reviews.md), or run one review with the `--review` command.
+See [start a review](docs/reviews.md#start-a-review).
 
 Default reviews check repository standards and the PR specification.
 The specification comes from the PR body and linked closing issues.

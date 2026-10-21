@@ -164,7 +164,7 @@ func findingsDetail(counts reviewmemory.SeverityCounts) string {
 
 func renderReviewState(state string) string {
 	switch state {
-	case "running", "waiting", "queued", "ready":
+	case "running", "waiting", "ready":
 		return ciSymbol(gh.CIPending)
 	case "completed":
 		return ciSymbol(gh.CISuccess)

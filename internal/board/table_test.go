@@ -15,7 +15,7 @@ func TestReviewStateUsesCISymbols(t *testing.T) {
 		state string
 		ci    gh.CIState
 	}{
-		{"running", gh.CIPending}, {"waiting", gh.CIPending}, {"queued", gh.CIPending}, {"ready", gh.CIPending},
+		{"running", gh.CIPending}, {"waiting", gh.CIPending}, {"ready", gh.CIPending},
 		{"completed", gh.CISuccess}, {"failed", gh.CIFailure}, {"blocked", gh.CIFailure}, {"abandoned", gh.CIFailure},
 		{"none", gh.CINone}, {"unknown", gh.CIUnknown},
 	} {

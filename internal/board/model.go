@@ -15,7 +15,6 @@ import (
 	"github.com/cdowell09/herdr-pr-board/internal/discovery"
 	"github.com/cdowell09/herdr-pr-board/internal/dispatch"
 	gh "github.com/cdowell09/herdr-pr-board/internal/github"
-	"github.com/cdowell09/herdr-pr-board/internal/reviewflow"
 	"github.com/cdowell09/herdr-pr-board/internal/sidebar"
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
@@ -160,7 +159,6 @@ type Model struct {
 	reviewContext    context.Context
 	region           *reviewRegion
 	zoom             bool
-	reviewJobs       map[string]string
 	publishing       map[string]bool     // PR URL -> a publication is in flight
 	confirm          *pendingPublication // an armed publication action
 	stopping         map[string]string   // PR URL -> run ID with a stop request pending
@@ -181,7 +179,7 @@ type Model struct {
 	width            int
 	height           int
 	filter           string
-	editorNotice     string
+	notice           string
 	editing          bool
 	helpOverlay      bool
 	loading          bool
@@ -190,8 +188,7 @@ type Model struct {
 	sidebar          *sidebar.Reporter
 	reporter         func(config.SidebarConfig) *sidebar.Reporter
 	sidebarWarn      bool
-	notifier         reviewflow.Notifier
-	notifyWarn       bool
+	launch           func(context.Context, config.Shortcut, gh.PullRequest) error
 	epoch            uint64
 	observations     map[string]time.Time
 }
@@ -273,6 +270,9 @@ func (m Model) update(message tea.Msg) (tea.Model, tea.Cmd) {
 		return next, cmd
 	}
 	if next, cmd, handled := m.updateReview(message); handled {
+		return next, cmd
+	}
+	if next, cmd, handled := m.updateShortcut(message); handled {
 		return next, cmd
 	}
 	switch msg := message.(type) {
@@ -448,7 +448,7 @@ func (m Model) updateFilter(key tea.KeyMsg) (tea.Model, tea.Cmd) {
 
 func (m Model) updateConfig(message configEditMsg) (tea.Model, tea.Cmd) {
 	// The editor exited, so the validation result replaces the launch notice.
-	m.editorNotice = ""
+	m.notice = ""
 	if message.err != nil {
 		m.warning = appendWarning(m.warning, "configuration edit failed: "+message.err.Error())
 		return m, nil
@@ -598,9 +598,9 @@ func (m Model) updateKey(key tea.KeyMsg) (tea.Model, tea.Cmd) {
 		notice, command := m.editConfig(m.configPath)
 		// The launch owns the notice, so the footer names the executable
 		// that the board runs.
-		m.editorNotice = notice
+		m.notice = notice
 		return m, command
-	case "r":
+	case "ctrl+r":
 		requests := m.currentView().View.SearchRequestCount(len(m.cfg.GitHub.Scopes), m.cfg.GitHub.LimitPerScope)
 		if !m.loading && m.rates.Search.HasCapacity(requests) {
 			m.loading = true
@@ -616,6 +616,12 @@ func (m Model) updateKey(key tea.KeyMsg) (tea.Model, tea.Cmd) {
 			return m, m.openBrowser(pr.URL)
 		}
 	default:
+		if shortcut, ok := m.shortcut(key.String()); ok {
+			if pr, ok := m.selectedPR(); ok {
+				return m, m.launchShortcut(shortcut, pr)
+			}
+			return m, nil
+		}
 		if number, err := strconv.Atoi(key.String()); err == nil && number >= 1 && number <= len(m.views) {
 			m.selectView(number - 1)
 		}

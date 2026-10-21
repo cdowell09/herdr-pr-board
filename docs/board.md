@@ -19,7 +19,7 @@ A view with no pull requests shows text for that view and the next keys:
 
 A default view keeps its text while it keeps the default query and scope.
 A default view with a changed query or scope names the query.
-Each empty view names `Tab` for the next view, `E` to edit the configuration, and `r` to refresh.
+Each empty view names `Tab` for the next view, `E` to edit the configuration, and `Ctrl+R` to refresh.
 The board omits `Tab` when the configuration has one view.
 The text wraps on narrow terminals. No width removes a key.
 A short terminal makes the text shorter. Then it shows the keys without the actions.
@@ -81,7 +81,7 @@ A newer commit does not inherit a completed local review.
 Draft reviews and ordinary PR conversation comments do not count as submitted reviews.
 Dismissed reviews still count as posts. The column does not represent approval status.
 `GitHub` identifies the publication source. It does not prove that a human wrote the review.
-A review started with `n` is still a PR Board review.
+A review started with `--review` is still a PR Board review.
 Press `v` to zoom the review region for previous runs and publication diagnostics.
 GitHub review observations follow the normal refresh interval and cache.
 
@@ -109,8 +109,9 @@ GitHub review observations follow the normal refresh interval and cache.
 | `Ctrl+U`, `Esc` | Clear the filter. |
 | `E` | Edit the active configuration. |
 | `v` | Zoom the review region to the full height. |
-| `n`, `N`, `t`, `s`, `c`, `a`, `x` | Act on the selected PR's reviews. See [manual reviews](reviews.md#use-the-review-region). |
-| `r` | Refresh the active view. |
+| `t`, `s`, `c`, `a`, `x` | Act on the selected PR's reviews. See [manual reviews](reviews.md#use-the-review-region). |
+| A command shortcut key | Run the command shortcut for the selected PR. See [command shortcuts](#command-shortcuts). |
+| `Ctrl+R` | Refresh the active view. |
 | `R` | Refresh all views. |
 | `Enter`, `o` | Open the selected PR in a browser. |
 | `?` | Open or close the keyboard help. |
@@ -141,11 +142,29 @@ Click a footer key to do the action of that key. The click is the same as the ke
 A footer entry with two keys, such as `j/k`, does not respond to a click.
 
 Press `?` for the keyboard help.
-The help lists every board control and every review region control.
+The help lists every board control, every review region control, and every command shortcut.
 Scroll it with `j`, `k`, `↑`, `↓`, `g`, `G`, `Home`, `End`, or the mouse wheel.
 Press `?` or `Esc` to close it.
 
 See [manual reviews](reviews.md) for review controls, cancellation, and result history.
+
+## Command shortcuts
+
+A command shortcut runs your command for the selected PR in a new Herdr pane.
+Add `[[shortcuts]]` tables to `config.toml`. See [command shortcuts](configuration.md#command-shortcuts).
+No command shortcut is active by default.
+
+Press the shortcut key on the board or in zoom.
+In zoom, the shortcut uses the zoomed PR.
+The footer shows each shortcut as its key and name. Click it to run the shortcut.
+The shortcut key does not run during filter input or a publication confirmation.
+
+A `tab` shortcut opens a new focused Herdr tab. The tab label is `<name> <owner/repo>#<number>`.
+A `split` shortcut splits the board pane to the right and focuses the new pane.
+The new pane runs the command under `sh -c`.
+After the launch, the footer shows a notice, for example `Pi review → owner/repo#12`.
+A launch failure shows a warning in the footer.
+The board does not track the new pane. The shortcut does not change the REVIEW column.
 
 ## Open the board with a shortcut
 

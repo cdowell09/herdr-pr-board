@@ -138,9 +138,9 @@ func (m Model) repositoryViewport() (header []string, content []repositoryLine, 
 	summary := "Setup ready; save to apply"
 	switch reason := automaticSetupWait(s.repo, s.automatic.Selected, m.overview.monitor); {
 	case !s.repo.AutoLaunch && narrow:
-		summary = "Ready · Enter save · n run"
+		summary = "Ready · Enter save"
 	case !s.repo.AutoLaunch:
-		summary = "Manual reviews ready. Press Enter to save, then n to run."
+		summary = "Automatic launches off. Press Enter to save."
 	case reason != "":
 		summary = "Waiting: " + reason
 	}

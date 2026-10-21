@@ -178,7 +178,7 @@ func TestSetupSummariesDoNotConfusePermissionWithScheduling(t *testing.T) {
 		t.Fatalf("lock alone implied readiness: %s", lines)
 	}
 	setup.repo.AutoLaunch = false
-	if lines := stripANSI(m.View()); !strings.Contains(lines, "Manual reviews ready. Press Enter to save, then n to run.") || strings.Contains(lines, "Waiting:") {
+	if lines := stripANSI(m.View()); !strings.Contains(lines, "Automatic launches off. Press Enter to save.") || strings.Contains(lines, "Waiting:") {
 		t.Fatalf("manual setup still reads as blocked: %s", lines)
 	}
 	m.cfg.Repositories = []config.Repository{setup.repo}
@@ -202,9 +202,9 @@ func repositoryText(lines []repositoryLine) string {
 
 func TestSetupWithoutAutomationInvitesManualReview(t *testing.T) {
 	for _, size := range [][2]int{{80, 24}, {30, 10}} {
-		ready, running := "Manual reviews ready. Press Enter to save, then n to run.", "Monitor: stopped"
+		ready, running := "Automatic launches off. Press Enter to save.", "Monitor: stopped"
 		if size[0] < 60 {
-			ready, running = "Ready · Enter save · n run", "Settings · monitor stopped"
+			ready, running = "Ready · Enter save", "Settings · monitor stopped"
 		}
 		m := onboardingModel(t, size[0], size[1], 3)
 		setup := m.region.setup
