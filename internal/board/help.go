@@ -3,6 +3,7 @@ package board
 import (
 	"slices"
 	"strings"
+	"unicode/utf8"
 
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
@@ -218,7 +219,13 @@ func (m Model) renderHelpModal(layout helpLayout) []string {
 	}
 	rows = append(rows, row(dimStyle.Render(truncate(helpHint, max(0, inner-2)))))
 	rows = append(rows, helpBorderStyle.Render("╰"+strings.Repeat("─", inner)+"╯"))
-	return rows[:min(len(rows), layout.height)]
+	rows = rows[:min(len(rows), layout.height)]
+	// On a pane too narrow for the padding and both borders, the right side
+	// is cut so the modal stays inside its width.
+	for i, row := range rows {
+		rows[i] = ansi.Truncate(row, layout.width, "")
+	}
+	return rows
 }
 
 // renderHelpOverlay draws the help modal over a dimmed copy of the screen
@@ -244,10 +251,23 @@ func (m Model) renderHelpOverlay() string {
 			continue
 		}
 		left := padCells(ansi.Truncate(line, layout.x, ""), layout.x)
-		right := ansi.TruncateLeft(line, layout.x+layout.width, "")
+		right := cutLeft(line, layout.x+layout.width)
 		output[y] = backdropStyle.Render(left) + modal[i] + backdropStyle.Render(right)
 	}
 	return strings.Join(output, "\n")
+}
+
+// cutLeft returns the cells of a plain line from column from to its end. A
+// wide glyph that the cut splits becomes a space, so the result keeps the
+// width of the cells it replaces.
+func cutLeft(line string, from int) string {
+	want := lipgloss.Width(line) - from
+	right := ansi.TruncateLeft(line, from, "")
+	for right != "" && lipgloss.Width(right) > want {
+		_, size := utf8.DecodeRuneInString(right)
+		right = right[size:]
+	}
+	return strings.Repeat(" ", max(0, want-lipgloss.Width(right))) + right
 }
 
 func (m Model) updateHelpKey(key tea.KeyMsg) (tea.Model, tea.Cmd) {

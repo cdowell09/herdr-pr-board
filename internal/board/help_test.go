@@ -164,7 +164,7 @@ func TestHelpOverlayFitsNarrowTerminalsAndKeepsEveryControl(t *testing.T) {
 	// Wrapping keeps every character, but it can consume a space at a break.
 	// Comparing without spaces makes the check exact at every width.
 	compact := func(value string) string { return strings.ReplaceAll(value, " ", "") }
-	for _, size := range [][2]int{{tierNarrow, 24}, {30, 10}, {12, 6}, {8, 6}, {80, 24}, {120, 40}} {
+	for _, size := range [][2]int{{tierNarrow, 24}, {30, 10}, {12, 6}, {8, 6}, {5, 6}, {80, 24}, {120, 40}} {
 		model := layoutModel(t, size[0])
 		model.height = size[1]
 		model.helpOverlay = true
@@ -196,6 +196,20 @@ func TestHelpOverlayFitsNarrowTerminalsAndKeepsEveryControl(t *testing.T) {
 		}
 		if last := stripANSI(lines[len(lines)-1]); !strings.Contains(stripANSI(model.View()), last) {
 			t.Fatalf("%v: scrolling does not reach %q:\n%s", size, last, stripANSI(model.View()))
+		}
+	}
+}
+
+func TestHelpBackdropKeepsWideGlyphsInsideTheScreen(t *testing.T) {
+	// A wide glyph that the right modal edge splits must not widen the row.
+	for width := 120; width <= 150; width++ {
+		model := layoutModel(t, width)
+		model.views[0].PRs[0].Title = strings.Repeat("日本語のタイトル", 12)
+		model.helpOverlay = true
+		for y, line := range strings.Split(model.View(), "\n") {
+			if got := lipgloss.Width(line); got > width {
+				t.Fatalf("width %d: help row %d is %d cells wide: %q", width, y, got, stripANSI(line))
+			}
 		}
 	}
 }
