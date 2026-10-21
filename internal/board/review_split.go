@@ -13,8 +13,6 @@ import (
 // regionLabelWidth is the left gutter that holds the split region's labels.
 const regionLabelWidth = 14
 
-var regionLabelStyle = dimStyle
-
 // splitRegionLines renders the selected PR's review state as labeled rows:
 // REVIEW, FINDINGS, and REVISION for the latest run, then POSTED and
 // AUTOMATION, then each finding under its severity. The run ID and the
@@ -22,41 +20,11 @@ var regionLabelStyle = dimStyle
 func (m Model) splitRegionLines() []string {
 	s := m.regionState()
 	gutter := min(regionLabelWidth, m.width/3)
-	valueWidth := max(1, m.width-gutter)
 	var lines []string
-	// row adds one labeled row. Its value wraps under a blank gutter. A row
-	// on one line keeps each span's style; a wrapped row takes the last
-	// span's style.
-	// ponytail: wrapped rows lose per-span color; wrap styled spans if long rows need it.
 	row := func(label span, right string, spans ...span) {
-		var text strings.Builder
-		for _, sp := range spans {
-			text.WriteString(sp.text)
-		}
-		wrapped := strings.Split(ansi.Wrap(text.String(), valueWidth, ""), "\n")
-		for i, value := range wrapped {
-			head := strings.Repeat(" ", gutter)
-			if i == 0 && label.text != "" {
-				head = label.style.Render(padCells(truncate("  "+label.text, max(1, gutter-1)), gutter))
-			}
-			if len(wrapped) == 1 {
-				var styled strings.Builder
-				for _, sp := range spans {
-					styled.WriteString(sp.style.Render(sp.text))
-				}
-				value = styled.String()
-			} else {
-				value = spans[len(spans)-1].style.Render(value)
-			}
-			if i == 0 && right != "" {
-				if room := m.width - gutter - lipgloss.Width(value) - lipgloss.Width(right); room > 0 {
-					value += strings.Repeat(" ", room) + reviewSecondaryStyle.Render(right)
-				}
-			}
-			lines = append(lines, head+value)
-		}
+		lines = append(lines, labeledRow(m.width, gutter, label, right, spans...)...)
 	}
-	labeled := func(text string) span { return span{text: text, style: regionLabelStyle} }
+	labeled := func(text string) span { return span{text: text, style: dimStyle} }
 	blank := span{}
 	body := keyStyle.Bold(false)
 
@@ -147,18 +115,16 @@ func runStatus(run reviewmemory.Run) []span {
 		mark := reviewMark(string(run.Status))
 		return []span{mark, {text: " " + string(run.Status), style: mark.style}}
 	}
-	var parts []string
-	worst := -1
-	for i, count := range reviewmemory.CountSeverities(run.Findings) {
-		if count > 0 {
-			parts = append(parts, fmt.Sprintf("%s %d", reviewmemory.Severities[i], count))
-			if worst < 0 {
-				worst = i
-			}
-		}
-	}
+	counts := reviewmemory.CountSeverities(run.Findings)
+	worst := worstSeverity(counts)
 	if worst < 0 {
 		return []span{{text: "✓ Clean review", style: okStyle}}
+	}
+	var parts []string
+	for i, count := range counts {
+		if count > 0 {
+			parts = append(parts, fmt.Sprintf("%s %d", reviewmemory.Severities[i], count))
+		}
 	}
 	return []span{{text: "● " + strings.Join(parts, ", "), style: severityStyles[worst].Bold(true)}}
 }
@@ -169,4 +135,37 @@ func severityStyle(severity string) lipgloss.Style {
 		return severityStyles[i]
 	}
 	return keyStyle
+}
+
+// labeledRow renders one region row: the label in a gutter of gutter cells,
+// the value wrapped under a blank gutter, and right at the right edge of the
+// first line when it fits. A value on one line keeps each span's style; a
+// wrapped value takes the last span's style.
+// ponytail: wrapped rows lose per-span color; wrap styled spans if long rows need it.
+func labeledRow(width, gutter int, label span, right string, spans ...span) []string {
+	var text, styled strings.Builder
+	for _, sp := range spans {
+		text.WriteString(sp.text)
+		styled.WriteString(sp.style.Render(sp.text))
+	}
+	wrapped := strings.Split(ansi.Wrap(text.String(), max(1, width-gutter), ""), "\n")
+	lines := make([]string, len(wrapped))
+	for i, value := range wrapped {
+		head := strings.Repeat(" ", gutter)
+		if i == 0 && label.text != "" {
+			head = label.style.Render(padCells(truncate("  "+label.text, max(1, gutter-1)), gutter))
+		}
+		if len(wrapped) == 1 {
+			value = styled.String()
+		} else {
+			value = spans[len(spans)-1].style.Render(value)
+		}
+		if i == 0 && right != "" {
+			if room := width - gutter - lipgloss.Width(value) - lipgloss.Width(right); room > 0 {
+				value += strings.Repeat(" ", room) + reviewSecondaryStyle.Render(right)
+			}
+		}
+		lines[i] = head + value
+	}
+	return lines
 }

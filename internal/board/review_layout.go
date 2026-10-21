@@ -27,13 +27,16 @@ const (
 // regionSplit reports whether the board shows the review region under the table.
 func (m Model) regionSplit() bool { return m.region != nil && m.height >= regionSplitHeight }
 
-// regionLines renders the selected PR's review state. The split shows
-// labeled rows for the latest run. Zoom shows every run and the full
-// automation and details sections.
-func (m Model) regionLines(full bool) []string {
-	if !full {
-		return m.splitRegionLines()
+// regionLines renders the selected PR's review state: labeled rows for the
+// split, or every run with the full automation and details sections in zoom.
+func (m Model) regionLines(zoom bool) []string {
+	if zoom {
+		return m.zoomRegionLines()
 	}
+	return m.splitRegionLines()
+}
+
+func (m Model) zoomRegionLines() []string {
 	r, s := m.region, m.regionState()
 	var lines []string
 	add := func(value string, style lipgloss.Style) {

@@ -175,29 +175,32 @@ var severityStyles = [len(reviewmemory.Severities)]lipgloss.Style{
 // "✓ clean" for a clean review, and the review state symbol otherwise. The
 // spans fill the REVIEW column width.
 func reviewCell(summary reviewRowSummary) []span {
-	mark, label := reviewMark(summary.state), ""
-	if summary.state == "completed" {
-		label = "clean"
-		for i, count := range summary.findings {
-			if count > 0 {
-				mark = span{text: "●", style: severityStyles[i]}
-				label = reviewmemory.Severities[i] + " " + strconv.Itoa(count)
-				break
-			}
-		}
+	label := func(text string, style lipgloss.Style) span {
+		return span{text: padCells(truncate(text, reviewColumnWidth-1), reviewColumnWidth-1), style: style}
 	}
-	spans := []span{mark}
-	if label != "" {
-		label = " " + label
+	if summary.state != "completed" {
+		return []span{reviewMark(summary.state), label("", lipgloss.NewStyle())}
 	}
-	style := dimStyle
-	if mark.text == "●" {
-		style = mark.style.Bold(true)
+	worst := worstSeverity(summary.findings)
+	if worst < 0 {
+		return []span{ciMark(gh.CISuccess), label(" clean", dimStyle)}
 	}
-	return append(spans, span{text: padCells(truncate(label, reviewColumnWidth-1), reviewColumnWidth-1), style: style})
+	style := severityStyles[worst]
+	return []span{{text: "●", style: style}, label(" "+reviewmemory.Severities[worst]+" "+strconv.Itoa(summary.findings[worst]), style.Bold(true))}
 }
 
-// reviewText returns the visible REVIEW cell text, which the filter matches.
+// worstSeverity returns the index of the most severe nonzero count, or -1
+// for a clean review.
+func worstSeverity(counts reviewmemory.SeverityCounts) int {
+	for i, count := range counts {
+		if count > 0 {
+			return i
+		}
+	}
+	return -1
+}
+
+// reviewCellText returns the visible REVIEW cell text, which the filter matches.
 func reviewCellText(summary reviewRowSummary) string {
 	var b strings.Builder
 	for _, s := range reviewCell(summary) {
