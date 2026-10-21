@@ -154,7 +154,10 @@ func (m Model) renderPRRow(pr gh.PullRequest, layout tableLayout, selected bool,
 		b.WriteString(s.style.Inherit(base).Render(s.text))
 	}
 	line := ansi.Truncate(b.String(), m.width, "…")
-	return line + base.Render(strings.Repeat(" ", max(0, m.width-lipgloss.Width(line))))
+	if padding := m.width - lipgloss.Width(line); padding > 0 {
+		line += base.Render(strings.Repeat(" ", padding))
+	}
+	return line
 }
 
 // reviewColumnWidth fits the worst severity and its count: "● P0 12".

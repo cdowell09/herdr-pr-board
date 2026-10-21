@@ -66,7 +66,7 @@ func TestRegionFollowsTheSelectionFromTheLatestRead(t *testing.T) {
 	if m.region == nil || m.region.pr.Number != 2 || len(m.regionState().runs) != 1 {
 		t.Fatalf("selection change did not bind the region from the latest read: %+v", m.region)
 	}
-	if view := stripANSI(m.View()); !strings.Contains(view, "Review · completed") || strings.Contains(view, "No local review runs") {
+	if view := stripANSI(m.View()); !strings.Contains(view, "REVIEW      ● P0 1 · agent") || strings.Contains(view, "No local review runs") {
 		t.Fatalf("region flashed empty after the selection change:\n%s", view)
 	}
 }
@@ -102,14 +102,14 @@ func TestSplitGeometryMatchesRenderedRowsAndMouse(t *testing.T) {
 	if stripANSI(lines[lay.selectedURLRow]) != m.region.pr.URL {
 		t.Fatalf("URL row %d = %q", lay.selectedURLRow, stripANSI(lines[lay.selectedURLRow]))
 	}
-	header := stripANSI(lines[lay.selectedURLRow+2])
-	for _, want := range []string{"── Review", "completed", "agent", "current observed revision", "P0:3 P1:3 P2:3 P3:3", "run 1/1"} {
+	header := stripANSI(lines[lay.selectedURLRow+1])
+	for _, want := range []string{"REVIEW", "● P0 3, P1 3, P2 3, P3 3", "agent", "current observed revision", "run 1 of 1"} {
 		if !strings.Contains(header, want) {
 			t.Fatalf("region header lacks %q: %q", want, header)
 		}
 	}
 	m.reviewRows = map[string]reviewOverviewRow{m.region.pr.URL: {identity: dispatch.Identity(m.region.pr), summary: reviewRowSummary{postedDetail: "GitHub · current revision"}}}
-	if view := stripANSI(m.View()); !strings.Contains(view, "Posted: GitHub · current revision") {
+	if view := stripANSI(m.View()); !strings.Contains(view, "POSTED      GitHub · current revision") {
 		t.Fatalf("region lacks the posted detail:\n%s", view)
 	}
 	if lay.regionRows < regionMinRows || lay.regionRows != m.height-lay.selectedURLRow-1-len(m.footerHelpLines())-1 {
@@ -269,8 +269,13 @@ func TestNarrowTerminalKeepsRevisionMetadataInTheRegion(t *testing.T) {
 	m = next.(Model)
 	for _, zoom := range []bool{false, true} {
 		m.zoom = zoom
-		view := stripANSI(m.View())
-		for _, want := range []string{"current observed revision", "P0:1 P1:0 P2:0 P3:0"} {
+		// Wrapped region rows continue under a blank gutter, so compare words.
+		view := strings.Join(strings.Fields(stripANSI(m.View())), " ")
+		counts := "● P0 1 ·"
+		if zoom {
+			counts = "P0:1 P1:0 P2:0 P3:0"
+		}
+		for _, want := range []string{"current observed revision", counts} {
 			if !strings.Contains(view, want) {
 				t.Fatalf("zoom=%v width 40 lost %q:\n%s", zoom, want, view)
 			}
@@ -517,7 +522,7 @@ func TestSplitShowsThePublicationTargetBesideANewerFailure(t *testing.T) {
 	failed.ID, failed.Status, failed.Message = "run-2", reviewmemory.Failed, "reviewer crashed"
 	m.setRegionRuns(completed, failed)
 	view := stripANSI(m.View())
-	for _, want := range []string{"Review · failed", "run 1/2", "Review · completed", "run 2/2", "Publication target"} {
+	for _, want := range []string{"REVIEW      ✗ failed", "run 1 of 2", "REVIEW      ● P0 1", "run 2 of 2", "publication target", "reviewer crashed"} {
 		if !strings.Contains(view, want) {
 			t.Fatalf("split lacks %q:\n%s", want, view)
 		}
@@ -597,7 +602,7 @@ func TestPostedSummaryFollowsTheRefreshedHeadNotAStaleRead(t *testing.T) {
 	stale := reviewOverviewMsg{epoch: m.epoch, rows: map[string]reviewOverviewRow{pr.URL: {identity: dispatch.Identity(pr), summary: reviewRowSummary{postedDetail: "GitHub · current revision"}}}}
 	next, _ := m.Update(stale)
 	m = next.(Model)
-	if view := stripANSI(m.View()); !strings.Contains(view, "Posted: GitHub · current revision") {
+	if view := stripANSI(m.View()); !strings.Contains(view, "POSTED      GitHub · current revision") {
 		t.Fatalf("read did not reach the region:\n%s", view)
 	}
 	// A new head arrives; the read above described the old one.
@@ -608,7 +613,7 @@ func TestPostedSummaryFollowsTheRefreshedHeadNotAStaleRead(t *testing.T) {
 	next, _ = m.Update(snapshotMsg{Snapshot: discovery.Snapshot{Views: []discovery.ViewData{{View: m.cfg.Views[0], PRs: []gh.PullRequest{moved, splitPR(2, 2*time.Hour)}, UpdatedAt: now, ObservedAt: now}, {View: m.cfg.Views[1]}}, StartedAt: now, FinishedAt: now}})
 	m = next.(Model)
 	view := stripANSI(m.View())
-	if strings.Contains(view, "Posted: GitHub · current revision") || !strings.Contains(view, "Posted: Loading posted reviews") {
+	if strings.Contains(view, "POSTED      GitHub · current revision") || !strings.Contains(view, "POSTED      Loading posted reviews") {
 		t.Fatalf("stale read labeled an old post as current:\n%s", view)
 	}
 }
@@ -699,5 +704,60 @@ func TestPendingStopSettlesForAPRThatLeftEveryView(t *testing.T) {
 	next, _ = m.Update(reviewOverviewMsg{epoch: m.epoch, read: overviewRead{err: fmt.Errorf("cannot read history")}})
 	if next.(Model).stopping[gone] != "run-9" {
 		t.Fatal("failed read settled a pending stop")
+	}
+}
+
+func TestSplitRegionUsesLabeledRows(t *testing.T) {
+	m := splitModel(t, &reviewFake{})
+	older := completedRun(1)
+	older.ID = "run-0"
+	run := completedRun(0)
+	run.Message = "Standards: no findings.\nNot run: full completion gates."
+	m.setRegionRuns(older, run)
+	m.reviewRows = map[string]reviewOverviewRow{m.region.pr.URL: {identity: dispatch.Identity(m.region.pr), summary: reviewRowSummary{postedDetail: "GitHub · current revision"}}}
+	lay := m.boardLayout()
+	lines := strings.Split(stripANSI(m.View()), "\n")
+	if lines[lay.selectedURLRow] != m.region.pr.URL {
+		t.Fatalf("URL row moved: %q", lines[lay.selectedURLRow])
+	}
+	region := lines[lay.selectedURLRow+1 : lay.selectedURLRow+1+lay.regionRows]
+	want := []string{
+		"  REVIEW      ✓ Clean review · agent · current observed revision",
+		"  FINDINGS    Standards: no findings.",
+		"              Not run: full completion gates.",
+		"  REVISION    aaaaaaaa → main · " + run.StartedAt.Local().Format("02 Jan 15:04"),
+		"  POSTED      GitHub · current revision",
+		"  AUTOMATION  monitor unknown · launches off · after review: keep local",
+	}
+	for i, prefix := range want {
+		if !strings.HasPrefix(region[i], prefix) {
+			t.Fatalf("region line %d = %q, want prefix %q\n%s", i, region[i], prefix, strings.Join(region, "\n"))
+		}
+	}
+	if !strings.HasSuffix(region[0], "run 1 of 2") || lipgloss.Width(region[0]) != m.width {
+		t.Fatalf("run position is not at the right edge: %q", region[0])
+	}
+	if all := strings.Join(region, "\n"); strings.Contains(all, "run-1") || strings.Contains(all, "diagnostics") {
+		t.Fatalf("split shows the run ID or diagnostics path:\n%s", all)
+	}
+	m.zoom = true
+	if zoomed := stripANSI(m.View()); !strings.Contains(zoomed, "Run run-1") || !strings.Contains(zoomed, "Diagnostics: ") {
+		t.Fatalf("zoom lost the run ID or diagnostics path:\n%s", zoomed)
+	}
+}
+
+func TestSplitRegionListsFindingsUnderTheSummary(t *testing.T) {
+	m := splitModel(t, &reviewFake{})
+	m.setRegionRuns(completedRun(2))
+	lines := strings.Split(stripANSI(m.View()), "\n")
+	region := strings.Join(lines[m.boardLayout().selectedURLRow+1:], "\n")
+	for _, want := range []string{
+		"  REVIEW      ● P0 1, P1 1 · agent · current observed revision",
+		"  FINDINGS    Summary\n  REVISION",
+		"  P0          Finding 0\n              main.go:1\n              Body text 0\n  P1          Finding 1",
+	} {
+		if !strings.Contains(region, want) {
+			t.Fatalf("region lacks %q:\n%s", want, region)
+		}
 	}
 }

@@ -27,10 +27,13 @@ const (
 // regionSplit reports whether the board shows the review region under the table.
 func (m Model) regionSplit() bool { return m.region != nil && m.height >= regionSplitHeight }
 
-// regionLines renders the selected PR's review state. The split shows the
-// latest run and one line each for automation and details. Zoom shows every
-// run and the full automation and details sections.
+// regionLines renders the selected PR's review state. The split shows
+// labeled rows for the latest run. Zoom shows every run and the full
+// automation and details sections.
 func (m Model) regionLines(full bool) []string {
+	if !full {
+		return m.splitRegionLines()
+	}
 	r, s := m.region, m.regionState()
 	var lines []string
 	add := func(value string, style lipgloss.Style) {
@@ -39,20 +42,14 @@ func (m Model) regionLines(full bool) []string {
 		}
 	}
 	heading := func(text, suffix string, style lipgloss.Style) {
-		if full && len(lines) > 0 && m.height >= 20 {
+		if len(lines) > 0 && m.height >= 20 {
 			add("", reviewSecondaryStyle)
 		}
 		lines = append(lines, rule(text, suffix, m.width, style))
 	}
 	body := keyStyle.Bold(false)
-	if r.message != "" {
-		add("Status: "+r.message, warningStyle)
-	}
-	if s.readErr != nil {
-		add("Local reviews unavailable: "+s.readErr.Error(), warningStyle)
-	}
-	if m.monitorError != "" {
-		add(m.monitorError, warningStyle)
+	for _, warning := range m.regionWarnings() {
+		add(warning, warningStyle)
 	}
 	// The posted summary belongs to the PR, not to a run, so it leads the
 	// region and stays visible above the findings. The row summary checks the
@@ -61,30 +58,11 @@ func (m Model) regionLines(full bool) []string {
 	add("Posted: "+m.rowReviewSummary(r.pr).postedDetail, reviewSecondaryStyle)
 	current := m.reviewObservation()
 	target, hasTarget := latestCompleted(s.runs)
-	stopTarget, _ := m.stopTarget()
-	publicationResult := func(a publication.Attempt) {
-		style := keyStyle
-		if a.Status != publication.Published {
-			style = warningStyle
-		}
-		add("Publication "+string(a.Action)+": "+string(a.Status), style)
-		if a.Message != "" {
-			add(a.Message, warningStyle)
-		}
-	}
-	// Zoom lists every run. The split lists the newest run and, when a newer
-	// run did not complete, the completion that publication would target.
 	for i := len(s.runs) - 1; i >= 0; i-- {
 		run := s.runs[i]
-		if !full && i != len(s.runs)-1 && !(hasTarget && run.ID == target.ID) {
-			continue
-		}
-		label, suffix := "Review", fmt.Sprintf("run %d/%d", len(s.runs)-i, len(s.runs))
-		if full {
-			label, suffix = "Previous review", ""
-			if i == len(s.runs)-1 {
-				label = "Latest review"
-			}
+		label := "Previous review"
+		if i == len(s.runs)-1 {
+			label = "Latest review"
 		}
 		header := []string{label, string(run.Status)}
 		if run.Reviewer != "" {
@@ -101,19 +79,15 @@ func (m Model) regionLines(full bool) []string {
 		// A narrow terminal keeps the label and outcome on the rule and lists
 		// the rest below it, one part per line, so no metadata is lost.
 		if lipgloss.Width("── "+strings.Join(header, " · ")+" ") > m.width {
-			heading(strings.Join(header[:2], " · "), suffix, style)
+			heading(strings.Join(header[:2], " · "), "", style)
 			for _, part := range header[2:] {
 				add(part, reviewSecondaryStyle)
 			}
 		} else {
-			heading(strings.Join(header, " · "), suffix, style)
+			heading(strings.Join(header, " · "), "", style)
 		}
-		if run.ID == stopTarget.ID && run.ID != "" {
-			if m.stopping[r.pr.URL] == run.ID {
-				add("Stopping run "+shortRevision(run.ID)+" · waiting for reviewer cleanup", warningStyle)
-			} else {
-				add("t stop run "+shortRevision(run.ID), keyStyle)
-			}
+		if stop, ok := m.stopLine(run); ok {
+			add(stop.text, stop.style)
 		}
 		if run.Message != "" {
 			add(run.Message, body)
@@ -133,72 +107,26 @@ func (m Model) regionLines(full bool) []string {
 			meta += " · Publication: no recorded posts"
 		}
 		add(meta, reviewSecondaryStyle)
-		for _, a := range s.publications {
-			if a.RunID == run.ID {
-				publicationResult(a)
-			}
+		for _, result := range m.publicationResults(run.ID) {
+			add(result.text, result.style)
 		}
 	}
 	if len(s.runs) == 0 {
 		heading("Reviews", "", keyStyle)
-		if s.loaded {
-			add("No local review runs", body)
-		} else {
-			add("Loading local reviews…", reviewSecondaryStyle)
-		}
+		add(m.noRunsText(), body)
 	}
 
-	repo, _ := m.cfg.RepositoryFor(r.pr.Repository)
-	state := string(s.monitor.State)
-	if state == "" {
-		state = "unknown"
-	}
-	launches := "off"
-	if repo.AutoLaunch {
-		launches = "on"
-	}
-	after := "keep local"
-	if repo.AutoPublish != "" {
-		after = string(repo.AutoPublish)
-	}
-	waiting := ""
-	if reason := automaticSetupWait(repo, m.cfg.Review.AutoViews, s.monitor); reason != "" {
-		waiting = "Waiting: " + reason
-	} else if s.slotBusy {
-		waiting = "Waiting for review slot"
-	}
-	if !full {
-		line := "Automation: monitor " + state + " · launches " + launches + " · after review: " + after
-		if waiting != "" {
-			line += " · " + waiting
-		}
-		add(line, reviewSecondaryStyle)
-		if s.automatic.Reason != "" {
-			add("Latest full observation: "+s.automatic.Reason, reviewSecondaryStyle)
-		}
-		if s.monitor.Message != "" {
-			add(s.monitor.Message, warningStyle)
-		}
-		if len(s.runs) > 0 {
-			latest := s.runs[len(s.runs)-1]
-			details := "Details: run " + latest.ID
-			if m.reviews != nil {
-				details += " · diagnostics " + m.reviews.RunDirectory(latest.ID)
-			}
-			add(details, reviewSecondaryStyle)
-		}
-		return lines
-	}
+	auto := m.automationState()
 	heading("Automation", "", keyStyle)
-	add("Monitor: "+state, body)
+	add("Monitor: "+auto.monitor, body)
 	if s.automatic.Reason != "" {
 		add("Latest full observation: "+s.automatic.Reason, body)
 	}
-	if waiting != "" {
-		add(waiting, warningStyle)
+	if auto.waiting != "" {
+		add(auto.waiting, warningStyle)
 	}
-	add("Automatic launches: "+launches, reviewSecondaryStyle)
-	add("After review: "+after, reviewSecondaryStyle)
+	add("Automatic launches: "+auto.launches, reviewSecondaryStyle)
+	add("After review: "+auto.after, reviewSecondaryStyle)
 	if s.monitor.Message != "" {
 		add(s.monitor.Message, warningStyle)
 	}
@@ -229,6 +157,85 @@ func (m Model) regionLines(full bool) []string {
 		}
 	}
 	return lines
+}
+
+// regionWarnings lists the status, read, and monitor problems that lead the region.
+func (m Model) regionWarnings() []string {
+	var warnings []string
+	if m.region.message != "" {
+		warnings = append(warnings, "Status: "+m.region.message)
+	}
+	if err := m.regionState().readErr; err != nil {
+		warnings = append(warnings, "Local reviews unavailable: "+err.Error())
+	}
+	if m.monitorError != "" {
+		warnings = append(warnings, m.monitorError)
+	}
+	return warnings
+}
+
+// stopLine offers or reports the stop of run when it is the stop target.
+func (m Model) stopLine(run reviewmemory.Run) (span, bool) {
+	target, _ := m.stopTarget()
+	if run.ID == "" || run.ID != target.ID {
+		return span{}, false
+	}
+	if m.stopping[m.region.pr.URL] == run.ID {
+		return span{text: "Stopping run " + shortRevision(run.ID) + " · waiting for reviewer cleanup", style: warningStyle}, true
+	}
+	return span{text: "t stop run " + shortRevision(run.ID), style: keyStyle}, true
+}
+
+// publicationResults lists the recorded publication attempts for one run.
+func (m Model) publicationResults(runID string) []span {
+	var results []span
+	for _, a := range m.regionState().publications {
+		if a.RunID != runID {
+			continue
+		}
+		style := keyStyle
+		if a.Status != publication.Published {
+			style = warningStyle
+		}
+		results = append(results, span{text: "Publication " + string(a.Action) + ": " + string(a.Status), style: style})
+		if a.Message != "" {
+			results = append(results, span{text: a.Message, style: warningStyle})
+		}
+	}
+	return results
+}
+
+func (m Model) noRunsText() string {
+	if m.regionState().loaded {
+		return "No local review runs"
+	}
+	return "Loading local reviews…"
+}
+
+// automation is the region PR's automatic review setup in display words.
+type automation struct {
+	monitor, launches, after, waiting string
+}
+
+func (m Model) automationState() automation {
+	s := m.regionState()
+	repo, _ := m.cfg.RepositoryFor(m.region.pr.Repository)
+	auto := automation{monitor: string(s.monitor.State), launches: "off", after: "keep local"}
+	if auto.monitor == "" {
+		auto.monitor = "unknown"
+	}
+	if repo.AutoLaunch {
+		auto.launches = "on"
+	}
+	if repo.AutoPublish != "" {
+		auto.after = string(repo.AutoPublish)
+	}
+	if reason := automaticSetupWait(repo, m.cfg.Review.AutoViews, s.monitor); reason != "" {
+		auto.waiting = "Waiting: " + reason
+	} else if s.slotBusy {
+		auto.waiting = "Waiting for review slot"
+	}
+	return auto
 }
 
 // revisionComparison relates a run to the latest successful board observation.

@@ -152,7 +152,7 @@ func TestWheelActsOnTheAreaUnderThePointer(t *testing.T) {
 		next, _ := m.Update(tea.MouseMsg{X: 2, Y: y, Button: tea.MouseButtonWheelDown, Action: tea.MouseActionPress})
 		return next.(Model)
 	}
-	regionY := renderedRow(t, m, "── Review")
+	regionY := renderedRow(t, m, "REVIEW      ●")
 	if scrolled := wheel(m, regionY); scrolled.cursor != 0 || scrolled.region.offset != mouseStep {
 		t.Fatalf("wheel over the region: cursor=%d offset=%d", scrolled.cursor, scrolled.region.offset)
 	}
