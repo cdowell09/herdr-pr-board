@@ -5,6 +5,7 @@ import (
 	"strings"
 
 	"github.com/cdowell09/herdr-pr-board/internal/config"
+	"github.com/charmbracelet/lipgloss"
 	"github.com/charmbracelet/x/ansi"
 )
 
@@ -34,10 +35,11 @@ func emptyViewMessage(view config.View) string {
 	return fmt.Sprintf("No pull requests match %q.", view.Query)
 }
 
-// renderEmptyView explains the empty view and names the next keys. The text
-// wraps at the terminal width, so no width removes a key. The whole state
-// keeps only the rows that the table area holds, so neither a long query nor a
-// short pane can push the tabs off the screen and invalidate the mouse rows.
+// renderEmptyView explains the empty view and names the next keys, centered
+// in the table area. The text wraps at the terminal width, so no width removes
+// a key. The whole state keeps only the rows that the table area holds, so
+// neither a long query nor a short pane can push the tabs off the screen and
+// invalidate the mouse rows.
 func (m Model) renderEmptyView(lay boardLayout) string {
 	width, budget := max(1, m.width), max(1, lay.emptyRows)
 	steps := emptyViewSteps
@@ -49,7 +51,12 @@ func (m Model) renderEmptyView(lay boardLayout) string {
 	// One row always explains the view. The keys take the rows that remain.
 	// A pane that is too short for the actions keeps the keys alone.
 	pack := func(texts []string) []string { return renderHints(packHints(hints(steps, texts), width)) }
-	stepLines := pack(keyPairs(steps))
+	// The actions use the normal text color: they are the content here.
+	pairs := make([]string, len(steps))
+	for i, step := range steps {
+		pairs[i] = keyStyle.Render(step.keys) + " " + step.action
+	}
+	stepLines := pack(pairs)
 	if len(stepLines) > budget-1 {
 		stepLines = pack(keyLabels(steps))
 	}
@@ -60,8 +67,10 @@ func (m Model) renderEmptyView(lay boardLayout) string {
 		// Compress the rest of the message into the last row it keeps.
 		message = append(message[:room-1], truncate(strings.Join(message[room-1:], " "), width))
 	}
-	for i, line := range message {
-		message[i] = dimStyle.Render(line)
+	lines := append(message, stepLines...)
+	for i, line := range lines {
+		lines[i] = strings.Repeat(" ", max(0, width-lipgloss.Width(line))/2) + line
 	}
-	return strings.Join(append(message, stepLines...), "\n") + "\n"
+	top := strings.Repeat("\n", max(0, budget-len(lines))/2)
+	return top + strings.Join(lines, "\n") + "\n"
 }

@@ -39,7 +39,7 @@ func TestFilterInputMovesTheSelectionAndBackspaceLeavesIt(t *testing.T) {
 	if second == first || !strings.Contains(second, "acme") {
 		t.Fatalf("down did not move the filtered selection: %q then %q", first, second)
 	}
-	if !strings.Contains(stripANSI(m.View()), "filter: acme▌") {
+	if !strings.Contains(stripANSI(m.View()), "/ acme▌") {
 		t.Fatal("down left filter input")
 	}
 	m = press(m, tea.KeyMsg{Type: tea.KeyUp})
@@ -53,7 +53,7 @@ func TestFilterInputMovesTheSelectionAndBackspaceLeavesIt(t *testing.T) {
 		t.Fatalf("enter moved the selection to %q, want %q", got, second)
 	}
 	view := stripANSI(m.View())
-	if !strings.Contains(view, "filter: acme") || strings.Contains(view, "filter: acme▌") {
+	if !strings.Contains(view, "/ acme") || strings.Contains(view, "/ acme▌") {
 		t.Fatalf("enter did not keep the filter and leave input:\n%s", view)
 	}
 
@@ -62,11 +62,11 @@ func TestFilterInputMovesTheSelectionAndBackspaceLeavesIt(t *testing.T) {
 	for range "acme" {
 		m = press(m, tea.KeyMsg{Type: tea.KeyBackspace})
 	}
-	if !strings.Contains(stripANSI(m.View()), "filter: ▌") {
+	if !strings.Contains(stripANSI(m.View()), "/ ▌") {
 		t.Fatal("backspace did not empty the filter")
 	}
 	m = press(m, tea.KeyMsg{Type: tea.KeyBackspace})
-	if strings.Contains(stripANSI(m.View()), "filter:") {
+	if lines := strings.Split(stripANSI(m.View()), "\n"); m.editing || strings.HasPrefix(lines[len(lines)-1], "/ ") {
 		t.Fatal("backspace on an empty filter did not leave filter input")
 	}
 	// Board keys work again: q quits.
@@ -176,11 +176,11 @@ func TestFooterHintClicksReplayTheKey(t *testing.T) {
 			t.Fatalf("width %d: ? help click did not open help", width)
 		}
 		filtering, _ := clickText(t, m, "/ filter")
-		if !strings.Contains(stripANSI(filtering.View()), "filter: ▌") {
+		if !strings.Contains(stripANSI(filtering.View()), "/ ▌") {
 			t.Fatalf("width %d: / filter click did not start the filter", width)
 		}
 		// In filter input the click types the key, the same as the key does.
-		if typed, _ := clickText(t, filtering, "v zoom"); !strings.Contains(stripANSI(typed.View()), "filter: v▌") {
+		if typed, _ := clickText(t, filtering, "v zoom"); !strings.Contains(stripANSI(typed.View()), "/ v▌") {
 			t.Fatalf("width %d: v click in filter input did not type v", width)
 		}
 		// The separator between hints is not a hitbox.

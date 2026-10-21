@@ -140,7 +140,7 @@ func TestOverviewRefreshesAllRowsWithoutOpeningReviewPanel(t *testing.T) {
 	backend.err = errors.New("cannot read history")
 	next, _ = m.Update(m.reviewOverviewCmd()())
 	m = next.(Model)
-	if got := m.rowReviewSummary(pr); got.state != "unknown" || got.posted != "?" {
+	if got := m.rowReviewSummary(pr); got.state != "unknown" || got.posted != noneMark.text {
 		t.Fatalf("failure preserved false status: %+v", got)
 	}
 }
@@ -162,7 +162,7 @@ func TestOverviewDropsOldEpochAndRevisionAndCapturesCandidates(t *testing.T) {
 		t.Fatal("old epoch replaced current rows")
 	}
 	pr.HeadOID = strings.Repeat("d", 40)
-	if got := m.rowReviewSummary(pr); got.state != "unknown" || got.posted != "?" {
+	if got := m.rowReviewSummary(pr); got.state != "unknown" || got.posted != noneMark.text {
 		t.Fatalf("old result applied to new revision: %+v", got)
 	}
 }
@@ -178,7 +178,7 @@ func TestOverviewKeepsSelectionVisibleWhenDetailGrows(t *testing.T) {
 		row.Number = number
 		row.URL = fmt.Sprintf("https://github.com/acme/repo/pull/%d", number)
 		m.views[0].PRs = append(m.views[0].PRs, row)
-		m.reviewRows[row.URL] = reviewOverviewRow{identity: dispatch.Identity(row), summary: reviewRowSummary{state: "none", detail: "None", posted: "–", postedDetail: "None"}}
+		m.reviewRows[row.URL] = reviewOverviewRow{identity: dispatch.Identity(row), summary: reviewRowSummary{state: "none", detail: "None", posted: noneMark.text, postedDetail: "None"}}
 	}
 	m.cursor = m.boardLayout().visibleRows - 1
 	m.clampCursor()
