@@ -3,6 +3,7 @@ package shortcut
 import (
 	"context"
 	"errors"
+	"path/filepath"
 	"reflect"
 	"strings"
 	"testing"
@@ -48,15 +49,23 @@ func TestLaunchOpensTabAndRunsCommand(t *testing.T) {
 	}
 }
 
+// testHome points os.UserHomeDir at a temporary directory on every platform.
+func testHome(t *testing.T) string {
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	t.Setenv("USERPROFILE", home)
+	return home
+}
+
 func TestLaunchSplitsRightWithExpandedCwd(t *testing.T) {
-	t.Setenv("HOME", "/home/me")
+	home := testHome(t)
 	runner := &fakeRunner{output: paneCreated}
 	shortcut := config.Shortcut{Key: "r", Name: "Shell", Run: "echo {url}", Where: config.ShortcutSplit, Cwd: "~/src"}
 	if err := (Launcher{Runner: runner.Run}).Launch(context.Background(), shortcut, pr); err != nil {
 		t.Fatal(err)
 	}
 	want := [][]string{
-		{"pane", "split", "--current", "--direction", "right", "--focus", "--cwd", "/home/me/src", "--env", "PR_BOARD_COMMAND=echo https://github.com/acme/widgets/pull/12"},
+		{"pane", "split", "--current", "--direction", "right", "--focus", "--cwd", filepath.Join(home, "src"), "--env", "PR_BOARD_COMMAND=echo https://github.com/acme/widgets/pull/12"},
 		{"pane", "run", "w1:p7", `sh -c "$PR_BOARD_COMMAND"`},
 	}
 	if !reflect.DeepEqual(runner.calls, want) {
@@ -65,8 +74,8 @@ func TestLaunchSplitsRightWithExpandedCwd(t *testing.T) {
 }
 
 func TestLaunchExpandsBareTildeAndKeepsOtherPaths(t *testing.T) {
-	t.Setenv("HOME", "/home/me")
-	for cwd, want := range map[string]string{"~": "/home/me", "/srv/~x": "/srv/~x", "~other": "~other"} {
+	home := testHome(t)
+	for cwd, want := range map[string]string{"~": home, "/srv/~x": "/srv/~x", "~other": "~other"} {
 		runner := &fakeRunner{output: tabCreated}
 		shortcut := config.Shortcut{Name: "A", Run: "a", Where: config.ShortcutTab, Cwd: cwd}
 		if err := (Launcher{Runner: runner.Run}).Launch(context.Background(), shortcut, pr); err != nil {
