@@ -14,7 +14,7 @@ import (
 	"github.com/charmbracelet/x/ansi"
 )
 
-var reviewSecondaryStyle = dimStyle.Foreground(lipgloss.Color("246"))
+var reviewSecondaryStyle = lipgloss.NewStyle().Foreground(subtleColor)
 
 const (
 	// regionSplitHeight is the terminal height that fits the table and a

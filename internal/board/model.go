@@ -106,22 +106,22 @@ func sharedRepository(rows []gh.PullRequest) string {
 }
 
 var (
-	titleStyle    = lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("212"))
-	activeTab     = lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("230")).Background(lipgloss.Color("62")).Padding(0, 1)
-	inactiveTab   = lipgloss.NewStyle().Foreground(lipgloss.Color("245")).Padding(0, 1)
-	headerStyle   = lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("252")).BorderBottom(true).BorderStyle(lipgloss.NormalBorder()).BorderForeground(lipgloss.Color("238"))
-	selectedStyle = lipgloss.NewStyle().Foreground(lipgloss.Color("255")).Background(lipgloss.Color("237"))
+	titleStyle    = lipgloss.NewStyle().Bold(true).Foreground(highlightColor)
+	activeTab     = lipgloss.NewStyle().Bold(true).Foreground(brightColor).Background(accentFillColor).Padding(0, 1)
+	inactiveTab   = lipgloss.NewStyle().Foreground(subtleColor).Padding(0, 1)
+	headerStyle   = lipgloss.NewStyle().Bold(true).Foreground(textColor).BorderBottom(true).BorderStyle(lipgloss.NormalBorder()).BorderForeground(borderColor)
+	selectedStyle = lipgloss.NewStyle().Foreground(brightColor).Background(selectionColor)
 	// selectionEdgeStyle marks the selected row in the table gutter.
-	selectionEdgeStyle = lipgloss.NewStyle().Foreground(lipgloss.Color("105"))
-	okStyle            = lipgloss.NewStyle().Foreground(lipgloss.Color("42"))
-	dimStyle           = lipgloss.NewStyle().Foreground(lipgloss.Color("242"))
-	keyStyle           = lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("252"))
-	warningStyle       = lipgloss.NewStyle().Foreground(lipgloss.Color("214"))
-	errorStyle         = lipgloss.NewStyle().Foreground(lipgloss.Color("196"))
-	urlStyle           = lipgloss.NewStyle().Foreground(lipgloss.Color("81")).Underline(true)
+	selectionEdgeStyle = lipgloss.NewStyle().Foreground(accentColor)
+	okStyle            = lipgloss.NewStyle().Foreground(okColor)
+	dimStyle           = lipgloss.NewStyle().Foreground(mutedColor)
+	keyStyle           = lipgloss.NewStyle().Bold(true).Foreground(textColor)
+	warningStyle       = lipgloss.NewStyle().Foreground(warnColor)
+	errorStyle         = lipgloss.NewStyle().Foreground(errorColor)
+	urlStyle           = lipgloss.NewStyle().Foreground(linkColor).Underline(true)
 	// separatorStyle matches the table header border, so the rule under the
 	// last row closes the table the way the header opens it.
-	separatorStyle = lipgloss.NewStyle().Foreground(lipgloss.Color("238"))
+	separatorStyle = lipgloss.NewStyle().Foreground(borderColor)
 )
 
 // tabPadding is the horizontal padding the tab styles add to every label.
