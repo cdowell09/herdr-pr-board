@@ -16,7 +16,8 @@ import (
 // zero hides the column. The title absorbs all remaining width.
 //
 // Keep CI and review symbols at every width. Drop author and updated before
-// the posted source and repository so the title remains readable.
+// the posted source and repository so the title remains readable. A table
+// whose rows share one repository hides the repository column.
 type tableLayout struct {
 	repo    int
 	title   int
@@ -25,7 +26,7 @@ type tableLayout struct {
 	posted  bool
 }
 
-func (m Model) tableLayout() tableLayout {
+func (m Model) tableLayout(sharedRepository bool) tableLayout {
 	var layout tableLayout
 	switch {
 	case m.width >= 120:
@@ -36,6 +37,9 @@ func (m Model) tableLayout() tableLayout {
 		layout.repo, layout.updated, layout.posted = 16, true, true
 	case m.width >= tierNarrow:
 		layout.repo, layout.posted = 12, true
+	}
+	if sharedRepository {
+		layout.repo = 0
 	}
 	layout.title = max(0, m.width-layout.fixedWidth())
 	return layout

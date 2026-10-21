@@ -67,7 +67,7 @@ func TestReviewOverviewLayouts(t *testing.T) {
 		model := layoutModel(t, width)
 		pr, _ := model.selectedPR()
 		summary := model.rowReviewSummary(pr)
-		layout := model.tableLayout()
+		layout := model.tableLayout(false)
 		header := stripANSI(model.renderHeader(layout))
 		row := stripANSI(model.renderPRRow(pr, layout, false, time.Now()))
 		markerX := strings.Index(header, "REVIEW")

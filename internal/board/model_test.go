@@ -244,7 +244,7 @@ func TestModelCentersCIIconsInColumn(t *testing.T) {
 
 	var header string
 	for _, line := range lines {
-		if strings.Contains(stripANSI(line), "REPOSITORY") {
+		if strings.Contains(stripANSI(line), "TITLE") {
 			header = line
 			break
 		}
@@ -858,7 +858,7 @@ func TestModelMarksRetainedRowsStaleWithoutHidingError(t *testing.T) {
 	rowY, urlY := -1, -1
 	for y, line := range strings.Split(output, "\n") {
 		switch {
-		case strings.Contains(line, "acme/api") && strings.Contains(line, "#1"):
+		case strings.Contains(line, "#1 "):
 			rowY = y
 		case strings.HasPrefix(line, "https://github.com/acme/api/pull/1") || strings.HasSuffix(line, "https://github.com/acme/api/pull/1"):
 			urlY = y

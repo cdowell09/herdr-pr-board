@@ -632,3 +632,45 @@ func TestShortPaneKeepsRowsAndURLOnScreen(t *testing.T) {
 		}
 	}
 }
+
+func TestSharedRepositoryMovesOutOfTheTable(t *testing.T) {
+	for _, width := range []int{50, 80, 120} {
+		model := layoutModel(t, width)
+		for i := range model.views[0].PRs {
+			model.views[0].PRs[i].Repository = "acme/web-ui"
+		}
+		lines := strings.Split(stripANSI(model.View()), "\n")
+		lay := model.boardLayout()
+		if header := lines[lay.firstPRRow-3]; strings.Contains(header, "REPOSITORY") || !strings.Contains(header, "TITLE") && width >= 80 {
+			t.Fatalf("width %d: header = %q", width, header)
+		}
+		if got := strings.TrimRight(lines[lay.firstPRRow-1], " "); got != "   all in acme/web-ui" {
+			t.Fatalf("width %d: shared repository line = %q", width, got)
+		}
+		for i, number := range []string{"#7", "#42", "#1234"} {
+			if row := lines[lay.firstPRRow+i]; !strings.Contains(row, number+" ") || strings.Contains(row, "acme/web-ui") {
+				t.Fatalf("width %d: row %d = %q", width, i, row)
+			}
+		}
+		if !strings.Contains(lines[lay.selectedURLRow], "https://github.com/") {
+			t.Fatalf("width %d: URL row %d = %q", width, lay.selectedURLRow, lines[lay.selectedURLRow])
+		}
+		next, _ := model.Update(tea.MouseMsg{X: 4, Y: lay.firstPRRow + 2, Action: tea.MouseActionPress, Button: tea.MouseButtonLeft})
+		if got := next.(Model).cursor; got != 2 {
+			t.Fatalf("width %d: click on the third row selected %d", width, got)
+		}
+	}
+}
+
+func TestFilterToOneRepositoryHidesTheRepositoryColumn(t *testing.T) {
+	model := press(layoutModel(t, 120), runes("/"), runes("acme/web-ui"))
+	lines := strings.Split(stripANSI(model.View()), "\n")
+	lay := model.boardLayout()
+	if got := strings.TrimSpace(lines[lay.firstPRRow-1]); got != "all in acme/web-ui" || !strings.Contains(lines[lay.firstPRRow], "#42 ") {
+		t.Fatalf("filtered view:\n%s", strings.Join(lines, "\n"))
+	}
+	model = press(model, tea.KeyMsg{Type: tea.KeyEsc})
+	if lines := strings.Split(stripANSI(model.View()), "\n"); !strings.Contains(lines[model.boardLayout().firstPRRow-2], "REPOSITORY") {
+		t.Fatalf("mixed view hides the repository column:\n%s", strings.Join(lines, "\n"))
+	}
+}

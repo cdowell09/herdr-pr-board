@@ -41,6 +41,9 @@ type boardLayout struct {
 	// regionRows is the height of the review region under the URL row. It is
 	// zero when the region collapses to the one-line summary.
 	regionRows int
+	// repository is set when every listed row belongs to it. The table then
+	// hides the REPOSITORY column and names it once on a line under the header.
+	repository string
 }
 
 func (m Model) boardLayout() boardLayout {
@@ -49,22 +52,30 @@ func (m Model) boardLayout() boardLayout {
 		firstPRRow++
 	}
 	rows := m.filteredPRs()
+	pr, selected := m.selectedPR()
+	split := selected && m.regionSplit()
+	detailRows := 0
+	if selected && !split {
+		detailRows = len(m.selectedReviewLines(pr))
+	}
 	// available is the space between the first PR row and the footer. A view
 	// with no rows renders no table header, so it keeps those rows too.
 	available := m.height - firstPRRow - 3 - len(m.footerHelpLines())
-	detailRows, regionRows := 0, 0
-	visibleRows := max(1, available)
-	if pr, ok := m.selectedPR(); ok {
-		if m.regionSplit() {
-			// The table keeps its rows up to half the screen. The region takes
-			// the rest and never drops under its minimum.
-			tableCap := max(1, m.height/2-firstPRRow)
-			visibleRows = max(1, min(len(rows), tableCap, available-regionMinRows))
-			regionRows = max(0, available-visibleRows)
-		} else {
-			detailRows = len(m.selectedReviewLines(pr))
-			visibleRows = max(1, available-detailRows)
+	// The shared repository line takes a row only while a PR row still fits.
+	repository := ""
+	if available-detailRows > 1 {
+		if repository = sharedRepository(rows); repository != "" {
+			firstPRRow++
+			available--
 		}
+	}
+	visibleRows, regionRows := max(1, available-detailRows), 0
+	if split {
+		// The table keeps its rows up to half the screen. The region takes
+		// the rest and never drops under its minimum.
+		tableCap := max(1, m.height/2-firstPRRow)
+		visibleRows = max(1, min(len(rows), tableCap, available-regionMinRows))
+		regionRows = max(0, available-visibleRows)
 	}
 	selectedURLRow := firstPRRow
 	if len(rows) > 0 {
@@ -76,7 +87,22 @@ func (m Model) boardLayout() boardLayout {
 		visibleRows:    visibleRows,
 		emptyRows:      max(1, available-detailRows+tableHeaderRows),
 		regionRows:     regionRows,
+		repository:     repository,
 	}
+}
+
+// sharedRepository returns the repository of every row, or "" when the rows
+// span more than one repository or there are no rows.
+func sharedRepository(rows []gh.PullRequest) string {
+	if len(rows) == 0 {
+		return ""
+	}
+	for _, pr := range rows[1:] {
+		if pr.Repository != rows[0].Repository {
+			return ""
+		}
+	}
+	return rows[0].Repository
 }
 
 var (
@@ -823,10 +849,13 @@ func (m Model) renderTable(lay boardLayout) string {
 		return m.renderEmptyView(lay)
 	}
 
-	cols := m.tableLayout()
-	header := m.renderHeader(cols)
+	cols := m.tableLayout(lay.repository != "")
 	var output strings.Builder
-	output.WriteString(header + "\n")
+	output.WriteString(m.renderHeader(cols) + "\n")
+	if lay.repository != "" {
+		line := strings.Repeat(" ", gutterWidth) + "all in " + lay.repository
+		output.WriteString(dimStyle.Render(truncate(line, m.width)) + "\n")
+	}
 	end := min(m.offset+lay.visibleRows, len(rows))
 	// One clock reading per render keeps every row's age consistent.
 	now := time.Now()
