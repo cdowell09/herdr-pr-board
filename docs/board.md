@@ -80,6 +80,8 @@ The pane shows the URL first, then the title in bold.
 Next, the pane shows the facts of the PR: author, state, CI, revision, and update time.
 The state is `open`, `draft`, `closed`, or `merged`.
 The review section follows under the `Review` rule.
+The pane does not need local reviews.
+Without `HERDR_PLUGIN_STATE_DIR`, the review section tells you to set it.
 The review section shows one labeled row for each topic:
 
 | Label | Content |

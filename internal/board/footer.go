@@ -63,14 +63,17 @@ func (m Model) footerHelpLines() []string {
 // boardHints wraps the board control reference at pair boundaries so each
 // keybinding stays next to its action on narrow terminals. The rows left
 // after the title, tabs, stale notice, table header, one PR row, the URL,
-// the collapsed summary, and the meta line bound the controls.
+// the collapsed summary, and the meta line bound the controls. The split
+// keeps the smallest detail pane in place of the URL and the summary.
 func (m Model) boardHints() [][]keyHint {
 	budget := m.height - 9
+	if m.regionSplit() {
+		budget = m.height - 8 - paneMinRows
+	} else if pr, ok := m.selectedPR(); ok {
+		budget -= len(m.selectedReviewLines(pr))
+	}
 	if stale(m.currentView()) {
 		budget--
-	}
-	if pr, ok := m.selectedPR(); ok && !m.regionSplit() {
-		budget -= len(m.selectedReviewLines(pr))
 	}
 	return m.hintRows(slices.Concat(keyHelp, m.shortcutHelp()), budget)
 }
@@ -176,7 +179,7 @@ func (m Model) footerKey(message tea.MouseMsg) (tea.KeyMsg, bool) {
 	}
 	rows := m.zoomHints()
 	help := len(rows)
-	if !m.zoom || m.region == nil {
+	if !m.zoomed() {
 		rows, help = m.boardHints(), len(m.footerHelpLines())
 	}
 	top := strings.Count(m.View(), "\n") - help

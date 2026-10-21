@@ -254,8 +254,9 @@ func TestBoardFooterNamesTheStopTarget(t *testing.T) {
 func TestZoomWithoutLocalReviewsExplainsTheStateDirectory(t *testing.T) {
 	m := layoutModel(t, 100)
 	next, _ := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("v")})
-	if zoomed := next.(Model); zoomed.zoom || !strings.Contains(zoomed.warning, "HERDR_PLUGIN_STATE_DIR") {
-		t.Fatalf("v without reviews: zoom=%v warning=%q", zoomed.zoom, zoomed.warning)
+	// The pane does not need local reviews. Its review section explains them.
+	if zoomed := next.(Model); !zoomed.zoom || !strings.Contains(stripANSI(zoomed.View()), "HERDR_PLUGIN_STATE_DIR") {
+		t.Fatalf("v without reviews: zoom=%v view:\n%s", zoomed.zoom, stripANSI(zoomed.View()))
 	}
 	next, _ = m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("s")})
 	if !strings.Contains(next.(Model).warning, "HERDR_PLUGIN_STATE_DIR") {

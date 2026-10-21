@@ -180,3 +180,50 @@ func TestClosedDraftShowsItsFinalState(t *testing.T) {
 		}
 	}
 }
+
+func TestDetailPaneWorksWithoutLocalReviews(t *testing.T) {
+	m := layoutModel(t, 100)
+	next, _ := m.Update(tea.WindowSizeMsg{Width: 100, Height: 30})
+	m = next.(Model)
+	if m.reviews != nil || m.region != nil {
+		t.Fatal("fixture has local reviews")
+	}
+	lay := m.boardLayout()
+	lines := strings.Split(stripANSI(m.View()), "\n")
+	pr, _ := m.selectedPR()
+	if lay.paneRows == 0 || unframe(lines[lay.selectedURLRow]) != pr.URL || unframe(lines[lay.selectedURLRow+1]) != pr.Title {
+		t.Fatalf("no pane without local reviews:\n%s", strings.Join(lines, "\n"))
+	}
+	if view := strings.Join(lines, "\n"); !strings.Contains(view, "Author grace") || !strings.Contains(view, "HERDR_PLUGIN_STATE_DIR") {
+		t.Fatalf("pane lacks the facts or the review explanation:\n%s", view)
+	}
+	opened := ""
+	m.openBrowser = func(url string) tea.Cmd { opened = url; return nil }
+	m = press(m, runes("v"))
+	if zoomed := strings.Split(stripANSI(m.View()), "\n"); !m.zoomed() || unframe(zoomed[paneURLOffset]) != pr.URL {
+		t.Fatalf("zoom without local reviews:\n%s", strings.Join(zoomed, "\n"))
+	}
+	m.Update(tea.MouseMsg{X: 4, Y: paneURLOffset, Button: tea.MouseButtonLeft, Action: tea.MouseActionPress})
+	if opened != pr.URL {
+		t.Fatalf("zoomed URL click opened %q", opened)
+	}
+	if m = press(m, tea.KeyMsg{Type: tea.KeyEsc}); m.zoom {
+		t.Fatal("Esc did not leave zoom")
+	}
+}
+
+func TestManyShortcutsKeepThePaneURL(t *testing.T) {
+	m := layoutModel(t, 30)
+	for _, key := range "bdfijkmnpu" {
+		m.cfg.Shortcuts = append(m.cfg.Shortcuts, config.Shortcut{Key: string(key), Name: "Run custom review command", Run: "true {url}", Where: config.ShortcutTab})
+	}
+	next, _ := m.Update(tea.WindowSizeMsg{Width: 30, Height: 24})
+	m = next.(Model)
+	lay := m.boardLayout()
+	lines := strings.Split(stripANSI(m.View()), "\n")
+	pr, _ := m.selectedPR()
+	// The footer yields rows, so the pane keeps its URL and a review row.
+	if len(lines) != m.height || m.paneReviewRows(lay.paneRows) < 1 || unframe(lines[lay.selectedURLRow]) != truncate(pr.URL, m.paneWidth()) {
+		t.Fatalf("pane rows %d, URL row %d:\n%s", lay.paneRows, lay.selectedURLRow, strings.Join(lines, "\n"))
+	}
+}

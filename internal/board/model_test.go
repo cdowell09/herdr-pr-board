@@ -271,7 +271,8 @@ func TestModelCentersCIIconsInColumn(t *testing.T) {
 	for _, line := range lines {
 		plain := stripANSI(line)
 		for _, pr := range prs {
-			if strings.Contains(plain, pr.Title) {
+			// The detail pane repeats the selected title, so the table row wins.
+			if _, seen := rows[pr.Title]; !seen && strings.Contains(plain, pr.Title) {
 				rows[pr.Title] = line
 			}
 		}
@@ -863,9 +864,9 @@ func TestModelMarksRetainedRowsStaleWithoutHidingError(t *testing.T) {
 	rowY, urlY := -1, -1
 	for y, line := range strings.Split(output, "\n") {
 		switch {
-		case strings.Contains(line, "#1 "):
+		case rowY < 0 && strings.Contains(line, "#1 "):
 			rowY = y
-		case strings.HasPrefix(line, "https://github.com/acme/api/pull/1") || strings.HasSuffix(line, "https://github.com/acme/api/pull/1"):
+		case urlY < 0 && strings.Contains(line, "https://github.com/acme/api/pull/1"):
 			urlY = y
 		}
 	}

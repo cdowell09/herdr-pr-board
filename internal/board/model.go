@@ -419,7 +419,7 @@ func (m Model) update(message tea.Msg) (tea.Model, tea.Cmd) {
 		if key, ok := m.footerKey(msg); ok {
 			return m.update(key)
 		}
-		if m.zoom && m.region != nil {
+		if m.zoomed() {
 			return m.updateZoomMouse(msg)
 		}
 		return m.updateMouse(msg)
@@ -431,7 +431,7 @@ func (m Model) update(message tea.Msg) (tea.Model, tea.Cmd) {
 			return m.updateHelpKey(msg)
 		case m.region != nil && m.region.setup != nil:
 			return m.updateRepositoryKey(msg)
-		case m.zoom && m.region != nil:
+		case m.zoomed():
 			return m.updateZoomKey(msg)
 		case m.editing:
 			return m.updateFilter(msg)
@@ -791,7 +791,7 @@ func (m Model) View() string {
 	if m.region != nil && m.region.setup != nil {
 		return m.renderRepositoryPanel()
 	}
-	if m.zoom && m.region != nil {
+	if m.zoomed() {
 		return m.renderZoom()
 	}
 	if m.width == 0 || m.height == 0 {

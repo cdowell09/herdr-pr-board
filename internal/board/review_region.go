@@ -162,13 +162,9 @@ func (m Model) updateReviewAction(key tea.KeyMsg) (tea.Model, tea.Cmd, bool) {
 	return m, nil, true
 }
 
-// zoomIn shows the region at full height. Without local reviews it explains
-// what is missing instead.
+// zoomIn shows the detail pane at full height.
 func (m Model) zoomIn() Model {
-	if m.region == nil {
-		if m.reviews == nil {
-			m.warning = appendWarning(m.warning, reviewsUnavailable)
-		}
+	if _, ok := m.panePR(); !ok {
 		return m
 	}
 	m.zoom = true
@@ -199,10 +195,12 @@ func (m Model) updateZoomKey(key tea.KeyMsg) (tea.Model, tea.Cmd) {
 	case "?":
 		m.helpOverlay = true
 	case "enter", "o":
-		return m, m.openBrowser(m.region.pr.URL)
+		pr, _ := m.panePR()
+		return m, m.openBrowser(pr.URL)
 	default:
 		if shortcut, ok := m.shortcut(key.String()); ok {
-			return m, m.launchShortcut(shortcut, m.region.pr)
+			pr, _ := m.panePR()
+			return m, m.launchShortcut(shortcut, pr)
 		}
 		m.scrollRegionKey(key.String())
 	}
@@ -252,7 +250,8 @@ func (m Model) updateZoomMouse(message tea.MouseMsg) (tea.Model, tea.Cmd) {
 		m.scrollRegion(mouseStep)
 	case tea.MouseButtonLeft:
 		if event.Action == tea.MouseActionPress && event.Y == paneURLOffset {
-			return m, m.openBrowser(m.region.pr.URL)
+			pr, _ := m.panePR()
+			return m, m.openBrowser(pr.URL)
 		}
 	}
 	return m, nil
