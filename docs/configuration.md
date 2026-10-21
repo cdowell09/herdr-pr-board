@@ -91,9 +91,10 @@ The plugin combines the scoped results. The plugin removes duplicate PR URLs.
 | `review.max_concurrency` | `1` | An integer from 1 through 8 | The shared limit for simultaneous manual and automatic reviews in one state directory. |
 | `review.timeout` | `"30m"` | A Go duration from `"1s"` through `"24h"` | The review timeout, including queue time and execution time. |
 | `review.notify` | `"all"` | `"all"`, `"problems"`, or `"off"` | The run outcomes that show a Herdr notification. `"problems"` limits notifications to blocked and failed runs. See [review notifications](reviews.md#review-notifications). |
+| `[[shortcuts]]` | None | See [command shortcuts](#command-shortcuts). | Keys that run your command for the selected PR in a new Herdr pane. |
 
 Reviewer commands and repository permissions require separate configuration.
-See [manual reviews](reviews.md) and [repository setup and publication](repository-publication.md) for those settings.
+See [reviews](reviews.md) and [repository setup and publication](repository-publication.md) for those settings.
 
 The board validates configuration at startup.
 Invalid settings prevent startup.
@@ -143,7 +144,7 @@ It reports the tokens only to the Herdr workspace that runs the board.
 The reporting reuses the refresh snapshot. It makes no extra GitHub requests.
 
 The board reports after initial, automatic, and manual full refreshes (`R`).
-It does not report after an active-view refresh (`r`).
+It does not report after an active-view refresh (`Ctrl+R`).
 
 The sidebar shows the tokens only when you add them to the Herdr configuration.
 Add a row to the space entries in `~/.config/herdr/config.toml`:
@@ -187,6 +188,35 @@ rows = [["state_icon", "workspace"], ["$prs_open", "$prs_review", { token = "$pr
 ```
 
 The reporting needs the `herdr` command on `PATH`. The board must run inside Herdr. When the command fails, the board shows one warning in the footer. The board stays usable.
+
+## Command shortcuts
+
+A command shortcut runs your command for the selected PR in a new Herdr pane.
+No command shortcut is active by default.
+The default configuration contains a commented example.
+
+```toml
+[[shortcuts]]
+key   = "r"
+name  = "Pi review"
+run   = 'pi --skill ~/.agents/skills/code-review "Use the code-review skill to review {url}."'
+where = "tab"   # or "split"
+cwd   = "~"     # optional
+```
+
+| Field | Requirement |
+| --- | --- |
+| `key` | Must be one printable character. Must not be a built-in board key or `1`–`9`. Must be unique. |
+| `name` | Must not be empty. The footer and the tab label show it. |
+| `run` | Must not be empty. `{url}`, `{repo}`, and `{number}` become the selected PR's values. |
+| `where` | Must be `tab` or `split`. The default is `tab`. |
+| `cwd` | Optional. The start directory of the new pane. A leading `~` becomes your home directory. |
+
+The keys in [board controls](board.md#controls) and [review region controls](reviews.md#use-the-review-region) are built-in keys.
+`r`, `n`, and `N` are available.
+The new pane runs the command under `sh -c`. Command shortcuts require `sh`.
+Command shortcuts do not work on Windows.
+See [command shortcuts](board.md#command-shortcuts) for the board behavior.
 
 ## API capacity and refresh failures
 

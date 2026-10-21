@@ -8,7 +8,7 @@ The monitor uses existing discovery views.
 ## Enable automatic reviews
 
 Press `v`, then press `s` to open repository settings.
-The setup header shows that manual reviews are ready when automatic launches are off.
+The setup header shows `Automatic launches off` when automatic launches are off.
 Enable automatic launches for the repository.
 Select existing IDs under Global views.
 These selections apply to all repositories that allow automatic launches.
@@ -99,7 +99,7 @@ The monitor and other reviews continue.
 The owner cancels the selected reviewer and cleans up its child processes.
 The review slot remains occupied while child processes retain the claim.
 The stopped run records a failure and does not publish findings.
-The stopped revision requires an explicit retry with `N`.
+The stopped revision requires an explicit retry with `--review --rerun`.
 The monitor does not automatically retry the stopped revision.
 An older or unavailable owner cannot accept stop requests.
 Restart an older monitor after its reviews finish to enable this control.
@@ -127,7 +127,7 @@ A changed head or target prevents launch from the earlier observation.
 A later full observation can make that revision eligible.
 Comments and title edits do not change review identity.
 
-Failed attempts require explicit retry through `N` or `--review --rerun`.
+Failed attempts require explicit retry through `--review --rerun`.
 Other eligible PRs continue after a failed review.
 Automatic requests do not wait indefinitely for capacity.
 New monitor observations replace pending work.

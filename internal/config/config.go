@@ -58,7 +58,7 @@ auto_views = []
 max_concurrency = %d
 timeout = %q
 notify = %q
-`
+%s`
 )
 
 var (
@@ -84,6 +84,7 @@ var (
 		defaultReviewConcurrency,
 		defaultReviewTimeout,
 		defaultReviewNotify,
+		shortcutExample,
 	)
 	idPattern = regexp.MustCompile(`^[a-z][a-z0-9_-]*$`)
 )
@@ -116,6 +117,7 @@ type Config struct {
 	GitHub       GitHubConfig  `toml:"github"`
 	Sidebar      SidebarConfig `toml:"sidebar"`
 	Views        []View        `toml:"views"`
+	Shortcuts    []Shortcut    `toml:"shortcuts"`
 }
 
 // SidebarConfig controls reporting PR counts into Herdr sidebar tokens.
@@ -286,6 +288,11 @@ func applyDefaults(cfg *Config) {
 	if strings.TrimSpace(cfg.Sidebar.ReviewView) == "" {
 		cfg.Sidebar.ReviewView = defaultSidebarReview
 	}
+	for i := range cfg.Shortcuts {
+		if cfg.Shortcuts[i].Where == "" {
+			cfg.Shortcuts[i].Where = ShortcutTab
+		}
+	}
 }
 
 func (c Config) Validate() error {
@@ -340,7 +347,7 @@ func (c Config) Validate() error {
 	if err := validateScopes(c.GitHub.Scopes); err != nil {
 		return err
 	}
-	return nil
+	return validateShortcuts(c.Shortcuts)
 }
 
 func validateScopes(scopes []string) error {

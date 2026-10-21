@@ -19,13 +19,22 @@ A view with no pull requests shows text for that view and the next keys:
 
 A default view keeps its text while it keeps the default query and scope.
 A default view with a changed query or scope names the query.
-Each empty view names `Tab` for the next view, `E` to edit the configuration, and `r` to refresh.
+Each empty view names `Tab` for the next view, `E` to edit the configuration, and `Ctrl+R` to refresh.
 The board omits `Tab` when the configuration has one view.
 The text wraps on narrow terminals. No width removes a key.
 A short terminal makes the text shorter. Then it shows the keys without the actions.
 The filter, loading, and error messages replace this text.
 
 The board shows the URL of the selected PR.
+The selected row has a background color across the full table width.
+A `▌` mark in the left gutter identifies the selected row.
+
+When all rows in the current view belong to one repository, the board hides the **REPOSITORY** column.
+A dim line under the header names the repository, for example `all in acme/api`.
+The filter can cause this change. A short terminal keeps the column instead of the line.
+
+The **UPDATED** column shows the time since the last PR update: `now`, `5m`, `3h`, `2d`, or `6w`.
+The ages align to the right edge of the table.
 
 The CI column uses a symbol and a color:
 
@@ -38,19 +47,18 @@ The CI column uses a symbol and a color:
 | `?` | Dim | The plugin cannot get the check status. |
 
 The **REVIEW** column shows local PR Board reviews for the current revision.
-A completed review with findings shows the finding count for each severity:
+A completed review with findings shows the most severe finding level and its count:
 
 ```
-P0:1 P1:2 P2:0 P3:3
+● P2 1
 ```
 
-The counts are in severity order from P0 to P3. A count of 10 or more shows `+`.
-A P0 count above zero is red. A P1 count above zero is yellow. Zero counts are dim.
+The color identifies the severity. P0 is red. P1 is orange. P2 is yellow. P3 is gray.
+A completed review with no findings shows `✓ clean`.
 Every other state uses the CI symbols:
 
 | Symbol | Meaning |
 | --- | --- |
-| `✓` | The current revision has a completed local review with no findings. |
 | `●` | A review is running, queued, waiting for a slot, or awaiting dispatch. |
 | `✗` | The current revision has a failed, blocked, or abandoned review. |
 | `–` | No local review is active or complete for this revision. |
@@ -58,11 +66,20 @@ Every other state uses the CI symbols:
 
 Select a PR to read its local reviews in the review region below the URL.
 A rule closes the table above the URL, so the table and the region read as two areas.
-A line under the URL summarizes the posted reviews.
-The region header names the outcome, the reviewer, the revision comparison, and the severity counts.
-The findings follow the header.
+The region shows one labeled row for each topic:
+
+| Label | Content |
+| --- | --- |
+| `REVIEW` | The outcome, the reviewer, and the revision comparison. The run position, for example `run 1 of 3`, is at the right edge. |
+| `FINDINGS` | The reviewer summary. Each finding follows under its severity label, with its file, line, and text. |
+| `REVISION` | The short head commit, the target branch, and the start time. |
+| `POSTED` | The publication results of this board, for example `comment published`, and the submitted reviews for the PR. |
+| `AUTOMATION` | The monitor state, the automatic launch setting, and the action after a review. |
+
+When a newer run did not complete, the region also shows the completed run that publication targets.
+The run ID and the diagnostics path show only in zoom.
 A terminal with fewer than 24 rows collapses the region to one summary line.
-That line shows the exact count for each severity, or `no findings`.
+That line shows the same severity text as the REVIEW column, for example `● P2 1` or `✓ clean`.
 Local status updates each second without GitHub requests.
 
 The **POSTED** column shows submitted reviews from your authenticated GitHub account:
@@ -81,8 +98,8 @@ A newer commit does not inherit a completed local review.
 Draft reviews and ordinary PR conversation comments do not count as submitted reviews.
 Dismissed reviews still count as posts. The column does not represent approval status.
 `GitHub` identifies the publication source. It does not prove that a human wrote the review.
-A review started with `n` is still a PR Board review.
-Press `v` to zoom the review region for previous runs and publication diagnostics.
+A review started with `--review` is still a PR Board review.
+Press `v` to zoom the review region for previous runs, run IDs, diagnostics paths, and publication diagnostics.
 GitHub review observations follow the normal refresh interval and cache.
 
 ## Controls
@@ -90,9 +107,10 @@ GitHub review observations follow the normal refresh interval and cache.
 | Key | Action |
 | --- | --- |
 | Left click a view | Select the view. |
-| Left click a PR | Select the PR. |
+| Left click a PR | Select the PR. A click on the selected PR opens it in a browser. |
 | Left click the URL | Open the PR in a browser. |
-| Mouse wheel | Scroll the review region. When the region is collapsed, move through the PR list. |
+| Left click a footer key | Do the action of that key. |
+| Mouse wheel | Over the table, move through the PR list. Over the review region, scroll the region. |
 | `1`–`9` | Select a view. |
 | `Tab`, `Shift+Tab`, `h`, `l`, `←`, `→` | Select the next or previous view. |
 | `↑`, `↓` | Select a PR. |
@@ -102,13 +120,15 @@ GitHub review observations follow the normal refresh interval and cache.
 | `g`, `G` | Scroll to the start or the end of the review region. |
 | `PgUp`, `PgDn` | Scroll the review region by one page. |
 | `/` | Start filter input. |
-| `Enter` | Finish filter input. |
-| `Backspace` | Remove the last filter character. |
+| `↑`, `↓` | During filter input, select a PR. |
+| `Enter` | Keep the filter and finish filter input. |
+| `Backspace` | Remove the last filter character. When the filter is empty, finish filter input. |
 | `Ctrl+U`, `Esc` | Clear the filter. |
 | `E` | Edit the active configuration. |
 | `v` | Zoom the review region to the full height. |
-| `n`, `N`, `t`, `s`, `c`, `a`, `x` | Act on the selected PR's reviews. See [manual reviews](reviews.md#use-the-review-region). |
-| `r` | Refresh the active view. |
+| `t`, `s`, `c`, `a`, `x` | Act on the selected PR's reviews. See [review region](reviews.md#use-the-review-region). |
+| A command shortcut key | Run the command shortcut for the selected PR. See [command shortcuts](#command-shortcuts). |
+| `Ctrl+R` | Refresh the active view. |
 | `R` | Refresh all views. |
 | `Enter`, `o` | Open the selected PR in a browser. |
 | `?` | Open or close the keyboard help. |
@@ -116,7 +136,12 @@ GitHub review observations follow the normal refresh interval and cache.
 
 The board sorts PRs by update time, with the most recent first.
 The filter matches repository names, titles, authors, and PR numbers.
+It also matches the REVIEW and CI cells and their state names.
+For example, `/p0` finds a review whose most severe finding is P0, and `/clean` finds a clean review.
+`/failure` finds failed CI.
 The filter ignores letter case and makes no GitHub requests.
+One filter applies to all views.
+A refresh keeps the selection on the same PR while the PR stays in the view.
 
 Press `E` to edit the active configuration while the board runs.
 The board uses `$VISUAL`, then `$EDITOR`.
@@ -129,15 +154,35 @@ It keeps the previous configuration when the editor or validation fails.
 The board reports browser failures at the bottom of the screen.
 The selected URL stays visible for manual copying.
 
-The footer shows the eight most used controls. On narrow terminals, the pairs wrap.
+The footer shows the most used controls. On narrow terminals, the pairs wrap.
 A short pane shows the keys without the actions.
+Click a footer key to do the action of that key. The click is the same as the key press.
+A footer entry with two keys, such as `j/k`, does not respond to a click.
 
 Press `?` for the keyboard help.
-The help lists every board control and every review region control.
+The help lists every board control, every review region control, and every command shortcut.
 Scroll it with `j`, `k`, `↑`, `↓`, `g`, `G`, `Home`, `End`, or the mouse wheel.
 Press `?` or `Esc` to close it.
 
-See [manual reviews](reviews.md) for review controls, cancellation, and result history.
+See [reviews](reviews.md) for review controls, cancellation, and result history.
+
+## Command shortcuts
+
+A command shortcut runs your command for the selected PR in a new Herdr pane.
+Add `[[shortcuts]]` tables to `config.toml`. See [command shortcuts](configuration.md#command-shortcuts).
+No command shortcut is active by default.
+
+Press the shortcut key on the board or in zoom.
+In zoom, the shortcut uses the zoomed PR.
+The footer shows each shortcut as its key and name. Click it to run the shortcut.
+The shortcut key does not run during filter input or a publication confirmation.
+
+A `tab` shortcut opens a new focused Herdr tab. The tab label is `<name> <owner/repo>#<number>`.
+A `split` shortcut splits the board pane to the right and focuses the new pane.
+The new pane runs the command under `sh -c`.
+After the launch, the footer shows a notice, for example `Pi review → owner/repo#12`.
+A launch failure shows a warning in the footer.
+The board does not track the new pane. The shortcut does not change the REVIEW column.
 
 ## Open the board with a shortcut
 
@@ -182,8 +227,8 @@ The board adapts to the terminal width:
 | 60–79 cells | No author or updated columns. |
 | Fewer than 60 cells | PR, CI, REVIEW, and title columns. |
 
-The REVIEW column keeps 19 cells at every width. The title column absorbs the difference.
-Below 100 cells, the title column shows only a few characters.
+The REVIEW column keeps 8 cells at every width. The title column absorbs the remaining width.
+The fixed columns stay at the right edge of the table.
 The title bar shows the plugin version at 80 cells or more.
 A narrower terminal omits the version and keeps the configured title.
 The selected PR URL stays visible at every width.

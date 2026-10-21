@@ -173,8 +173,9 @@ func TestModelMouseCoordinatesMatchRenderedOutputInEachLayout(t *testing.T) {
 		updated, command := model.Update(tea.MouseMsg(tea.MouseEvent{
 			X: 2, Y: firstRowY, Action: tea.MouseActionPress, Button: tea.MouseButtonLeft,
 		}))
-		if command != nil {
-			t.Fatalf("width %d: row click returned a command", width)
+		// The first row is already selected, so the click opens it.
+		if command == nil {
+			t.Fatalf("width %d: click on the selected row did not return a browser command", width)
 		}
 		model = updated.(Model)
 		if model.cursor != 0 {
@@ -265,7 +266,7 @@ func TestHelpOverlayNamesEveryImplementedControl(t *testing.T) {
 func TestFooterShowsTheTopControls(t *testing.T) {
 	model := layoutModel(t, 200)
 	footer := stripANSI(model.renderFooter(model.footerHelpLines()))
-	want := "Tab view · ↑↓ select · Enter open · j/k scroll · n run · s settings · v zoom · ? help"
+	want := "Tab view · ↑↓ select · Enter open · / filter · j/k scroll · s settings · v zoom · ? help"
 	if !strings.Contains(footer, want) {
 		t.Fatalf("footer missing %q:\n%s", want, footer)
 	}
@@ -381,14 +382,10 @@ func TestFooterMetaLineStartsWithoutASeparator(t *testing.T) {
 		return lines[len(lines)-1]
 	}
 	if got, want := metaLine(model), "updated now"; got != want {
-		t.Fatalf("meta line with no review jobs = %q, want %q", got, want)
-	}
-	model.reviewJobs = map[string]string{"https://github.com/acme/web-ui/pull/42": "running"}
-	if got, want := metaLine(model), "1 review requests · updated now"; got != want {
-		t.Fatalf("meta line with one review job = %q, want %q", got, want)
+		t.Fatalf("meta line = %q, want %q", got, want)
 	}
 	model.monitorError = "monitor stopped"
-	if got, want := metaLine(model), "monitor stopped · 1 review requests · updated now"; got != want {
+	if got, want := metaLine(model), "monitor stopped · updated now"; got != want {
 		t.Fatalf("meta line with a monitor error = %q, want %q", got, want)
 	}
 }
@@ -496,7 +493,7 @@ func TestEmptyViewsExplainTheViewAndNameTheNextKeys(t *testing.T) {
 			if strings.Contains(rendered, "No pull requests in this view.") {
 				t.Fatalf("view %q width %d: kept the untailored text:\n%s", tc.view.ID, width, rendered)
 			}
-			for _, pair := range []string{"Tab next view", "E edit config", "r refresh"} {
+			for _, pair := range []string{"Tab next view", "E edit config", "Ctrl+R refresh"} {
 				if !strings.Contains(rendered, pair) {
 					t.Fatalf("view %q width %d: missing %q:\n%s", tc.view.ID, width, pair, rendered)
 				}
@@ -518,7 +515,7 @@ func TestEmptyViewNamesTabOnlyWhenAnotherViewExists(t *testing.T) {
 	if strings.Contains(single, "Tab next view") {
 		t.Fatalf("one view offers a next view:\n%s", single)
 	}
-	for _, pair := range []string{"E edit config", "r refresh"} {
+	for _, pair := range []string{"E edit config", "Ctrl+R refresh"} {
 		if !strings.Contains(single, pair) {
 			t.Fatalf("one view drops %q:\n%s", pair, single)
 		}
@@ -579,7 +576,7 @@ func TestEmptyViewFitsShortTerminalsAndKeepsTheKeys(t *testing.T) {
 				// A short pane drops the actions, then the keys.
 				continue
 			}
-			for _, pair := range []string{"Tab next view", "E edit config", "r refresh"} {
+			for _, pair := range []string{"Tab next view", "E edit config", "Ctrl+R refresh"} {
 				if !strings.Contains(rendered, pair) {
 					t.Fatalf("width %d height %d: missing %q:\n%s", width, height, pair, rendered)
 				}
@@ -594,7 +591,7 @@ func TestEmptyViewKeepsTheKeysWithoutTheActions(t *testing.T) {
 	model := emptyViewModel(t, 30, defaultView(t, config.ViewAll), defaultView(t, config.ViewAuthored))
 	model.height = 9
 	rendered := stripANSI(model.View())
-	if !strings.Contains(rendered, "Tab · E · r") {
+	if !strings.Contains(rendered, "Tab · E · Ctrl+R") {
 		t.Fatalf("a short pane dropped the keys:\n%s", rendered)
 	}
 	if lines := strings.Split(rendered, "\n"); len(lines) > model.height {
@@ -633,5 +630,47 @@ func TestShortPaneKeepsRowsAndURLOnScreen(t *testing.T) {
 				t.Fatalf("%v %s: URL row %d = %q", size, extra, lay.selectedURLRow, stripANSI(lines[lay.selectedURLRow]))
 			}
 		}
+	}
+}
+
+func TestSharedRepositoryMovesOutOfTheTable(t *testing.T) {
+	for _, width := range []int{50, 80, 120} {
+		model := layoutModel(t, width)
+		for i := range model.views[0].PRs {
+			model.views[0].PRs[i].Repository = "acme/web-ui"
+		}
+		lines := strings.Split(stripANSI(model.View()), "\n")
+		lay := model.boardLayout()
+		if header := lines[lay.firstPRRow-3]; strings.Contains(header, "REPOSITORY") || !strings.Contains(header, "TITLE") && width >= 80 {
+			t.Fatalf("width %d: header = %q", width, header)
+		}
+		if got := strings.TrimRight(lines[lay.firstPRRow-1], " "); got != "   all in acme/web-ui" {
+			t.Fatalf("width %d: shared repository line = %q", width, got)
+		}
+		for i, number := range []string{"#7", "#42", "#1234"} {
+			if row := lines[lay.firstPRRow+i]; !strings.Contains(row, number+" ") || strings.Contains(row, "acme/web-ui") {
+				t.Fatalf("width %d: row %d = %q", width, i, row)
+			}
+		}
+		if !strings.Contains(lines[lay.selectedURLRow], "https://github.com/") {
+			t.Fatalf("width %d: URL row %d = %q", width, lay.selectedURLRow, lines[lay.selectedURLRow])
+		}
+		next, _ := model.Update(tea.MouseMsg{X: 4, Y: lay.firstPRRow + 2, Action: tea.MouseActionPress, Button: tea.MouseButtonLeft})
+		if got := next.(Model).cursor; got != 2 {
+			t.Fatalf("width %d: click on the third row selected %d", width, got)
+		}
+	}
+}
+
+func TestFilterToOneRepositoryHidesTheRepositoryColumn(t *testing.T) {
+	model := press(layoutModel(t, 120), runes("/"), runes("acme/web-ui"))
+	lines := strings.Split(stripANSI(model.View()), "\n")
+	lay := model.boardLayout()
+	if got := strings.TrimSpace(lines[lay.firstPRRow-1]); got != "all in acme/web-ui" || !strings.Contains(lines[lay.firstPRRow], "#42 ") {
+		t.Fatalf("filtered view:\n%s", strings.Join(lines, "\n"))
+	}
+	model = press(model, tea.KeyMsg{Type: tea.KeyEsc})
+	if lines := strings.Split(stripANSI(model.View()), "\n"); !strings.Contains(lines[model.boardLayout().firstPRRow-2], "REPOSITORY") {
+		t.Fatalf("mixed view hides the repository column:\n%s", strings.Join(lines, "\n"))
 	}
 }

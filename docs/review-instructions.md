@@ -178,4 +178,4 @@ The corresponding skill options remain supported.
 Each option requires its matching `--AGENT-reviewer` flag.
 Standalone relative paths use the current working directory.
 Configured profile selections override those command options.
-See [manual reviews](reviews.md) for the unchanged reviewer input and result contract.
+See [reviews](reviews.md) for the unchanged reviewer input and result contract.

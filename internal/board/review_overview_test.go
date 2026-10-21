@@ -45,8 +45,8 @@ func TestLocalReviewOverviewStates(t *testing.T) {
 		{name: "full", decision: ready, monitor: monitorReady, active: map[string]bool{"another-pr": true}, state: "waiting", detail: "Waiting for review slot"},
 		{name: "stopped", decision: ready, monitor: monitor.Status{State: monitor.Stopped}, active: map[string]bool{"another-pr": true}, state: "none", detail: "Automatic reviews: start the monitor"},
 		{name: "running", runs: []reviewmemory.Run{run(reviewmemory.Running)}, active: map[string]bool{"run": true}, state: "running", detail: "Running"},
-		{name: "completed", runs: []reviewmemory.Run{run(reviewmemory.Completed)}, state: "completed", detail: "Completed locally · no findings"},
-		{name: "completed with findings", runs: []reviewmemory.Run{withFindings(run(reviewmemory.Completed), "P1", "P0", "P3", "P3")}, state: "completed", detail: "Completed locally · P0:1 P1:1 P2:0 P3:2"},
+		{name: "completed", runs: []reviewmemory.Run{run(reviewmemory.Completed)}, state: "completed", detail: "Completed locally · ✓ clean"},
+		{name: "completed with findings", runs: []reviewmemory.Run{withFindings(run(reviewmemory.Completed), "P1", "P0", "P3", "P3")}, state: "completed", detail: "Completed locally · ● P0 1"},
 		{name: "failed", runs: []reviewmemory.Run{run(reviewmemory.Failed)}, state: "failed", detail: "failed · explicit retry required"},
 		{name: "blocked", runs: []reviewmemory.Run{run(reviewmemory.Blocked)}, state: "blocked", detail: "blocked · explicit retry required"},
 		{name: "abandoned", runs: []reviewmemory.Run{run(reviewmemory.Abandoned)}, state: "abandoned", detail: "abandoned · explicit retry required"},
@@ -164,10 +164,6 @@ func TestOverviewDropsOldEpochAndRevisionAndCapturesCandidates(t *testing.T) {
 	pr.HeadOID = strings.Repeat("d", 40)
 	if got := m.rowReviewSummary(pr); got.state != "unknown" || got.posted != "?" {
 		t.Fatalf("old result applied to new revision: %+v", got)
-	}
-	m.reviewJobs[pr.URL] = "queued"
-	if got := m.rowReviewSummary(pr); got.state != "queued" {
-		t.Fatalf("manual request invisible: %+v", got)
 	}
 }
 

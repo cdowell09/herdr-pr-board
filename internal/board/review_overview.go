@@ -73,7 +73,6 @@ func (m Model) updateReviewOverview(message tea.Msg) (Model, tea.Cmd, bool) {
 			if msg.cfg.Views != nil {
 				m.cfg.Reviewers, m.cfg.Repositories, m.cfg.Review.AutoViews = msg.cfg.Reviewers, msg.cfg.Repositories, msg.cfg.Review.AutoViews
 			}
-			m.settleJobs()
 			m.settleStops()
 			m.clampRegionOffset()
 			// The region can add a footer line, so clamp after the read lands.
@@ -102,18 +101,6 @@ func (m *Model) requestOverview() tea.Cmd {
 	}
 	m.overviewReading = true
 	return m.reviewOverviewCmd()
-}
-
-// settleJobs marks a queued manual review as running once the latest read
-// records its run, for every PR with a request in flight.
-func (m *Model) settleJobs() {
-	for url := range m.reviewJobs {
-		for _, run := range m.overview.regions[strings.ToLower(url)].runs {
-			if run.Status == reviewmemory.Running {
-				m.reviewJobs[url] = "running"
-			}
-		}
-	}
 }
 
 // The overview reads each local history once, independently of GitHub
@@ -256,7 +243,8 @@ func localReviewSummary(pr gh.PullRequest, runs []reviewmemory.Run, active map[s
 		switch latest.Status {
 		case reviewmemory.Completed:
 			summary.findings = reviewmemory.CountSeverities(latest.Findings)
-			summary.detail = "Completed locally · " + findingsDetail(summary.findings)
+			// The summary line uses the REVIEW cell, so both show one format.
+			summary.detail = "Completed locally · " + strings.TrimSpace(reviewCellText(summary))
 		case reviewmemory.Failed, reviewmemory.Blocked, reviewmemory.Abandoned:
 			summary.detail = string(latest.Status) + " · explicit retry required"
 		default:
@@ -285,9 +273,6 @@ func (m Model) rowReviewSummary(pr gh.PullRequest) reviewRowSummary {
 	summary := reviewRowSummary{state: "unknown", detail: "Loading review status", posted: "?", postedDetail: "Loading posted reviews"}
 	if row, ok := m.reviewRows[pr.URL]; ok && row.identity == dispatch.Identity(pr) {
 		summary = row.summary
-	}
-	if job := m.reviewJobs[pr.URL]; job != "" && summary.state != "running" && summary.state != "waiting" {
-		summary.state, summary.detail = "queued", "Review request in progress"
 	}
 	return summary
 }

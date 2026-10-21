@@ -162,34 +162,36 @@ The review keys work on the board and in zoom:
 
 | Key | Action |
 | --- | --- |
-| `n` | Queue a review with the repository's configured reviewer. |
-| `N` | Explicitly retry or repeat a review. |
 | `t` | Stop the newest active review shown for this PR. |
 | `s` | Edit repository settings. |
 | `c` | Publish the latest completed run as a comment. |
 | `a` | Publish the latest completed run as an approval. |
 | `x` | Publish the latest completed run as a change request. |
+| `Enter`, `y` | Confirm the publication. Any other key cancels it. |
 | `j`, `k`, `g`, `G`, `PgUp`, `PgDn`, mouse wheel | Scroll the region. In zoom, `↑` and `↓` also scroll. |
 | `o`, click the URL | Open the PR in a browser. |
 | `v` | Zoom the region, or leave zoom. |
 | `Esc` | Leave zoom. |
 | `?` | Open or close the keyboard help. |
-| `q`, `Ctrl+C` | Close the board and stop its review requests. |
+| `q`, `Ctrl+C` | Close the board. |
 
-The repository must have saved settings before `n` starts a review.
-Without saved settings, `n` opens repository setup.
+The publication keys ask for confirmation before they publish.
+The footer names the action and the PR. For example: `approve owner/repo#12? enter/y`.
+Press `Enter` or `y` to publish. Any other key or a mouse click cancels the publication.
+
+Press `s` to open repository setup.
 Choose a reviewer and save the settings.
 The reviewer row shows the selection, its position, and the total.
 `Reviewer: claude (3/13)` selects the third reviewer of 13.
 Press Right or Space to select the next reviewer.
 Press Left to select the previous reviewer.
 See [detect installed agent CLIs](#detect-installed-agent-clis) for the default selection and the install status.
-The setup header shows that manual reviews are ready when automatic launches are off.
-It names Enter to save the settings and `n` to run the review.
+The setup header shows `Automatic launches off` when automatic launches are off.
+It names Enter to save the settings.
 
-Reviews continue when you leave zoom or select another PR.
-Closing the board cancels its queued and active reviews.
-The background monitor and its reviews continue.
+The board does not start reviews.
+Use the [`--review` command](#start-a-review) or [automatic reviews](automatic-reviews.md).
+To run your own review command for a PR, use a [command shortcut](board.md#command-shortcuts).
 
 Press `t` to stop the newest active review shown for this PR.
 The footer names the target run while the run is active.
@@ -197,7 +199,7 @@ The region reports cleanup progress and the final outcome.
 The stop request also works for a review owned by another board or monitor in the same state directory.
 The owner cancels only that reviewer and cleans up its child processes.
 The stopped run records a failure with a cancellation reason and does not publish findings.
-Use `N` to retry the stopped revision explicitly.
+Use `--review --rerun` to retry the stopped revision explicitly.
 If the run finishes before the stop request, the region reports that it is no longer running.
 An older or unavailable owner cannot accept the request.
 
@@ -276,9 +278,8 @@ On Windows, the runner terminates the owned Job Object and waits for its process
 
 A review run that finishes in the background is silent until you open the board.
 PR Board shows a Herdr notification when a run completes, blocks, or fails.
-The board sends it for manual reviews.
 The monitor sends it for automatic reviews.
-The `--review` command does not send notifications.
+The board and the `--review` command do not send notifications.
 
 The title names the outcome, the repository, and the PR number.
 A completed run lists the finding count for each severity, for example `P0:0 P1:2 P2:0 P3:1`.

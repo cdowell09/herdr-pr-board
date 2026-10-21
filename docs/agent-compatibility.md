@@ -9,7 +9,7 @@ A built-in adapter must preserve native authentication and suppress unselected i
 It must distinguish a completed response from errors, interruption, and partial output.
 All adapters must use the shared captured checkout, selected instructions, result validation, and process cleanup.
 See [review instructions](review-instructions.md) for prompt and skill selection.
-See [manual reviews](reviews.md) for launch, cancellation, history, and publication.
+See [reviews](reviews.md) for launch, cancellation, history, and publication.
 
 ## Available adapters
 

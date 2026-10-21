@@ -214,7 +214,7 @@ func (m Model) updateRepository(message tea.Msg) (Model, tea.Cmd, bool) {
 			m.region.message = msg.err.Error()
 		} else {
 			m.closeSettings()
-			m.region.message = "Repository settings saved. Press n to run a review."
+			m.region.message = "Repository settings saved."
 		}
 		refresh := m.requestOverview()
 		return m, tea.Batch(start, refresh), true

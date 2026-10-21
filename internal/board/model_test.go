@@ -244,7 +244,7 @@ func TestModelCentersCIIconsInColumn(t *testing.T) {
 
 	var header string
 	for _, line := range lines {
-		if strings.Contains(stripANSI(line), "REPOSITORY") {
+		if strings.Contains(stripANSI(line), "TITLE") {
 			header = line
 			break
 		}
@@ -295,7 +295,7 @@ func TestModelCentersCIIconsInColumn(t *testing.T) {
 }
 
 func ciGlyph(state gh.CIState) string {
-	return strings.TrimSpace(stripANSI(renderCI(state)))
+	return ciMark(state).text
 }
 
 func TestModelSwitchesViewsAndFilters(t *testing.T) {
@@ -612,7 +612,7 @@ func TestModelDoesNotRefreshWhenSearchRateIsExhausted(t *testing.T) {
 	model.loading = false
 	model.rates.Search = gh.RateResource{Limit: 30, Remaining: 0, Reset: time.Now().Add(time.Minute)}
 
-	updated, command := model.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'r'}})
+	updated, command := model.Update(tea.KeyMsg{Type: tea.KeyCtrlR})
 	model = updated.(Model)
 	if command != nil {
 		t.Fatal("active refresh returned a command with an exhausted search rate limit")
@@ -858,7 +858,7 @@ func TestModelMarksRetainedRowsStaleWithoutHidingError(t *testing.T) {
 	rowY, urlY := -1, -1
 	for y, line := range strings.Split(output, "\n") {
 		switch {
-		case strings.Contains(line, "acme/api") && strings.Contains(line, "#1"):
+		case strings.Contains(line, "#1 "):
 			rowY = y
 		case strings.HasPrefix(line, "https://github.com/acme/api/pull/1") || strings.HasSuffix(line, "https://github.com/acme/api/pull/1"):
 			urlY = y

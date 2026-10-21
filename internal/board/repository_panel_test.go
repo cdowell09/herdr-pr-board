@@ -91,7 +91,8 @@ func TestPublicationControlsTargetLatestCompletion(t *testing.T) {
 	m = m.WithPublications(t.TempDir(), backend)
 	m.setRegionRuns(reviewmemory.Run{ID: "completed", Outcome: reviewmemory.Outcome{Status: reviewmemory.Completed}}, reviewmemory.Run{ID: "failed", Outcome: reviewmemory.Outcome{Status: reviewmemory.Failed}})
 	for key, action := range map[string]config.PublicationAction{"c": config.PublishComment, "a": config.PublishApprove, "x": config.PublishRequestChanges} {
-		updated, command := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune(key)})
+		updated, _ := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune(key)})
+		updated, command := updated.(Model).Update(tea.KeyMsg{Type: tea.KeyEnter})
 		m = updated.(Model)
 		if command == nil {
 			t.Fatalf("%s did not publish", key)

@@ -79,29 +79,6 @@ func TestReviewPanelHistoryCoordinatesAndControls(t *testing.T) {
 	}
 }
 
-func TestReviewPanelQueuesWithoutBlockingAndExplicitlyReruns(t *testing.T) {
-	m := panelModel(t)
-	next, command := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("N")})
-	m = next.(Model)
-	if command == nil || !strings.Contains(m.View(), "queued") {
-		t.Fatal("launch did not show queued state")
-	}
-	if _, duplicate := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("n")}); duplicate != nil {
-		t.Fatal("duplicate request queued")
-	}
-	next, _ = m.Update(tea.KeyMsg{Type: tea.KeyEsc})
-	m = next.(Model)
-	if m.zoom || m.region == nil || len(m.reviewJobs) != 1 {
-		t.Fatal("leaving zoom stopped the request")
-	}
-	msg := command()
-	next, _ = m.Update(msg)
-	m = next.(Model)
-	if len(m.reviewJobs) != 0 || !m.reviews.(*reviewFake).request.Rerun {
-		t.Fatal("explicit rerun or completion lost")
-	}
-}
-
 func TestReviewPanelDoesNotMultiplyPollingAndStripsControlText(t *testing.T) {
 	m := panelModel(t)
 	next, cmd := m.Update(reviewOverviewMsg{epoch: m.epoch})

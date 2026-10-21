@@ -2,6 +2,7 @@ package board
 
 import (
 	"context"
+	"fmt"
 	"os"
 	"path/filepath"
 	"testing"
@@ -30,7 +31,7 @@ func TestRenderDump(t *testing.T) {
 	}{
 		{50, 22, "narrow"},
 		{90, 28, "medium"},
-		{140, 34, "wide"},
+		{140, 26, "wide"},
 	} {
 		model := dumpModel(t, size.width, size.height)
 		if err := os.WriteFile(filepath.Join(dir, size.name+".ansi"), []byte(model.View()), 0o644); err != nil {
@@ -48,12 +49,16 @@ func dumpModel(t *testing.T, width, height int) Model {
 	if err != nil {
 		t.Fatal(err)
 	}
+	repo := "cdowell09/herdr-pr-board"
+	pr := func(number int, title string, age time.Duration, ci gh.CIState) gh.PullRequest {
+		return gh.PullRequest{Repository: repo, Number: number, Title: title, URL: fmt.Sprintf("https://github.com/%s/pull/%d", repo, number), Author: "cdowell09", UpdatedAt: now.Add(-age), CI: ci, HeadOID: "ed2f6ff2a1b2c3d4e5f60718293a4b5c6d7e8f90", BaseRefName: "main", MetadataObservedAt: now}
+	}
 	model.views = []discovery.ViewData{
 		{View: cfg.Views[0], PRs: []gh.PullRequest{
-			{Repository: "cdowell09/herdr-pr-board", Number: 74, Title: "feat(ui): responsive layouts for narrow terminals", URL: "https://github.com/cdowell09/herdr-pr-board/pull/74", Author: "cdowell09", UpdatedAt: now.Add(-2 * time.Hour), CI: gh.CISuccess, HeadOID: "a1b2c3d4e5f60718293a4b5c6d7e8f9012345678", BaseRefName: "main", MetadataObservedAt: now},
-			{Repository: "cdowell09/cookies", Number: 18, Title: "Add the cookie schedule export", URL: "https://github.com/cdowell09/cookies/pull/18", Author: "cdowell09", UpdatedAt: now.Add(-time.Hour), CI: gh.CIPending},
-			{Repository: "acme/web-ui", Number: 452, Title: "Make the onboarding flow keyboard friendly", URL: "https://github.com/acme/web-ui/pull/452", Author: "ada", UpdatedAt: now.Add(-45 * time.Minute), CI: gh.CISuccess},
-			{Repository: "acme/api-gateway", Number: 201, Title: "Add localized settings", URL: "https://github.com/acme/api-gateway/pull/201", Author: "grace", UpdatedAt: now.Add(-30 * time.Minute), CI: gh.CIFailure, Draft: true},
+			pr(159, "feat(board): interaction polish and command shortcuts", 5*time.Minute, gh.CISuccess),
+			pr(158, "feat(board): replace manual review keys with command shortcuts", 3*time.Hour, gh.CIPending),
+			pr(73, "Test: automatic posting with multiple PRs", 41*24*time.Hour, gh.CISuccess),
+			pr(72, "Test: juggle review results across PRs", 42*24*time.Hour, gh.CIFailure),
 		}},
 		{View: cfg.Views[1], PRs: []gh.PullRequest{
 			{Repository: "acme/monorepo", Number: 999, Title: "Migrate CI pipelines to reusable workflows", URL: "https://github.com/acme/monorepo/pull/999", Author: "lin", UpdatedAt: now.Add(-20 * time.Minute), CI: gh.CISuccess},
@@ -63,9 +68,9 @@ func dumpModel(t *testing.T, width, height int) Model {
 	}
 	model.reviewRows = map[string]reviewOverviewRow{}
 	summaries := []reviewRowSummary{
-		{state: "completed", detail: "Completed locally · P0:1 P1:2 P2:0 P3:3", posted: "Both", postedDetail: "GitHub · current revision; PR Board · older revision", findings: reviewmemory.SeverityCounts{1, 2, 0, 3}},
-		{state: "running", detail: "Running", posted: "PR Board", postedDetail: "PR Board · older revision"},
-		{state: "completed", detail: "Completed locally · no findings", posted: "GitHub", postedDetail: "GitHub · current revision"},
+		{state: "completed", detail: "Completed locally · ● P2 1", posted: "PR Board", postedDetail: "PR Board · current revision", findings: reviewmemory.SeverityCounts{0, 0, 1, 0}},
+		{state: "running", detail: "Running", posted: "–", postedDetail: "No submitted reviews"},
+		{state: "completed", detail: "Completed locally · ✓ clean", posted: "GitHub", postedDetail: "GitHub · current revision"},
 		{state: "blocked", detail: "blocked · explicit retry required", posted: "–", postedDetail: "No submitted reviews"},
 	}
 	for i, pr := range model.views[0].PRs {
@@ -73,25 +78,23 @@ func dumpModel(t *testing.T, width, height int) Model {
 	}
 	model.active = 0
 	model.loading = false
-	// The region shows the fourth row's completed review with its findings.
+	// The region shows the selected first row's completed review and its finding.
 	model = model.WithReviews(context.Background(), &reviewFake{})
 	reviewed := model.views[0].PRs[0]
-	run := reviewmemory.Run{ID: "0209edd94356f594934f74fc81b64635", Reviewer: "claude", StartedAt: now.Add(-90 * time.Minute), Identity: dispatch.Identity(reviewed), Outcome: reviewmemory.Outcome{Status: reviewmemory.Completed, Findings: []reviewmemory.Finding{
-		{Severity: "P0", Title: "Narrow layout drops the URL line below 60 columns", Path: "internal/board/table.go", Line: 212, Body: "The narrow tier hides the URL row when the height is under 18, so Enter opens nothing the user can see."},
-		{Severity: "P1", Title: "Tab labels truncate without an ellipsis", Path: "internal/board/model.go", Line: 711, Body: "Long view titles cut mid-word and the last visible tab has no marker that more tabs exist."},
-		{Severity: "P1", Title: "Footer help wraps onto the rate line at 80 columns", Path: "internal/board/footer.go", Line: 52, Body: "The packed pairs assume one line and push the meta line off the screen."},
-		{Severity: "P3", Title: "Comment names the old REV column", Path: "docs/journeys.md", Line: 8, Body: "The journey text still says REV where the header says REVIEW."},
-		{Severity: "P3", Title: "Test fixture repeats the same title", Path: "internal/board/layout_test.go", Line: 29, Body: "Three rows share one title, which hides truncation differences."},
-		{Severity: "P3", Title: "Unused import alias in the dump test", Path: "internal/board/dump_test.go", Line: 12, Body: "The alias is only used by the removed table fixture."},
-	}}}
+	run := reviewmemory.Run{ID: "0209edd94356f594934f74fc81b64635", Reviewer: "codex", StartedAt: now.Add(-4 * time.Minute), Identity: dispatch.Identity(reviewed), Outcome: reviewmemory.Outcome{Status: reviewmemory.Completed,
+		Message: "Standards: one documentation gap. Specification: all shortcut requirements met.\nNot run: full completion gates, live posting.",
+		Findings: []reviewmemory.Finding{
+			{Severity: "P2", Title: "Help overlay omits the new command shortcuts", Path: "internal/board/help.go", Line: 42, Body: "The overlay lists the removed manual review keys, so users cannot find the configured shortcuts."},
+		}}}
 	model.region = &reviewRegion{pr: reviewed}
 	model.overview.monitor = monitor.Status{State: monitor.Running, ObservationOK: true}
 	model.setRegionData(func(data *regionData) {
 		data.runs = []reviewmemory.Run{run}
 		data.publications = []publication.Attempt{{RunID: run.ID, Action: config.PublishComment, Status: publication.Published}}
 	})
-	model.cfg.Repositories = []config.Repository{{Name: reviewed.Repository, Reviewer: "claude", AutoLaunch: true}}
-	model.cursor = 3
+	model.cfg.Repositories = []config.Repository{{Name: reviewed.Repository, Reviewer: "codex", AutoLaunch: true, AutoPublish: config.PublishComment}}
+	model.cfg.Review.AutoViews = []string{cfg.Views[0].ID}
+	model.cursor = 0
 	model.rates.Search = gh.RateResource{Limit: 30, Remaining: 27}
 	model.rates.GraphQL = gh.RateResource{Limit: 5000, Remaining: 4823}
 	model.views[0].UpdatedAt = now.Add(-5 * time.Minute)

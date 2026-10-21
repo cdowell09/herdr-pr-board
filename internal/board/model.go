@@ -15,7 +15,6 @@ import (
 	"github.com/cdowell09/herdr-pr-board/internal/discovery"
 	"github.com/cdowell09/herdr-pr-board/internal/dispatch"
 	gh "github.com/cdowell09/herdr-pr-board/internal/github"
-	"github.com/cdowell09/herdr-pr-board/internal/reviewflow"
 	"github.com/cdowell09/herdr-pr-board/internal/sidebar"
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
@@ -42,6 +41,9 @@ type boardLayout struct {
 	// regionRows is the height of the review region under the URL row. It is
 	// zero when the region collapses to the one-line summary.
 	regionRows int
+	// repository is set when every listed row belongs to it. The table then
+	// hides the REPOSITORY column and names it once on a line under the header.
+	repository string
 }
 
 func (m Model) boardLayout() boardLayout {
@@ -50,22 +52,30 @@ func (m Model) boardLayout() boardLayout {
 		firstPRRow++
 	}
 	rows := m.filteredPRs()
+	pr, selected := m.selectedPR()
+	split := selected && m.regionSplit()
+	detailRows := 0
+	if selected && !split {
+		detailRows = len(m.selectedReviewLines(pr))
+	}
 	// available is the space between the first PR row and the footer. A view
 	// with no rows renders no table header, so it keeps those rows too.
 	available := m.height - firstPRRow - 3 - len(m.footerHelpLines())
-	detailRows, regionRows := 0, 0
-	visibleRows := max(1, available)
-	if pr, ok := m.selectedPR(); ok {
-		if m.regionSplit() {
-			// The table keeps its rows up to half the screen. The region takes
-			// the rest and never drops under its minimum.
-			tableCap := max(1, m.height/2-firstPRRow)
-			visibleRows = max(1, min(len(rows), tableCap, available-regionMinRows))
-			regionRows = max(0, available-visibleRows)
-		} else {
-			detailRows = len(m.selectedReviewLines(pr))
-			visibleRows = max(1, available-detailRows)
+	// The shared repository line takes a row only while a PR row still fits.
+	repository := ""
+	if available-detailRows > 1 {
+		if repository = sharedRepository(rows); repository != "" {
+			firstPRRow++
+			available--
 		}
+	}
+	visibleRows, regionRows := max(1, available-detailRows), 0
+	if split {
+		// The table keeps its rows up to half the screen. The region takes
+		// the rest and never drops under its minimum.
+		tableCap := max(1, m.height/2-firstPRRow)
+		visibleRows = max(1, min(len(rows), tableCap, available-regionMinRows))
+		regionRows = max(0, available-visibleRows)
 	}
 	selectedURLRow := firstPRRow
 	if len(rows) > 0 {
@@ -77,7 +87,22 @@ func (m Model) boardLayout() boardLayout {
 		visibleRows:    visibleRows,
 		emptyRows:      max(1, available-detailRows+tableHeaderRows),
 		regionRows:     regionRows,
+		repository:     repository,
 	}
+}
+
+// sharedRepository returns the repository of every row, or "" when the rows
+// span more than one repository or there are no rows.
+func sharedRepository(rows []gh.PullRequest) string {
+	if len(rows) == 0 {
+		return ""
+	}
+	for _, pr := range rows[1:] {
+		if pr.Repository != rows[0].Repository {
+			return ""
+		}
+	}
+	return rows[0].Repository
 }
 
 var (
@@ -86,11 +111,14 @@ var (
 	inactiveTab   = lipgloss.NewStyle().Foreground(lipgloss.Color("245")).Padding(0, 1)
 	headerStyle   = lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("252")).BorderBottom(true).BorderStyle(lipgloss.NormalBorder()).BorderForeground(lipgloss.Color("238"))
 	selectedStyle = lipgloss.NewStyle().Foreground(lipgloss.Color("255")).Background(lipgloss.Color("237"))
-	dimStyle      = lipgloss.NewStyle().Foreground(lipgloss.Color("242"))
-	keyStyle      = lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("252"))
-	warningStyle  = lipgloss.NewStyle().Foreground(lipgloss.Color("214"))
-	errorStyle    = lipgloss.NewStyle().Foreground(lipgloss.Color("196"))
-	urlStyle      = lipgloss.NewStyle().Foreground(lipgloss.Color("81")).Underline(true)
+	// selectionEdgeStyle marks the selected row in the table gutter.
+	selectionEdgeStyle = lipgloss.NewStyle().Foreground(lipgloss.Color("105"))
+	okStyle            = lipgloss.NewStyle().Foreground(lipgloss.Color("42"))
+	dimStyle           = lipgloss.NewStyle().Foreground(lipgloss.Color("242"))
+	keyStyle           = lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("252"))
+	warningStyle       = lipgloss.NewStyle().Foreground(lipgloss.Color("214"))
+	errorStyle         = lipgloss.NewStyle().Foreground(lipgloss.Color("196"))
+	urlStyle           = lipgloss.NewStyle().Foreground(lipgloss.Color("81")).Underline(true)
 	// separatorStyle matches the table header border, so the rule under the
 	// last row closes the table the way the header opens it.
 	separatorStyle = lipgloss.NewStyle().Foreground(lipgloss.Color("238"))
@@ -159,10 +187,10 @@ type Model struct {
 	reviewContext    context.Context
 	region           *reviewRegion
 	zoom             bool
-	reviewJobs       map[string]string
-	publishing       map[string]bool   // PR URL -> a publication is in flight
-	stopping         map[string]string // PR URL -> run ID with a stop request pending
-	settingsRequests uint64            // counts settings requests; the region keeps the one it awaits
+	publishing       map[string]bool     // PR URL -> a publication is in flight
+	confirm          *pendingPublication // an armed publication action
+	stopping         map[string]string   // PR URL -> run ID with a stop request pending
+	settingsRequests uint64              // counts settings requests; the region keeps the one it awaits
 	cfg              config.Config
 	configPath       string
 	version          string
@@ -179,7 +207,7 @@ type Model struct {
 	width            int
 	height           int
 	filter           string
-	editorNotice     string
+	notice           string
 	editing          bool
 	helpOverlay      bool
 	loading          bool
@@ -188,8 +216,7 @@ type Model struct {
 	sidebar          *sidebar.Reporter
 	reporter         func(config.SidebarConfig) *sidebar.Reporter
 	sidebarWarn      bool
-	notifier         reviewflow.Notifier
-	notifyWarn       bool
+	launch           func(context.Context, config.Shortcut, gh.PullRequest) error
 	epoch            uint64
 	observations     map[string]time.Time
 }
@@ -245,9 +272,16 @@ func (m Model) Init() tea.Cmd {
 }
 
 // Update handles one message, then keeps the review region on the selected PR.
+// Only user input moves the selection to another PR. A refresh or a review
+// read that reorders or filters rows keeps the selected PR when it remains.
 func (m Model) Update(message tea.Msg) (tea.Model, tea.Cmd) {
+	selected, _ := m.selectedPR()
 	next, cmd := m.update(message)
-	return next.(Model).syncRegion(message, cmd)
+	model := next.(Model)
+	if !userInput(message) {
+		model.restoreSelection(selected.URL)
+	}
+	return model.syncRegion(cmd)
 }
 
 func (m Model) update(message tea.Msg) (tea.Model, tea.Cmd) {
@@ -264,6 +298,9 @@ func (m Model) update(message tea.Msg) (tea.Model, tea.Cmd) {
 		return next, cmd
 	}
 	if next, cmd, handled := m.updateReview(message); handled {
+		return next, cmd
+	}
+	if next, cmd, handled := m.updateShortcut(message); handled {
 		return next, cmd
 	}
 	switch msg := message.(type) {
@@ -355,16 +392,28 @@ func (m Model) update(message tea.Msg) (tea.Model, tea.Cmd) {
 		return m, nil
 	case tea.MouseMsg:
 		switch {
+		case m.confirm != nil:
+			// Only a key confirms a publication, so a stray click, even on an
+			// Enter footer control, cancels it and never posts to GitHub.
+			m.confirm = nil
+			return m, nil
 		case m.helpOverlay:
 			return m.updateHelpMouse(msg)
 		case m.region != nil && m.region.setup != nil:
 			return m.updateRepositoryMouse(msg)
-		case m.zoom && m.region != nil:
+		}
+		// A footer control click is the same as its key.
+		if key, ok := m.footerKey(msg); ok {
+			return m.update(key)
+		}
+		if m.zoom && m.region != nil {
 			return m.updateZoomMouse(msg)
 		}
 		return m.updateMouse(msg)
 	case tea.KeyMsg:
 		switch {
+		case m.confirm != nil:
+			return m.updateConfirm(msg)
 		case m.helpOverlay:
 			return m.updateHelpKey(msg)
 		case m.region != nil && m.region.setup != nil:
@@ -400,13 +449,20 @@ func (m Model) updateFilter(key tea.KeyMsg) (tea.Model, tea.Cmd) {
 		m.cursor, m.offset = 0, 0
 	case "enter":
 		m.editing = false
-		m.cursor, m.offset = 0, 0
+	case "up":
+		m.cursor--
+		m.clampCursor()
+	case "down":
+		m.cursor++
+		m.clampCursor()
 	case "backspace":
-		if m.filter != "" {
-			_, size := utf8.DecodeLastRuneInString(m.filter)
-			m.filter = m.filter[:len(m.filter)-size]
-			m.cursor, m.offset = 0, 0
+		if m.filter == "" {
+			m.editing = false
+			break
 		}
+		_, size := utf8.DecodeLastRuneInString(m.filter)
+		m.filter = m.filter[:len(m.filter)-size]
+		m.cursor, m.offset = 0, 0
 	case "ctrl+u":
 		m.filter = ""
 		m.cursor, m.offset = 0, 0
@@ -421,7 +477,7 @@ func (m Model) updateFilter(key tea.KeyMsg) (tea.Model, tea.Cmd) {
 
 func (m Model) updateConfig(message configEditMsg) (tea.Model, tea.Cmd) {
 	// The editor exited, so the validation result replaces the launch notice.
-	m.editorNotice = ""
+	m.notice = ""
 	if message.err != nil {
 		m.warning = appendWarning(m.warning, "configuration edit failed: "+message.err.Error())
 		return m, nil
@@ -571,9 +627,9 @@ func (m Model) updateKey(key tea.KeyMsg) (tea.Model, tea.Cmd) {
 		notice, command := m.editConfig(m.configPath)
 		// The launch owns the notice, so the footer names the executable
 		// that the board runs.
-		m.editorNotice = notice
+		m.notice = notice
 		return m, command
-	case "r":
+	case "ctrl+r":
 		requests := m.currentView().View.SearchRequestCount(len(m.cfg.GitHub.Scopes), m.cfg.GitHub.LimitPerScope)
 		if !m.loading && m.rates.Search.HasCapacity(requests) {
 			m.loading = true
@@ -589,6 +645,12 @@ func (m Model) updateKey(key tea.KeyMsg) (tea.Model, tea.Cmd) {
 			return m, m.openBrowser(pr.URL)
 		}
 	default:
+		if shortcut, ok := m.shortcut(key.String()); ok {
+			if pr, ok := m.selectedPR(); ok {
+				return m, m.launchShortcut(shortcut, pr)
+			}
+			return m, nil
+		}
 		if number, err := strconv.Atoi(key.String()); err == nil && number >= 1 && number <= len(m.views) {
 			m.selectView(number - 1)
 		}
@@ -606,7 +668,9 @@ func (m Model) updateMouse(message tea.MouseMsg) (tea.Model, tea.Cmd) {
 		step = mouseStep
 	}
 	if step != 0 {
-		if m.boardLayout().regionRows > 0 {
+		// The wheel acts on the area under the pointer: the review region
+		// under the URL row, or the table above it.
+		if lay := m.boardLayout(); lay.regionRows > 0 && event.Y > lay.selectedURLRow {
 			m.scrollRegion(step)
 		} else {
 			m.cursor += step
@@ -630,6 +694,11 @@ func (m Model) updateMouse(message tea.MouseMsg) (tea.Model, tea.Cmd) {
 	row := m.offset + event.Y - lay.firstPRRow
 	visible := min(lay.visibleRows, max(0, len(rows)-m.offset))
 	if event.Y >= lay.firstPRRow && event.Y < lay.firstPRRow+visible && row >= 0 && row < len(rows) {
+		// A click on the selected row opens it, so a stray click on another
+		// row never opens a browser.
+		if row == m.cursor {
+			return m, m.openBrowser(rows[row].URL)
+		}
 		m.cursor = row
 		m.clampCursor()
 		return m, nil
@@ -780,18 +849,18 @@ func (m Model) renderTable(lay boardLayout) string {
 		return m.renderEmptyView(lay)
 	}
 
-	cols := m.tableLayout()
-	header := m.renderHeader(cols)
+	cols := m.tableLayout(lay.repository != "")
 	var output strings.Builder
-	output.WriteString(header + "\n")
+	output.WriteString(m.renderHeader(cols) + "\n")
+	if lay.repository != "" {
+		line := strings.Repeat(" ", gutterWidth) + "all in " + lay.repository
+		output.WriteString(dimStyle.Render(truncate(line, m.width)) + "\n")
+	}
 	end := min(m.offset+lay.visibleRows, len(rows))
+	// One clock reading per render keeps every row's age consistent.
+	now := time.Now()
 	for i := m.offset; i < end; i++ {
-		pr := rows[i]
-		line := m.renderPRRow(pr, cols)
-		if i == m.cursor {
-			line = selectedStyle.Width(m.width).Render(line)
-		}
-		output.WriteString(line + "\n")
+		output.WriteString(m.renderPRRow(rows[i], cols, i == m.cursor, now) + "\n")
 	}
 	return output.String()
 }
@@ -809,7 +878,9 @@ func (m Model) filteredPRs() []gh.PullRequest {
 		needle := strings.ToLower(m.filter)
 		filtered := rows[:0]
 		for _, pr := range rows {
-			haystack := strings.ToLower(fmt.Sprintf("%s %s %s #%d", pr.Repository, pr.Title, pr.Author, pr.Number))
+			// The REVIEW and CI cells show symbols, so their states match by name too.
+			summary := m.rowReviewSummary(pr)
+			haystack := strings.ToLower(fmt.Sprintf("%s %s %s #%d %s %s %s", pr.Repository, pr.Title, pr.Author, pr.Number, reviewCellText(summary), summary.state, pr.CI))
 			if strings.Contains(haystack, needle) {
 				filtered = append(filtered, pr)
 			}
@@ -883,24 +954,24 @@ func browserCommand(goos, url string) *exec.Cmd {
 	return exec.Command("xdg-open", url)
 }
 
-func relativeTime(value time.Time) string {
+// relativeTime shows how long before now value is, as a compact age.
+func relativeTime(value, now time.Time) string {
 	if value.IsZero() {
 		return "–"
 	}
-	delta := time.Since(value)
-	if delta < time.Minute {
+	delta := now.Sub(value)
+	switch {
+	case delta < time.Minute:
 		return "now"
-	}
-	if delta < time.Hour {
+	case delta < time.Hour:
 		return fmt.Sprintf("%dm", int(delta.Minutes()))
-	}
-	if delta < 24*time.Hour {
+	case delta < 24*time.Hour:
 		return fmt.Sprintf("%dh", int(delta.Hours()))
-	}
-	if delta < 30*24*time.Hour {
+	case delta < 7*24*time.Hour:
 		return fmt.Sprintf("%dd", int(delta.Hours()/24))
+	default:
+		return fmt.Sprintf("%dw", int(delta.Hours()/(7*24)))
 	}
-	return value.Format("Jan 2")
 }
 
 // Stale reports whether the view kept rows from an earlier refresh after a failed one.

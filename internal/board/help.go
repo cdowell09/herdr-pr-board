@@ -1,6 +1,7 @@
 package board
 
 import (
+	"slices"
 	"strings"
 
 	tea "github.com/charmbracelet/bubbletea"
@@ -21,27 +22,29 @@ var helpSections = []helpSection{
 	{"Board", []keyHelpEntry{
 		{"1–9 Tab Shift+Tab h/l ←/→", "select a view"},
 		{"↑/↓ Home/End", "select a PR"},
-		{"j/k g/G PgUp/PgDn wheel", "scroll the review region"},
+		{"j/k g/G PgUp/PgDn", "scroll the review region"},
+		{"wheel", "select over the table, scroll over the review region"},
 		{"Enter o", "open the PR in a browser"},
 		{"v", "zoom the review region"},
 		{"/", "start the filter"},
-		{"Enter", "finish the filter"},
-		{"Backspace", "remove one filter character"},
+		{"↑/↓", "select a PR during the filter"},
+		{"Enter", "keep the filter and finish it"},
+		{"Backspace", "remove one filter character, or finish an empty filter"},
 		{"Ctrl+U Esc", "clear the filter"},
-		{"r R", "refresh one view or all views"},
+		{"Ctrl+R R", "refresh one view or all views"},
 		{"E", "edit the configuration"},
-		{"click", "select and open with the mouse"},
+		{"click", "select a PR, or open the selected PR"},
+		{"click a footer key", "press that key"},
 		{"?", "open or close this help"},
 		{"q Ctrl+C", "close the board"},
 	}},
 	{"Review region", []keyHelpEntry{
-		{"n", "start a review"},
-		{"N", "repeat a review"},
 		{"t", "stop the newest active review"},
 		{"s", "edit repository settings"},
 		{"c", "publish a comment"},
 		{"a", "publish an approval"},
 		{"x", "publish a change request"},
+		{"Enter y", "confirm the publication; another key or a click cancels it"},
 		{"j/k ↑/↓ g/G Home/End PgUp/PgDn wheel", "scroll the zoomed region"},
 		{"o", "open the PR in a browser"},
 		{"Esc v", "leave zoom"},
@@ -62,7 +65,11 @@ func (m Model) helpOverlayLines() []string {
 			lines = append(lines, indent+style.Render(line))
 		}
 	}
-	for i, section := range helpSections {
+	sections := helpSections
+	if shortcuts := m.shortcutHelp(); len(shortcuts) > 0 {
+		sections = append(slices.Clip(sections), helpSection{"Command shortcuts", shortcuts})
+	}
+	for i, section := range sections {
 		if i > 0 {
 			lines = append(lines, "")
 		}

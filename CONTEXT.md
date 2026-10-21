@@ -95,3 +95,7 @@ _Avoid_: Review panel, findings pane
 **Zoom**:
 The review region shown at the full height of the board.
 _Avoid_: Review screen, full-screen panel
+
+**Command shortcut**:
+A user-configured key that runs a user-configured command for the selected PR in a new Herdr pane.
+_Avoid_: Action, quick action, launcher

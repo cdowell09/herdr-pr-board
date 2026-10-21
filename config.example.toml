@@ -139,3 +139,16 @@ notify = "all"
 # Settings preserve unrelated custom reviewer commands.
 # Custom programs retain their own instruction interface.
 # See docs/review-instructions.md for complete examples and validation rules.
+
+# Command shortcuts run your own command for the selected PR in a new Herdr pane.
+# No command shortcut is active by default.
+# key must be one printable character that the board does not use. 1-9 are view keys.
+# run can contain {url}, {repo}, and {number}. The new pane runs it under sh -c.
+# where is "tab" (the default, a new focused tab) or "split" (right of the board).
+# cwd is optional. A leading ~ becomes your home directory.
+# [[shortcuts]]
+# key   = "r"
+# name  = "Pi review"
+# run   = 'pi --skill ~/.agents/skills/code-review "Use the code-review skill to review {url}."'
+# where = "tab"   # or "split"
+# cwd   = "~"     # optional
