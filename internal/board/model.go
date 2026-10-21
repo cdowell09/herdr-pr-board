@@ -38,9 +38,11 @@ type boardLayout struct {
 	selectedURLRow int
 	visibleRows    int
 	emptyRows      int
-	// regionRows is the height of the detail pane under the table, less one.
-	// It is zero when the pane collapses to the URL and a one-line summary.
-	regionRows int
+	// paneTop is the top edge row of the detail pane under the table, and
+	// paneRows is its height. paneRows is zero when the pane collapses to the
+	// URL and a one-line summary.
+	paneTop  int
+	paneRows int
 	// repository is set when every listed row belongs to it. The table then
 	// hides the REPOSITORY column and names it once on a line under the header.
 	repository string
@@ -69,20 +71,21 @@ func (m Model) boardLayout() boardLayout {
 			available--
 		}
 	}
-	visibleRows, regionRows := max(1, available-detailRows), 0
+	// The row under the table holds the URL, or the pane's top edge in the split.
+	visibleRows, paneRows := max(1, available-detailRows), 0
 	if split {
-		// The table keeps its rows up to half the screen. The region takes
-		// the rest and never drops under its minimum.
+		// The table keeps its rows up to half the screen. The pane takes the
+		// rest and never drops under its minimum.
 		tableCap := max(1, m.height/2-firstPRRow)
-		visibleRows = max(1, min(len(rows), tableCap, available-regionMinRows))
-		regionRows = max(0, available-visibleRows)
+		visibleRows = max(1, min(len(rows), tableCap, available+1-paneMinRows))
+		paneRows = max(0, available+1-visibleRows)
 	}
-	selectedURLRow := firstPRRow
+	underTable := firstPRRow
 	if len(rows) > 0 {
-		selectedURLRow = firstPRRow + 1 + min(visibleRows, max(0, len(rows)-m.offset))
+		underTable = firstPRRow + 1 + min(visibleRows, max(0, len(rows)-m.offset))
 	}
-	if regionRows > 0 {
-		// The pane starts under the table, and its URL follows the top edge.
+	selectedURLRow := underTable
+	if paneRows > 0 {
 		selectedURLRow += paneURLOffset
 	}
 	return boardLayout{
@@ -90,7 +93,8 @@ func (m Model) boardLayout() boardLayout {
 		selectedURLRow: selectedURLRow,
 		visibleRows:    visibleRows,
 		emptyRows:      max(1, available-detailRows+tableHeaderRows),
-		regionRows:     regionRows,
+		paneTop:        underTable,
+		paneRows:       paneRows,
 		repository:     repository,
 	}
 }
@@ -679,7 +683,7 @@ func (m Model) updateMouse(message tea.MouseMsg) (tea.Model, tea.Cmd) {
 	if step != 0 {
 		// The wheel acts on the area under the pointer: the detail pane under
 		// the table, or the table above it.
-		if lay := m.boardLayout(); lay.regionRows > 0 && event.Y >= lay.selectedURLRow-paneURLOffset {
+		if lay := m.boardLayout(); lay.paneRows > 0 && event.Y >= lay.paneTop {
 			m.scrollRegion(step)
 		} else {
 			m.cursor += step
@@ -801,8 +805,8 @@ func (m Model) View() string {
 		output.WriteString(notice + "\n")
 	}
 	output.WriteString(m.renderTable(lay))
-	if lay.regionRows > 0 {
-		output.WriteString(strings.Join(m.renderPane(lay.regionRows+1), "\n"))
+	if lay.paneRows > 0 {
+		output.WriteString(strings.Join(m.renderPane(lay.paneRows), "\n"))
 	} else {
 		output.WriteString(m.renderSelected())
 	}

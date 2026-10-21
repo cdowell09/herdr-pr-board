@@ -18,9 +18,9 @@ const (
 	// regionSplitHeight is the terminal height that fits the table and the
 	// detail pane. A shorter terminal shows the one-line summary instead.
 	regionSplitHeight = 24
-	// regionMinRows keeps the pane's facts and some review rows on screen
-	// when the table has many rows.
-	regionMinRows = 9
+	// paneMinRows keeps the pane's facts and some review rows on screen when
+	// the table has many rows.
+	paneMinRows = 10
 )
 
 // regionSplit reports whether the board shows the detail pane under the table.
@@ -296,8 +296,8 @@ func (m Model) regionSize() int {
 		_, size := m.zoomViewport()
 		return size
 	}
-	if lay := m.boardLayout(); lay.regionRows > 0 {
-		return m.paneReviewRows(lay.regionRows + 1)
+	if lay := m.boardLayout(); lay.paneRows > 0 {
+		return m.paneReviewRows(lay.paneRows)
 	}
 	return 0
 }

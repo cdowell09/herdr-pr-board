@@ -113,8 +113,8 @@ func TestSplitGeometryMatchesRenderedRowsAndMouse(t *testing.T) {
 	if region := stripANSI(strings.Join(m.regionLines(false), "\n")); !strings.Contains(region, "POSTED      GitHub · current revision") {
 		t.Fatalf("region lacks the posted detail:\n%s", region)
 	}
-	if lay.regionRows < regionMinRows || lay.regionRows != m.height-(lay.selectedURLRow-paneURLOffset)-1-len(m.footerHelpLines())-1 {
-		t.Fatalf("region rows = %d in layout %+v", lay.regionRows, lay)
+	if lay.paneRows < paneMinRows || lay.paneTop+paneURLOffset != lay.selectedURLRow || lay.paneTop+lay.paneRows != m.height-len(m.footerHelpLines())-1 {
+		t.Fatalf("pane rows = %d in layout %+v", lay.paneRows, lay)
 	}
 	for _, line := range lines {
 		if lipgloss.Width(line) > m.width {
@@ -183,7 +183,7 @@ func TestShortTerminalCollapsesTheRegionAndZoomStillWorks(t *testing.T) {
 	next, _ := m.Update(tea.WindowSizeMsg{Width: 120, Height: regionSplitHeight - 1})
 	m = next.(Model)
 	view := stripANSI(m.View())
-	if m.boardLayout().regionRows != 0 || strings.Contains(view, "── Review") || !strings.Contains(view, "Review: ") {
+	if m.boardLayout().paneRows != 0 || strings.Contains(view, "── Review") || !strings.Contains(view, "Review: ") {
 		t.Fatalf("short terminal kept the region:\n%s", view)
 	}
 	if lines := strings.Split(view, "\n"); len(lines) > m.height {
