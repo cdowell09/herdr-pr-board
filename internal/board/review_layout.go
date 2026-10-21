@@ -189,6 +189,27 @@ func (m Model) stopLine(run reviewmemory.Run) (span, bool) {
 	return span{text: "t stop run " + shortRevision(run.ID), style: keyStyle}, true
 }
 
+// publicationStates lists one run's publication results, for example
+// "comment published". A result that did not publish carries its message.
+func (m Model) publicationStates(runID string) []span {
+	var states []span
+	for _, a := range m.regionState().publications {
+		if a.RunID != runID {
+			continue
+		}
+		state := string(a.Action) + " " + string(a.Status)
+		style := regionBodyStyle
+		if a.Status != publication.Published {
+			style = warningStyle
+			if a.Message != "" {
+				state += ": " + a.Message
+			}
+		}
+		states = append(states, span{text: reviewText(state), style: style})
+	}
+	return states
+}
+
 func (m Model) noRunsText() string {
 	if m.regionState().loaded {
 		return "No local review runs"
