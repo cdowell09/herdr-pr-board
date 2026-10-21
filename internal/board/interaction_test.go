@@ -53,7 +53,7 @@ func TestFilterInputMovesTheSelectionAndBackspaceLeavesIt(t *testing.T) {
 		t.Fatalf("enter moved the selection to %q, want %q", got, second)
 	}
 	view := stripANSI(m.View())
-	if !strings.Contains(view, "filter: acme") || strings.Contains(view, "▌") {
+	if !strings.Contains(view, "filter: acme") || strings.Contains(view, "filter: acme▌") {
 		t.Fatalf("enter did not keep the filter and leave input:\n%s", view)
 	}
 
@@ -84,7 +84,7 @@ func TestFilterMatchesReviewAndCICellText(t *testing.T) {
 	}
 	for filter, want := range map[string]string{
 		"failure": prs[2].URL, // CI
-		"p0:1":    prs[0].URL, // REVIEW finding counts
+		"p0":      prs[0].URL, // REVIEW worst severity
 		"FAILED":  prs[1].URL, // REVIEW state, case-insensitive
 	} {
 		view := stripANSI(press(m, runes("/"), runes(filter)).View())

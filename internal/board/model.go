@@ -18,7 +18,6 @@ import (
 	"github.com/cdowell09/herdr-pr-board/internal/sidebar"
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
-	"github.com/charmbracelet/x/ansi"
 )
 
 const (
@@ -86,11 +85,14 @@ var (
 	inactiveTab   = lipgloss.NewStyle().Foreground(lipgloss.Color("245")).Padding(0, 1)
 	headerStyle   = lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("252")).BorderBottom(true).BorderStyle(lipgloss.NormalBorder()).BorderForeground(lipgloss.Color("238"))
 	selectedStyle = lipgloss.NewStyle().Foreground(lipgloss.Color("255")).Background(lipgloss.Color("237"))
-	dimStyle      = lipgloss.NewStyle().Foreground(lipgloss.Color("242"))
-	keyStyle      = lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("252"))
-	warningStyle  = lipgloss.NewStyle().Foreground(lipgloss.Color("214"))
-	errorStyle    = lipgloss.NewStyle().Foreground(lipgloss.Color("196"))
-	urlStyle      = lipgloss.NewStyle().Foreground(lipgloss.Color("81")).Underline(true)
+	// selectionEdgeStyle marks the selected row in the table gutter.
+	selectionEdgeStyle = lipgloss.NewStyle().Foreground(lipgloss.Color("105"))
+	okStyle            = lipgloss.NewStyle().Foreground(lipgloss.Color("42"))
+	dimStyle           = lipgloss.NewStyle().Foreground(lipgloss.Color("242"))
+	keyStyle           = lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("252"))
+	warningStyle       = lipgloss.NewStyle().Foreground(lipgloss.Color("214"))
+	errorStyle         = lipgloss.NewStyle().Foreground(lipgloss.Color("196"))
+	urlStyle           = lipgloss.NewStyle().Foreground(lipgloss.Color("81")).Underline(true)
 	// separatorStyle matches the table header border, so the rule under the
 	// last row closes the table the way the header opens it.
 	separatorStyle = lipgloss.NewStyle().Foreground(lipgloss.Color("238"))
@@ -826,13 +828,10 @@ func (m Model) renderTable(lay boardLayout) string {
 	var output strings.Builder
 	output.WriteString(header + "\n")
 	end := min(m.offset+lay.visibleRows, len(rows))
+	// One clock reading per render keeps every row's age consistent.
+	now := time.Now()
 	for i := m.offset; i < end; i++ {
-		pr := rows[i]
-		line := m.renderPRRow(pr, cols)
-		if i == m.cursor {
-			line = selectedStyle.Width(m.width).Render(line)
-		}
-		output.WriteString(line + "\n")
+		output.WriteString(m.renderPRRow(rows[i], cols, i == m.cursor, now) + "\n")
 	}
 	return output.String()
 }
@@ -852,7 +851,7 @@ func (m Model) filteredPRs() []gh.PullRequest {
 		for _, pr := range rows {
 			// The REVIEW and CI cells show symbols, so their states match by name too.
 			summary := m.rowReviewSummary(pr)
-			haystack := strings.ToLower(fmt.Sprintf("%s %s %s #%d %s %s %s", pr.Repository, pr.Title, pr.Author, pr.Number, ansi.Strip(renderReviewCell(summary)), summary.state, pr.CI))
+			haystack := strings.ToLower(fmt.Sprintf("%s %s %s #%d %s %s %s", pr.Repository, pr.Title, pr.Author, pr.Number, reviewCellText(summary), summary.state, pr.CI))
 			if strings.Contains(haystack, needle) {
 				filtered = append(filtered, pr)
 			}
@@ -926,24 +925,24 @@ func browserCommand(goos, url string) *exec.Cmd {
 	return exec.Command("xdg-open", url)
 }
 
-func relativeTime(value time.Time) string {
+// relativeTime shows how long before now value is, as a compact age.
+func relativeTime(value, now time.Time) string {
 	if value.IsZero() {
 		return "–"
 	}
-	delta := time.Since(value)
-	if delta < time.Minute {
+	delta := now.Sub(value)
+	switch {
+	case delta < time.Minute:
 		return "now"
-	}
-	if delta < time.Hour {
+	case delta < time.Hour:
 		return fmt.Sprintf("%dm", int(delta.Minutes()))
-	}
-	if delta < 24*time.Hour {
+	case delta < 24*time.Hour:
 		return fmt.Sprintf("%dh", int(delta.Hours()))
-	}
-	if delta < 30*24*time.Hour {
+	case delta < 7*24*time.Hour:
 		return fmt.Sprintf("%dd", int(delta.Hours()/24))
+	default:
+		return fmt.Sprintf("%dw", int(delta.Hours()/(7*24)))
 	}
-	return value.Format("Jan 2")
 }
 
 // Stale reports whether the view kept rows from an earlier refresh after a failed one.

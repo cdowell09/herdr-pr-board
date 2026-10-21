@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"slices"
 	"strings"
+	"time"
 	"unicode/utf8"
 
 	"github.com/cdowell09/herdr-pr-board/internal/config"
@@ -214,7 +215,7 @@ func (m Model) renderFooter(help []string) string {
 	}
 	freshness := m.currentView().UpdatedAt
 	if !freshness.IsZero() {
-		parts = append(parts, "updated "+relativeTime(freshness))
+		parts = append(parts, "updated "+relativeTime(freshness, time.Now()))
 	}
 	if stale(m.currentView()) {
 		parts = append(parts, "stale")

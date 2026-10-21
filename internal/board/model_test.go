@@ -295,7 +295,7 @@ func TestModelCentersCIIconsInColumn(t *testing.T) {
 }
 
 func ciGlyph(state gh.CIState) string {
-	return strings.TrimSpace(stripANSI(renderCI(state)))
+	return ciMark(state).text
 }
 
 func TestModelSwitchesViewsAndFilters(t *testing.T) {

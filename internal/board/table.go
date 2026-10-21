@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"strconv"
 	"strings"
+	"time"
 
 	gh "github.com/cdowell09/herdr-pr-board/internal/github"
 	"github.com/cdowell09/herdr-pr-board/internal/reviewmemory"
@@ -42,7 +43,7 @@ func (m Model) tableLayout() tableLayout {
 
 // fixedWidth returns the cell width of every column except the title.
 func (l tableLayout) fixedWidth() int {
-	width := 6 + 2 + 3 + 2 + reviewColumnWidth + 2 // PR, CI, REVIEW, and separators
+	width := gutterWidth + 6 + 2 + 3 + 2 + reviewColumnWidth + 2 // gutter, PR, CI, REVIEW, and separators
 	if l.posted {
 		width += 8 + 2
 	}
@@ -53,13 +54,29 @@ func (l tableLayout) fixedWidth() int {
 		width += l.author + 2
 	}
 	if l.updated {
-		width += 8 + 1 // UPDATED column
+		width += 1 + updatedColumnWidth
 	}
 	return width
 }
 
+// gutterWidth is the left margin that carries the selection accent edge.
+const gutterWidth = 3
+
+// updatedColumnWidth fits the UPDATED header; ages align to its right edge.
+const updatedColumnWidth = 7
+
+// span is one styled piece of a table row. A row is built from spans so the
+// selection background can cover every cell, including the colored symbols.
+type span struct {
+	text  string
+	style lipgloss.Style
+}
+
+func plainSpan(text string) span { return span{text: text, style: lipgloss.NewStyle()} }
+
 func (m Model) renderHeader(layout tableLayout) string {
 	var b strings.Builder
+	b.WriteString(strings.Repeat(" ", gutterWidth))
 	if layout.repo > 0 {
 		b.WriteString(padCells("REPOSITORY", layout.repo))
 		b.WriteString("  ")
@@ -80,78 +97,106 @@ func (m Model) renderHeader(layout tableLayout) string {
 	}
 	if layout.updated {
 		b.WriteString(" ")
-		b.WriteString(padCells("UPDATED", 8))
+		b.WriteString(padCells("UPDATED", updatedColumnWidth))
 	}
 	return headerStyle.Width(m.width).Render(truncate(b.String(), m.width))
 }
 
-func (m Model) renderPRRow(pr gh.PullRequest, layout tableLayout) string {
-	var b strings.Builder
-	if layout.repo > 0 {
-		b.WriteString(padCells(truncate(pr.Repository, layout.repo), layout.repo))
-		b.WriteString("  ")
+// renderPRRow renders one table row across the full width. A selected row
+// shows the accent edge in the gutter and the selection background in every
+// cell.
+func (m Model) renderPRRow(pr gh.PullRequest, layout tableLayout, selected bool, now time.Time) string {
+	base := lipgloss.NewStyle()
+	spans := []span{plainSpan(strings.Repeat(" ", gutterWidth))}
+	if selected {
+		base = selectedStyle
+		spans[0] = span{text: " ▌ ", style: selectionEdgeStyle}
 	}
-	b.WriteString(fmt.Sprintf("#%-5d", pr.Number))
-	b.WriteString("  ")
-	b.WriteString(renderCI(pr.CI))
-	b.WriteString("  ")
+	cell := func(text string, width int) {
+		spans = append(spans, plainSpan(padCells(truncate(text, width), width)))
+	}
+	gap := func(n int) { spans = append(spans, plainSpan(strings.Repeat(" ", n))) }
+	if layout.repo > 0 {
+		cell(pr.Repository, layout.repo)
+		gap(2)
+	}
+	cell(fmt.Sprintf("#%d", pr.Number), 6)
+	gap(3)
+	spans = append(spans, ciMark(pr.CI))
+	gap(3)
 	summary := m.rowReviewSummary(pr)
-	b.WriteString(renderReviewCell(summary))
-	b.WriteString("  ")
+	spans = append(spans, reviewCell(summary)...)
+	gap(2)
 	if layout.posted {
-		b.WriteString(padCells(truncate(summary.posted, 8), 8))
-		b.WriteString("  ")
+		cell(summary.posted, 8)
+		gap(2)
 	}
 	title := pr.Title
 	if pr.Draft {
 		title = "[draft] " + title
 	}
-	b.WriteString(padCells(truncate(title, layout.title), layout.title))
+	cell(title, layout.title)
 	if layout.author > 0 {
-		b.WriteString("  ")
-		b.WriteString(padCells(truncate(pr.Author, layout.author), layout.author))
+		gap(2)
+		cell(pr.Author, layout.author)
 	}
 	if layout.updated {
-		b.WriteString(" ")
-		b.WriteString(padCells(relativeTime(pr.UpdatedAt), 8))
+		gap(1)
+		age := relativeTime(pr.UpdatedAt, now)
+		spans = append(spans, plainSpan(strings.Repeat(" ", max(0, updatedColumnWidth-lipgloss.Width(age)))+age))
 	}
-	return truncate(b.String(), m.width)
+	var b strings.Builder
+	for _, s := range spans {
+		b.WriteString(s.style.Inherit(base).Render(s.text))
+	}
+	line := ansi.Truncate(b.String(), m.width, "…")
+	return line + base.Render(strings.Repeat(" ", max(0, m.width-lipgloss.Width(line))))
 }
 
-// reviewColumnWidth fits four capped counts: "P0:0 P1:+ P2:0 P3:9".
-const reviewColumnWidth = 19
+// reviewColumnWidth fits the worst severity and its count: "● P0 12".
+const reviewColumnWidth = 8
 
-// severityStyles color the counts that deserve a glance: P0 red, P1 yellow.
+// severityStyles color a completed review by its worst severity.
 var severityStyles = [len(reviewmemory.Severities)]lipgloss.Style{
 	lipgloss.NewStyle().Foreground(lipgloss.Color("210")),
 	lipgloss.NewStyle().Foreground(lipgloss.Color("214")),
-	lipgloss.NewStyle(),
-	lipgloss.NewStyle(),
+	lipgloss.NewStyle().Foreground(lipgloss.Color("179")),
+	lipgloss.NewStyle().Foreground(lipgloss.Color("248")),
 }
 
-// renderReviewCell shows finding counts for a completed review and the review
-// state symbol otherwise, padded to the REVIEW column width.
-func renderReviewCell(summary reviewRowSummary) string {
-	if summary.state != "completed" || summary.findings == (reviewmemory.SeverityCounts{}) {
-		return padCells(renderReviewState(summary.state), reviewColumnWidth)
-	}
-	tokens := make([]string, len(summary.findings))
-	for i, count := range summary.findings {
-		style := severityStyles[i]
-		if count == 0 {
-			style = dimStyle
+// reviewCell shows the worst severity and its count for a completed review,
+// "✓ clean" for a clean review, and the review state symbol otherwise. The
+// spans fill the REVIEW column width.
+func reviewCell(summary reviewRowSummary) []span {
+	mark, label := reviewMark(summary.state), ""
+	if summary.state == "completed" {
+		label = "clean"
+		for i, count := range summary.findings {
+			if count > 0 {
+				mark = span{text: "●", style: severityStyles[i]}
+				label = reviewmemory.Severities[i] + " " + strconv.Itoa(count)
+				break
+			}
 		}
-		tokens[i] = style.Render(reviewmemory.Severities[i] + ":" + cappedCount(count))
 	}
-	return padCells(strings.Join(tokens, " "), reviewColumnWidth)
+	spans := []span{mark}
+	if label != "" {
+		label = " " + label
+	}
+	style := dimStyle
+	if mark.text == "●" {
+		style = mark.style.Bold(true)
+	}
+	return append(spans, span{text: padCells(truncate(label, reviewColumnWidth-1), reviewColumnWidth-1), style: style})
 }
 
-// cappedCount keeps every count to one cell; the detail line shows the exact number.
-func cappedCount(count int) string {
-	if count > 9 {
-		return "+"
+// reviewText returns the visible REVIEW cell text, which the filter matches.
+func reviewCellText(summary reviewRowSummary) string {
+	var b strings.Builder
+	for _, s := range reviewCell(summary) {
+		b.WriteString(s.text)
 	}
-	return strconv.Itoa(count)
+	return b.String()
 }
 
 // findingsDetail lists the exact count at every severity for the selected detail line.
@@ -162,18 +207,18 @@ func findingsDetail(counts reviewmemory.SeverityCounts) string {
 	return counts.String()
 }
 
-func renderReviewState(state string) string {
+func reviewMark(state string) span {
 	switch state {
 	case "running", "waiting", "ready":
-		return ciSymbol(gh.CIPending)
+		return ciMark(gh.CIPending)
 	case "completed":
-		return ciSymbol(gh.CISuccess)
+		return ciMark(gh.CISuccess)
 	case "failed", "blocked", "abandoned":
-		return ciSymbol(gh.CIFailure)
+		return ciMark(gh.CIFailure)
 	case "none":
-		return ciSymbol(gh.CINone)
+		return ciMark(gh.CINone)
 	default:
-		return ciSymbol(gh.CIUnknown)
+		return ciMark(gh.CIUnknown)
 	}
 }
 
@@ -197,22 +242,18 @@ func (m Model) renderSelected(lay boardLayout) string {
 	return url + "\n" + reviewSecondaryStyle.Render(strings.Join(m.selectedReviewLines(pr), "\n"))
 }
 
-func renderCI(state gh.CIState) string {
-	return " " + ciSymbol(state) + " "
-}
-
-func ciSymbol(state gh.CIState) string {
+func ciMark(state gh.CIState) span {
 	switch state {
 	case gh.CISuccess:
-		return lipgloss.NewStyle().Foreground(lipgloss.Color("42")).Render("✓")
+		return span{text: "✓", style: okStyle}
 	case gh.CIPending:
-		return lipgloss.NewStyle().Foreground(lipgloss.Color("214")).Render("●")
+		return span{text: "●", style: lipgloss.NewStyle().Foreground(lipgloss.Color("214"))}
 	case gh.CIFailure, gh.CIError:
-		return lipgloss.NewStyle().Foreground(lipgloss.Color("210")).Render("✗")
+		return span{text: "✗", style: lipgloss.NewStyle().Foreground(lipgloss.Color("210"))}
 	case gh.CINone:
-		return dimStyle.Foreground(lipgloss.Color("248")).Render("–")
+		return span{text: "–", style: dimStyle.Foreground(lipgloss.Color("248"))}
 	default:
-		return dimStyle.Foreground(lipgloss.Color("248")).Render("?")
+		return span{text: "?", style: dimStyle.Foreground(lipgloss.Color("248"))}
 	}
 }
 
