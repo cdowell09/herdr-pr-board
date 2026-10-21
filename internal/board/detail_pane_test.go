@@ -148,3 +148,34 @@ func TestFrameEdgeDropsTheNoteBeforeTheTitle(t *testing.T) {
 		t.Fatalf("edge = %q", edge)
 	}
 }
+
+func TestShortZoomKeepsAReviewRow(t *testing.T) {
+	m := splitModel(t, &reviewFake{})
+	m.views[0].PRs[0].Author = "lin"
+	m.setRegionRuns(completedRun(3))
+	m = press(m, runes("v"))
+	for _, size := range [][2]int{{80, 10}, {50, 12}, {30, 10}, {50, 8}} {
+		next, _ := m.Update(tea.WindowSizeMsg{Width: size[0], Height: size[1]})
+		m = next.(Model)
+		if _, rows := m.zoomViewport(); rows < 1 {
+			t.Fatalf("%v: zoom has %d review rows:\n%s", size, rows, stripANSI(m.View()))
+		}
+		m = press(m, runes("G"))
+		if view := stripANSI(m.View()); !strings.Contains(view, "Diagnostics") {
+			t.Fatalf("%v: G did not reach the details:\n%s", size, view)
+		}
+		m = press(m, runes("g"))
+	}
+}
+
+func TestClosedDraftShowsItsFinalState(t *testing.T) {
+	m := splitModel(t, &reviewFake{})
+	pr := splitPR(1, 0)
+	pr.Draft = true
+	for state, want := range map[gh.PRState]string{gh.PROpen: "State draft", "": "State draft", gh.PRClosed: "State closed", gh.PRMerged: "State merged"} {
+		pr.State = state
+		if facts := stripANSI(strings.Join(m.paneFacts(pr), "\n")); !strings.Contains(facts, want) {
+			t.Fatalf("state %q: facts = %q, want %q", state, facts, want)
+		}
+	}
+}

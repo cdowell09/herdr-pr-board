@@ -18,16 +18,13 @@ import (
 const (
 	// paneURLOffset is the URL row under the top edge.
 	paneURLOffset = 1
-	// paneChromeRows are the pane rows other than the facts and the review
-	// section: the two edges, the URL, the title, and the review rule.
-	paneChromeRows = 5
 )
 
 // paneWidth is the content width inside the pane's sides and their padding.
 func (m Model) paneWidth() int { return max(1, m.width-4) }
 
 // renderPane returns the pane in at most height lines. The review section
-// takes the rows that the chrome and the facts leave.
+// takes the rows that the other parts leave.
 func (m Model) renderPane(height int) []string {
 	pr := m.region.pr
 	inner := m.paneWidth()
@@ -35,16 +32,18 @@ func (m Model) renderPane(height int) []string {
 	row := func(line string) string {
 		return side + " " + padCells(ansi.Truncate(line, inner, "…"), inner) + " " + side
 	}
-	lines := []string{
-		m.paneTop(pr),
-		row(urlStyle.Render(reviewText(pr.URL))),
-		row(keyStyle.Render(reviewText(pr.Title))),
+	facts, title, review := m.paneRows(height)
+	lines := []string{m.paneTop(pr), row(urlStyle.Render(reviewText(pr.URL)))}
+	if title {
+		lines = append(lines, row(keyStyle.Render(reviewText(pr.Title))))
 	}
-	for _, fact := range m.paneFacts(pr) {
+	for _, fact := range facts {
 		lines = append(lines, row(fact))
 	}
-	lines = append(lines, row(rule("Review", "", inner, dimStyle)))
-	for _, line := range m.regionViewport(m.regionLines(m.zoom), m.paneReviewRows(height)) {
+	if title {
+		lines = append(lines, row(rule("Review", "", inner, dimStyle)))
+	}
+	for _, line := range m.regionViewport(m.regionLines(m.zoom), review) {
 		lines = append(lines, row(line))
 	}
 	lines = append(lines, frameStyle.Render("╰"+strings.Repeat("─", max(0, m.width-2))+"╯"))
@@ -56,9 +55,24 @@ func (m Model) renderPane(height int) []string {
 	return lines
 }
 
+// paneRows returns the optional parts that fit a pane of height rows and the
+// review rows that they leave. The edges and the URL always show. The title
+// and the review rule come next, then the facts, while one review row stays.
+func (m Model) paneRows(height int) (facts []string, title bool, review int) {
+	review = height - 3
+	if review-2 >= 1 {
+		title, review = true, review-2
+		if f := m.paneFacts(m.region.pr); review-len(f) >= 1 {
+			facts, review = f, review-len(f)
+		}
+	}
+	return facts, title, max(0, review)
+}
+
 // paneReviewRows is the height of the review section in a pane of height rows.
 func (m Model) paneReviewRows(height int) int {
-	return max(0, height-paneChromeRows-len(m.paneFacts(m.region.pr)))
+	_, _, review := m.paneRows(height)
+	return review
 }
 
 // paneTop is the top edge: the repository and number, and the PR's
@@ -85,7 +99,8 @@ func (m Model) paneFacts(pr gh.PullRequest) []string {
 		facts = append(facts, fact{"Author", value(pr.Author)})
 	}
 	state := strings.ToLower(string(pr.State))
-	if pr.Draft {
+	// A closed or merged draft shows its final state.
+	if pr.Draft && (pr.State == gh.PROpen || pr.State == "") {
 		state = "draft"
 	}
 	if state != "" {
