@@ -72,7 +72,7 @@ func TestHelpOverlayListsCommandShortcuts(t *testing.T) {
 	}
 	// The controls that work everywhere stay last, after the shortcuts.
 	var plain []string
-	for _, line := range m.helpOverlayLines() {
+	for _, line := range m.helpLayout().lines {
 		plain = append(plain, stripANSI(line))
 	}
 	content := strings.Join(plain, "\n")

@@ -69,8 +69,22 @@ var (
 	backdropStyle = lipgloss.NewStyle().Foreground(borderColor)
 )
 
-// helpBox is the place of the help modal on the screen, borders included.
-type helpBox struct{ x, y, width, height int }
+// helpLayout is the place of the help modal on the screen, borders
+// included, and its content rows. One calculation serves the rendering, the
+// scrolling, and the close control.
+type helpLayout struct {
+	x, y, width, height int
+	lines               []string
+}
+
+// visibleRows is the number of content rows between the top edge and the
+// close hint.
+func (l helpLayout) visibleRows() int { return max(1, l.height-3) }
+
+// offset is the first visible content row for a requested scroll offset.
+func (l helpLayout) offset(requested int) int {
+	return max(0, min(requested, len(l.lines)-l.visibleRows()))
+}
 
 func (m Model) helpSections() []helpSection {
 	if shortcuts := m.shortcutHelp(); len(shortcuts) > 0 {
@@ -81,9 +95,9 @@ func (m Model) helpSections() []helpSection {
 	return helpSections
 }
 
-// helpBox centers the modal. It is as wide as its longest control, and it
-// keeps a margin to the screen edges.
-func (m Model) helpBox() helpBox {
+// helpLayout centers the modal. It is as wide as its longest control, and
+// it keeps a margin to the screen edges.
+func (m Model) helpLayout() helpLayout {
 	keys, actions := 0, 0
 	for _, section := range m.helpSections() {
 		for _, entry := range section.entries {
@@ -101,15 +115,12 @@ func (m Model) helpBox() helpBox {
 	// Each content row has one cell of padding on both sides, and two cells
 	// separate the key column from the actions.
 	natural := 2 + min(keys, helpKeyColumn) + 2 + actions + 2
-	width := max(1, min(natural, m.width-2*marginX))
-	box := helpBox{width: width}
-	box.height = max(1, min(len(m.helpLinesFor(width))+3, m.height-2*marginY))
-	box.x, box.y = (m.width-box.width)/2, (m.height-box.height)/2
-	return box
+	layout := helpLayout{width: max(1, min(natural, m.width-2*marginX))}
+	layout.lines = m.helpLinesFor(layout.width)
+	layout.height = max(1, min(len(layout.lines)+3, m.height-2*marginY))
+	layout.x, layout.y = (m.width-layout.width)/2, (m.height-layout.height)/2
+	return layout
 }
-
-// helpOverlayLines renders every control as styled content rows of the modal.
-func (m Model) helpOverlayLines() []string { return m.helpLinesFor(m.helpBox().width) }
 
 // helpLinesFor renders the controls for a modal that is width cells wide.
 // Keys sit right-aligned in one column and actions wrap in the next. A key
@@ -125,8 +136,13 @@ func (m Model) helpLinesFor(width int) []string {
 		}
 	}
 	keyColumn = max(1, min(keyColumn, helpKeyColumn, (content-2)/3))
-	actionWidth := max(1, content-keyColumn-2)
+	actionWidth := content - keyColumn - 2
 	indent := strings.Repeat(" ", keyColumn+2)
+	if actionWidth < 1 {
+		// Two columns do not fit. Each key takes its own row, and its action
+		// follows without an indent.
+		keyColumn, actionWidth, indent = 0, content, ""
+	}
 	wrap := func(value string, width int) []string {
 		return strings.Split(ansi.Wrap(value, width, ""), "\n")
 	}
@@ -157,14 +173,8 @@ func (m Model) helpLinesFor(width int) []string {
 	return lines
 }
 
-// helpVisibleRows is the number of control rows between the top edge and the
-// close hint.
-func (m Model) helpVisibleRows() int {
-	return max(1, m.helpBox().height-3)
-}
-
 func (m *Model) clampHelpOffset() {
-	m.helpOffset = max(0, min(m.helpOffset, max(0, len(m.helpOverlayLines())-m.helpVisibleRows())))
+	m.helpOffset = m.helpLayout().offset(m.helpOffset)
 }
 
 // helpCloseSpan returns the cells of the close control in the top edge of a
@@ -197,20 +207,18 @@ func helpTopEdge(width int) string {
 	return left + " " + errorStyle.Render(helpClose) + helpBorderStyle.Render(" ─╮")
 }
 
-func (m Model) renderHelpModal(box helpBox) []string {
-	inner := max(0, box.width-2)
+func (m Model) renderHelpModal(layout helpLayout) []string {
+	inner := max(0, layout.width-2)
 	side := helpBorderStyle.Render("│")
 	row := func(value string) string { return side + padCells(" "+value, inner) + side }
-	lines := m.helpOverlayLines()
-	visible := m.helpVisibleRows()
-	offset := max(0, min(m.helpOffset, max(0, len(lines)-visible)))
-	rows := []string{helpTopEdge(box.width)}
-	for _, line := range lines[offset:min(len(lines), offset+visible)] {
+	offset := layout.offset(m.helpOffset)
+	rows := []string{helpTopEdge(layout.width)}
+	for _, line := range layout.lines[offset:min(len(layout.lines), offset+layout.visibleRows())] {
 		rows = append(rows, row(line))
 	}
 	rows = append(rows, row(dimStyle.Render(truncate(helpHint, max(0, inner-2)))))
 	rows = append(rows, helpBorderStyle.Render("╰"+strings.Repeat("─", inner)+"╯"))
-	return rows[:min(len(rows), box.height)]
+	return rows[:min(len(rows), layout.height)]
 }
 
 // renderHelpOverlay draws the help modal over a dimmed copy of the screen
@@ -222,21 +230,21 @@ func (m Model) renderHelpOverlay() string {
 	behind := m
 	behind.helpOverlay = false
 	backdrop := strings.Split(ansi.Strip(behind.View()), "\n")
-	box := m.helpBox()
-	modal := m.renderHelpModal(box)
+	layout := m.helpLayout()
+	modal := m.renderHelpModal(layout)
 	output := make([]string, m.height)
 	for y := range output {
 		line := ""
 		if y < len(backdrop) {
 			line = ansi.Truncate(backdrop[y], m.width, "")
 		}
-		i := y - box.y
+		i := y - layout.y
 		if i < 0 || i >= len(modal) {
 			output[y] = backdropStyle.Render(line)
 			continue
 		}
-		left := padCells(ansi.Truncate(line, box.x, ""), box.x)
-		right := ansi.TruncateLeft(line, box.x+box.width, "")
+		left := padCells(ansi.Truncate(line, layout.x, ""), layout.x)
+		right := ansi.TruncateLeft(line, layout.x+layout.width, "")
 		output[y] = backdropStyle.Render(left) + modal[i] + backdropStyle.Render(right)
 	}
 	return strings.Join(output, "\n")
@@ -256,7 +264,7 @@ func (m Model) updateHelpKey(key tea.KeyMsg) (tea.Model, tea.Cmd) {
 	case "g", "home":
 		m.helpOffset = 0
 	case "G", "end":
-		m.helpOffset = len(m.helpOverlayLines())
+		m.helpOffset = len(m.helpLayout().lines)
 	}
 	m.clampHelpOffset()
 	return m, nil
@@ -272,9 +280,9 @@ func (m Model) updateHelpMouse(message tea.MouseMsg) (tea.Model, tea.Cmd) {
 	case tea.MouseButtonWheelDown:
 		m.helpOffset += mouseStep
 	case tea.MouseButtonLeft:
-		box := m.helpBox()
-		start, end, ok := helpCloseSpan(box.width)
-		if ok && event.Action == tea.MouseActionPress && event.Y == box.y && event.X >= box.x+start && event.X < box.x+end {
+		layout := m.helpLayout()
+		start, end, ok := helpCloseSpan(layout.width)
+		if ok && event.Action == tea.MouseActionPress && event.Y == layout.y && event.X >= layout.x+start && event.X < layout.x+end {
 			m.helpOverlay, m.helpOffset = false, 0
 			return m, nil
 		}
