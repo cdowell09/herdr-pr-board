@@ -170,10 +170,10 @@ const reviewColumnWidth = 8
 
 // severityStyles color a completed review by its worst severity.
 var severityStyles = [len(reviewmemory.Severities)]lipgloss.Style{
-	lipgloss.NewStyle().Foreground(lipgloss.Color("210")),
-	lipgloss.NewStyle().Foreground(lipgloss.Color("214")),
-	lipgloss.NewStyle().Foreground(lipgloss.Color("179")),
-	lipgloss.NewStyle().Foreground(lipgloss.Color("248")),
+	errorStyle,
+	warningStyle,
+	lipgloss.NewStyle().Foreground(cautionColor),
+	lipgloss.NewStyle().Foreground(subtleColor),
 }
 
 // reviewCell shows the worst severity and its count for a completed review,
@@ -259,9 +259,9 @@ func ciMark(state gh.CIState) span {
 	case gh.CISuccess:
 		return span{text: "✓", style: okStyle}
 	case gh.CIPending:
-		return span{text: "●", style: lipgloss.NewStyle().Foreground(lipgloss.Color("214"))}
+		return span{text: "●", style: warningStyle}
 	case gh.CIFailure, gh.CIError:
-		return span{text: "✗", style: lipgloss.NewStyle().Foreground(lipgloss.Color("210"))}
+		return span{text: "✗", style: errorStyle}
 	default:
 		// No checks and an unknown status share the dim dot. The filter
 		// still tells them apart by state name.
