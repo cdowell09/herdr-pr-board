@@ -48,9 +48,10 @@ func (m Model) renderEmptyView(lay boardLayout) string {
 
 	// One row always explains the view. The keys take the rows that remain.
 	// A pane that is too short for the actions keeps the keys alone.
-	stepLines := packLines(keyPairs(steps), width)
+	pack := func(texts []string) []string { return renderHints(packHints(hints(steps, texts), width)) }
+	stepLines := pack(keyPairs(steps))
 	if len(stepLines) > budget-1 {
-		stepLines = packLines(keyLabels(steps), width)
+		stepLines = pack(keyLabels(steps))
 	}
 	stepLines = stepLines[:min(len(stepLines), budget-1)]
 

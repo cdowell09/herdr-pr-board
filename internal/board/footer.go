@@ -98,10 +98,10 @@ type keyHint struct {
 	text string
 }
 
+var hintSeparator = dimStyle.Render(" · ")
+
 // hintGap is the width of the separator between two controls on one row.
 var hintGap = lipgloss.Width(hintSeparator)
-
-var hintSeparator = dimStyle.Render(" · ")
 
 // hintRows lays out a control list within budget rows. Rendering and mouse
 // hitboxes both come from these rows, so a click covers exactly a rendered
@@ -155,7 +155,7 @@ func hintAt(rows [][]keyHint, x, row int) (string, bool) {
 	for _, hint := range rows[row] {
 		width := lipgloss.Width(hint.text)
 		if x >= left && x < left+width {
-			return hint.keys, hint.keys != ""
+			return hint.keys, true
 		}
 		left += width + hintGap
 	}
@@ -178,18 +178,18 @@ func hintKey(keys string) (tea.KeyMsg, bool) {
 }
 
 // footerKey returns the key of the footer control under a left click on the
-// board or the zoomed region. The footer is the last block of View(): the
-// control rows, the filter row on the board, and the meta line.
+// board or the zoomed region. View() ends with the help lines and the meta
+// line, and the control rows open the help lines.
 func (m Model) footerKey(message tea.MouseMsg) (tea.KeyMsg, bool) {
 	if message.Button != tea.MouseButtonLeft || message.Action != tea.MouseActionPress {
 		return tea.KeyMsg{}, false
 	}
-	rows, below := m.zoomHints(), 0
+	rows := m.zoomHints()
+	help := len(rows)
 	if !m.zoom || m.region == nil {
-		rows = m.boardHints()
-		below = len(m.footerHelpLines()) - len(rows) // the filter row
+		rows, help = m.boardHints(), len(m.footerHelpLines())
 	}
-	top := strings.Count(m.View(), "\n") - below - len(rows)
+	top := strings.Count(m.View(), "\n") - help
 	keys, ok := hintAt(rows, message.X, message.Y-top)
 	if !ok {
 		return tea.KeyMsg{}, false
@@ -257,11 +257,6 @@ func keyLabels(entries []keyHelpEntry) []string {
 		parts = append(parts, keyStyle.Render(entry.keys))
 	}
 	return parts
-}
-
-// packLines puts as many parts on each line as the width holds.
-func packLines(parts []string, width int) []string {
-	return renderHints(packHints(hints(make([]keyHelpEntry, len(parts)), parts), width))
 }
 
 // packHints puts as many controls on each row as the width holds. A control

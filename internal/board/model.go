@@ -256,7 +256,7 @@ func (m Model) Update(message tea.Msg) (tea.Model, tea.Cmd) {
 	if !userInput(message) {
 		model.restoreSelection(selected.URL)
 	}
-	return model.syncRegion(message, cmd)
+	return model.syncRegion(cmd)
 }
 
 func (m Model) update(message tea.Msg) (tea.Model, tea.Cmd) {

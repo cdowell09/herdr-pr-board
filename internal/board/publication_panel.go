@@ -61,32 +61,41 @@ func (p pendingPublication) prompt() string {
 // the region still shows its PR. Every other key cancels it.
 func (m Model) updateConfirm(key tea.KeyMsg) (tea.Model, tea.Cmd) {
 	pending := *m.confirm
+	m.confirm = nil
 	if (key.String() != "enter" && key.String() != "y") || m.region == nil || m.region.pr.URL != pending.pr.URL {
-		m.confirm = nil
 		return m, nil
 	}
 	return m.publishCmd(pending.action)
 }
 
-// publishCmd arms the action for the region PR. With the action armed, it
-// publishes. The checks run both times, so a confirmation never publishes
-// what the board can no longer publish.
-func (m Model) publishCmd(action config.PublicationAction) (tea.Model, tea.Cmd) {
-	url := m.region.pr.URL
-	armed := m.confirm != nil
-	m.confirm = nil
-	if m.publications == nil || m.publishing[url] {
-		return m, nil
+// armPublication asks for confirmation of the action on the region PR.
+func (m Model) armPublication(action config.PublicationAction) (tea.Model, tea.Cmd) {
+	if _, ok := m.publicationRun(); ok {
+		m.confirm = &pendingPublication{m.region.pr, action}
+	}
+	return m, nil
+}
+
+// publicationRun returns the run the region PR can publish now. Arming and
+// publishing both check it, so a confirmation never publishes what the board
+// can no longer publish.
+func (m *Model) publicationRun() (reviewmemory.Run, bool) {
+	if m.publications == nil || m.publishing[m.region.pr.URL] {
+		return reviewmemory.Run{}, false
 	}
 	run, ok := latestCompleted(m.regionState().runs)
 	if !ok {
 		m.region.message = "No completed local review is available for publication."
+	}
+	return run, ok
+}
+
+func (m Model) publishCmd(action config.PublicationAction) (tea.Model, tea.Cmd) {
+	run, ok := m.publicationRun()
+	if !ok {
 		return m, nil
 	}
-	if !armed {
-		m.confirm = &pendingPublication{m.region.pr, action}
-		return m, nil
-	}
+	url := m.region.pr.URL
 	m.publishing[url] = true
 	m.region.message = "Publishing " + string(action) + "…"
 	backend, ctx := m.publications, m.reviewContext

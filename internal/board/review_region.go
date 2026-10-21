@@ -105,7 +105,7 @@ func (m Model) WithNotifications(notifier reviewflow.Notifier) Model {
 // the latest read at once; the next tick refreshes it. A pinned region keeps
 // its PR by URL across a refresh that reorders rows: the selection moves to
 // the PR's new row and the PR's metadata follows the latest observation.
-func (m Model) syncRegion(message tea.Msg, cmd tea.Cmd) (tea.Model, tea.Cmd) {
+func (m Model) syncRegion(cmd tea.Cmd) (tea.Model, tea.Cmd) {
 	if m.reviews == nil {
 		return m, cmd
 	}
@@ -114,12 +114,10 @@ func (m Model) syncRegion(message tea.Msg, cmd tea.Cmd) (tea.Model, tea.Cmd) {
 			m.region.pr = observed
 		}
 		// Zoom and the form show the pinned PR themselves. The split shows the
-		// selected row, so a pinned PR that left the view yields to it.
+		// selected row, which Update keeps on the PR across a refresh, so a
+		// pinned PR that left the view yields to the selection.
 		if m.zoom || m.region.setup != nil {
 			m.restoreSelection(m.region.pr.URL)
-			return m, cmd
-		}
-		if !userInput(message) && m.restoreSelection(m.region.pr.URL) {
 			return m, cmd
 		}
 	}
@@ -190,13 +188,13 @@ func (m Model) updateReviewAction(key tea.KeyMsg) (tea.Model, tea.Cmd, bool) {
 		next, cmd := m.stopReviewCmd()
 		return next, cmd, true
 	case "c":
-		next, cmd := m.publishCmd(config.PublishComment)
+		next, cmd := m.armPublication(config.PublishComment)
 		return next, cmd, true
 	case "a":
-		next, cmd := m.publishCmd(config.PublishApprove)
+		next, cmd := m.armPublication(config.PublishApprove)
 		return next, cmd, true
 	case "x":
-		next, cmd := m.publishCmd(config.PublishRequestChanges)
+		next, cmd := m.armPublication(config.PublishRequestChanges)
 		return next, cmd, true
 	}
 	if r.settingsLoading {
