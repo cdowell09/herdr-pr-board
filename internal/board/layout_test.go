@@ -34,9 +34,9 @@ func layoutModel(t *testing.T, width int) Model {
 		{View: cfg.Views[1]},
 	}
 	model.loading = false
-	model.width = width
-	model.height = 30
-	return model
+	// The first size message binds the detail pane, as it does at startup.
+	next, _ := model.Update(tea.WindowSizeMsg{Width: width, Height: 30})
+	return next.(Model)
 }
 
 func TestModelLayoutsFitTerminalWidth(t *testing.T) {
@@ -163,9 +163,10 @@ func TestModelMouseCoordinatesMatchRenderedOutputInEachLayout(t *testing.T) {
 		for y, line := range lines {
 			plain := stripANSI(line)
 			switch {
-			case strings.Contains(plain, "#7"):
+			// The detail pane repeats the number and the URL, so the first match wins.
+			case firstRowY < 0 && strings.Contains(plain, "#7"):
 				firstRowY = y
-			case strings.Contains(plain, "https://github.com/"):
+			case urlY < 0 && strings.Contains(plain, "https://github.com/"):
 				urlY = y
 			}
 		}
@@ -238,7 +239,8 @@ func TestFrameTitleNamesTheViewAndItsCount(t *testing.T) {
 		if strings.Contains(top, model.cfg.UI.Title) {
 			t.Fatalf("width %d: frame top repeats the board title: %q", width, top)
 		}
-		for _, line := range lines[tabRowY+2 : model.boardLayout().selectedURLRow-1] {
+		lay := model.boardLayout()
+		for _, line := range lines[tabRowY+2 : lay.paneTop-1] {
 			if !strings.HasPrefix(line, "│") && !strings.HasPrefix(line, "├") || lipgloss.Width(line) != width {
 				t.Fatalf("width %d: table line outside the frame: %q", width, line)
 			}

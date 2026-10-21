@@ -3,9 +3,7 @@ package board
 import (
 	"fmt"
 	"slices"
-	"strconv"
 	"strings"
-	"time"
 
 	gh "github.com/cdowell09/herdr-pr-board/internal/github"
 	"github.com/cdowell09/herdr-pr-board/internal/publication"
@@ -17,19 +15,23 @@ import (
 var reviewSecondaryStyle = lipgloss.NewStyle().Foreground(subtleColor)
 
 const (
-	// regionSplitHeight is the terminal height that fits the table and a
-	// review region. A shorter terminal shows the one-line summary instead.
+	// regionSplitHeight is the terminal height that fits the table and the
+	// detail pane. A shorter terminal shows the one-line summary instead.
 	regionSplitHeight = 24
-	// regionMinRows keeps the region readable when the table has many rows.
-	regionMinRows = 6
+	// paneMinRows keeps the pane's facts and some review rows on screen when
+	// the table has many rows.
+	paneMinRows = 10
 )
 
-// regionSplit reports whether the board shows the review region under the table.
+// regionSplit reports whether the board shows the detail pane under the table.
 func (m Model) regionSplit() bool { return m.region != nil && m.height >= regionSplitHeight }
 
-// regionLines renders the selected PR's review state: labeled rows for the
-// split, or every run with the full automation and details sections in zoom.
+// regionLines renders the detail pane's review section: labeled rows for
+// the split, or every run with the full automation and details sections in
+// zoom. Removing local reviews removes this section and its callers.
 func (m Model) regionLines(zoom bool) []string {
+	// The section sits inside the pane's frame.
+	m.width = m.paneWidth()
 	if zoom {
 		return m.zoomRegionLines()
 	}
@@ -51,6 +53,12 @@ func (m Model) zoomRegionLines() []string {
 		lines = append(lines, rule(text, suffix, m.width, style))
 	}
 	body := regionBodyStyle
+	addPublication := func(a publication.Attempt) {
+		add("Publication "+string(a.Action)+": "+string(a.Status), keyStyle)
+		if a.URL != "" {
+			add(a.URL, reviewSecondaryStyle)
+		}
+	}
 	for _, warning := range m.regionWarnings() {
 		add(warning, warningStyle)
 	}
@@ -73,7 +81,7 @@ func (m Model) zoomRegionLines() []string {
 		}
 		header = append(header, revisionComparison(run, current))
 		if run.Status == reviewmemory.Completed {
-			header = append(header, reviewmemory.CountSeverities(run.Findings).String())
+			header = append(header, severitySummary(reviewmemory.CountSeverities(run.Findings)))
 		}
 		style := keyStyle
 		if run.Status == reviewmemory.Failed || run.Status == reviewmemory.Blocked || run.Status == reviewmemory.Abandoned {
@@ -102,7 +110,7 @@ func (m Model) zoomRegionLines() []string {
 			}
 			add(f.Body, body)
 		}
-		meta := fmt.Sprintf("%s → %s · %s", shortRevision(run.Identity.HeadOID), run.Identity.BaseRefName, run.StartedAt.Local().Format("02 Jan 2006 15:04 MST"))
+		meta := fmt.Sprintf("%s → %s · %s", shortRevision(run.Identity.HeadOID), run.Identity.BaseRefName, run.StartedAt.Local().Format(zoomTimeFormat))
 		if hasTarget && run.ID == target.ID {
 			meta += " · Publication target"
 		}
@@ -134,7 +142,7 @@ func (m Model) zoomRegionLines() []string {
 		add(s.monitor.Message, warningStyle)
 	}
 	if !s.monitor.ObservedAt.IsZero() {
-		add("Latest monitor observation: "+s.monitor.ObservedAt.Format(time.RFC3339), reviewSecondaryStyle)
+		add("Latest monitor observation: "+s.monitor.ObservedAt.Local().Format(zoomTimeFormat), reviewSecondaryStyle)
 	}
 	if command := m.monitorCommandLines(); len(command) > 0 {
 		add("Run in another terminal:", body)
@@ -142,20 +150,27 @@ func (m Model) zoomRegionLines() []string {
 	}
 	if len(s.runs) > 0 || len(s.publications) > 0 {
 		heading("Details", "", keyStyle)
+		// Each run names its ID once, with its publications under it. The run
+		// header above already shows when it started.
+		listed := map[string]bool{}
 		for i := len(s.runs) - 1; i >= 0; i-- {
 			run := s.runs[i]
+			listed[run.ID] = true
 			add("Run "+run.ID, keyStyle)
 			add("Head "+run.Identity.HeadOID+" → "+run.Identity.BaseRefName, reviewSecondaryStyle)
-			add("Started: "+run.StartedAt.Format(time.RFC3339), reviewSecondaryStyle)
 			if m.reviews != nil {
 				add("Diagnostics: "+m.reviews.RunDirectory(run.ID), reviewSecondaryStyle)
 			}
+			for _, a := range s.publications {
+				if a.RunID == run.ID {
+					addPublication(a)
+				}
+			}
 		}
 		for _, a := range s.publications {
-			add("Publication "+string(a.Action)+": "+string(a.Status), keyStyle)
-			add("Run "+a.RunID, reviewSecondaryStyle)
-			if a.URL != "" {
-				add(a.URL, reviewSecondaryStyle)
+			if !listed[a.RunID] {
+				add("Run "+a.RunID, keyStyle)
+				addPublication(a)
 			}
 		}
 	}
@@ -211,6 +226,9 @@ func (m Model) publicationStates(runID string) []span {
 }
 
 func (m Model) noRunsText() string {
+	if m.reviews == nil {
+		return reviewsUnavailable
+	}
 	if m.regionState().loaded {
 		return "No local review runs"
 	}
@@ -270,15 +288,21 @@ func rule(text, suffix string, width int, style lipgloss.Style) string {
 	return style.Render(truncate(line, max(1, width)))
 }
 
+// zoomTimeFormat is the one time format of the zoomed review section.
+const zoomTimeFormat = "02 Jan 2006 15:04 MST"
+
 func shortRevision(value string) string { r := []rune(value); return string(r[:min(8, len(r))]) }
 
-// regionSize is the number of lines the region may show right now.
+// regionSize is the number of review section lines the pane shows right now.
 func (m Model) regionSize() int {
 	if m.zoom {
 		_, size := m.zoomViewport()
 		return size
 	}
-	return m.boardLayout().regionRows
+	if lay := m.boardLayout(); lay.paneRows > 0 {
+		return m.paneReviewRows(lay.paneRows)
+	}
+	return 0
 }
 
 // regionViewport returns exactly size lines: the visible window, with the
@@ -298,17 +322,14 @@ func (m Model) regionViewport(lines []string, size int) []string {
 	return out
 }
 
-func (m Model) renderRegion(lay boardLayout) string {
-	return strings.Join(m.regionViewport(m.regionLines(false), lay.regionRows), "\n")
-}
-
-// zoomViewport returns the zoom footer controls and the lines left for the
-// region under the title and URL rows and above the footer. The controls
-// leave those rows, one content row, and the meta line on screen.
+// zoomViewport returns the zoom footer controls and the review section rows
+// of the full-height pane above them and the meta line.
 func (m Model) zoomViewport() ([]string, int) {
 	help := renderHints(m.zoomHints())
-	return help, max(0, m.height-3-len(help))
+	return help, m.paneReviewRows(zoomPaneHeight(m.height, help))
 }
+
+func zoomPaneHeight(height int, help []string) int { return max(0, height-1-len(help)) }
 
 func (m *Model) clampRegionOffset() {
 	if m.region == nil {
@@ -322,11 +343,9 @@ func (m *Model) clampRegionOffset() {
 }
 
 func (m Model) renderZoom() string {
-	pr := m.region.pr
-	help, size := m.zoomViewport()
-	title := m.cfg.UI.Title + " · " + pr.Repository + " #" + strconv.Itoa(pr.Number) + " · " + pr.Title
-	body := []string{titleStyle.Render(truncate(reviewText(title), m.width)), urlStyle.Render(truncate(reviewText(pr.URL), m.width))}
-	body = append(body, m.regionViewport(m.regionLines(true), size)...)
-	body = append(body, strings.Split(m.renderFooter(help), "\n")...)
+	help, _ := m.zoomViewport()
+	// The shortest pane still shows its edge and the URL.
+	pane := m.renderPane(max(paneURLOffset+1, zoomPaneHeight(m.height, help)))
+	body := append(pane, strings.Split(m.renderFooter(help), "\n")...)
 	return strings.Join(body[:min(len(body), max(1, m.height))], "\n")
 }

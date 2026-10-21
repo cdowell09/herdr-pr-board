@@ -28,7 +28,7 @@ func runes(value string) tea.KeyMsg { return tea.KeyMsg{Type: tea.KeyRunes, Rune
 func selectedURL(t *testing.T, m Model) string {
 	t.Helper()
 	lines := strings.Split(stripANSI(m.View()), "\n")
-	return strings.TrimSpace(lines[m.boardLayout().selectedURLRow])
+	return strings.Trim(lines[m.boardLayout().selectedURLRow], "│ ")
 }
 
 func TestFilterInputMovesTheSelectionAndBackspaceLeavesIt(t *testing.T) {

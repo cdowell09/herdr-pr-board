@@ -31,7 +31,7 @@ var keyHelp = []keyHelpEntry{
 	{"?", "help"},
 }
 
-// zoomKeyHelp is the footer control list of the zoomed review region.
+// zoomKeyHelp is the footer control list of the zoomed detail pane.
 var zoomKeyHelp = []keyHelpEntry{
 	{"v", "board"},
 	{"j/k", "scroll"},
@@ -63,21 +63,26 @@ func (m Model) footerHelpLines() []string {
 // boardHints wraps the board control reference at pair boundaries so each
 // keybinding stays next to its action on narrow terminals. The rows left
 // after the title, tabs, stale notice, table header, one PR row, the URL,
-// the collapsed summary, and the meta line bound the controls.
+// the collapsed summary, and the meta line bound the controls. The split
+// keeps the smallest detail pane in place of the URL and the summary.
 func (m Model) boardHints() [][]keyHint {
 	budget := m.height - 9
+	if m.regionSplit() {
+		budget = m.height - 8 - paneMinRows
+	} else if pr, ok := m.selectedPR(); ok {
+		budget -= len(m.selectedReviewLines(pr))
+	}
 	if stale(m.currentView()) {
 		budget--
-	}
-	if pr, ok := m.selectedPR(); ok && !m.regionSplit() {
-		budget -= len(m.selectedReviewLines(pr))
 	}
 	return m.hintRows(slices.Concat(keyHelp, m.shortcutHelp()), budget)
 }
 
-// zoomHints are the controls of the zoomed review region footer.
+// zoomHints are the controls of the zoomed detail pane footer. They leave
+// the pane's two edges, its URL, one review row, and the meta line. A
+// shorter screen drops the bottom edge first, so one review row stays.
 func (m Model) zoomHints() [][]keyHint {
-	return m.hintRows(slices.Concat(zoomKeyHelp, m.shortcutHelp()), m.height-4)
+	return m.hintRows(slices.Concat(zoomKeyHelp, m.shortcutHelp()), m.height-5)
 }
 
 // keyHint is one rendered footer control and the key literal it names.
@@ -174,7 +179,7 @@ func (m Model) footerKey(message tea.MouseMsg) (tea.KeyMsg, bool) {
 	}
 	rows := m.zoomHints()
 	help := len(rows)
-	if !m.zoom || m.region == nil {
+	if !m.zoomed() {
 		rows, help = m.boardHints(), len(m.footerHelpLines())
 	}
 	top := strings.Count(m.View(), "\n") - help

@@ -72,9 +72,17 @@ Every other state uses these symbols:
 
 `◉` has the pending color, but its shape is different from pending CI.
 
-Select a PR to read its local reviews in the review region below the URL.
-The bottom edge of the frame closes the table above the URL, so the table and the region read as two areas.
-The region shows one labeled row for each topic:
+Select a PR to show it in the detail pane under the table.
+The pane has a rounded frame, like the table.
+The top edge of the pane names the repository and the PR number, for example `acme/repo #42`.
+The right side of the top edge shows the position of the PR in the list, for example `1 of 4`.
+The pane shows the URL first, then the title in bold.
+Next, the pane shows the facts of the PR: author, state, CI, revision, and update time.
+The state is `open`, `draft`, `closed`, or `merged`.
+The review section follows under the `Review` rule.
+The pane does not need local reviews.
+Without `HERDR_PLUGIN_STATE_DIR`, the review section tells you to set it.
+The review section shows one labeled row for each topic:
 
 | Label | Content |
 | --- | --- |
@@ -84,9 +92,9 @@ The region shows one labeled row for each topic:
 | `POSTED` | The publication results of this board, for example `comment published`, and the submitted reviews for the PR. |
 | `AUTOMATION` | The monitor state, the automatic launch setting, and the action after a review. |
 
-When a newer run did not complete, the region also shows the completed run that publication targets.
+When a newer run did not complete, the review section also shows the completed run that publication targets.
 The run ID and the diagnostics path show only in zoom.
-A terminal with fewer than 24 rows collapses the region to one summary line.
+A terminal with fewer than 24 rows collapses the pane to the URL and one summary line.
 That line shows the same severity text as the REVIEW column, for example `● P2 1` or `✓ clean`.
 Local status updates each second without GitHub requests.
 
@@ -108,7 +116,8 @@ Draft reviews and ordinary PR conversation comments do not count as submitted re
 Dismissed reviews still count as posts. The column does not represent approval status.
 `GitHub` identifies the publication source. It does not prove that a human wrote the review.
 A review started with `--review` is still a PR Board review.
-Press `v` to zoom the review region for previous runs, run IDs, diagnostics paths, and publication diagnostics.
+Press `v` to zoom the detail pane for previous runs, run IDs, diagnostics paths, and publication diagnostics.
+Zoom shows the same pane at the full height.
 GitHub review observations follow the normal refresh interval and cache.
 
 ## Controls
@@ -120,23 +129,23 @@ GitHub review observations follow the normal refresh interval and cache.
 | Left click the URL | Open the PR in a browser. |
 | Left click a footer key | Do the action of that key. |
 | Left click `[×]` in the help | Close the help. |
-| Mouse wheel | Over the table, move through the PR list. Over the review region, scroll the region. |
+| Mouse wheel | Over the table, move through the PR list. Over the detail pane, scroll the pane. |
 | `1`–`9` | Select a view. |
 | `Tab`, `Shift+Tab`, `h`, `l`, `←`, `→` | Select the next or previous view. |
 | `↑`, `↓` | Select a PR. |
 | `Home` | Select the first PR. |
 | `End` | Select the last PR. |
-| `j`, `k` | Scroll the review region by one line. |
-| `g`, `G` | Scroll to the start or the end of the review region. |
-| `PgUp`, `PgDn` | Scroll the review region by one page. |
+| `j`, `k` | Scroll the detail pane by one line. |
+| `g`, `G` | Scroll to the start or the end of the detail pane. |
+| `PgUp`, `PgDn` | Scroll the detail pane by one page. |
 | `/` | Start filter input. |
 | `↑`, `↓` | During filter input, select a PR. |
 | `Enter` | Keep the filter and finish filter input. |
 | `Backspace` | Remove the last filter character. When the filter is empty, finish filter input. |
 | `Ctrl+U`, `Esc` | Clear the filter. |
 | `E` | Edit the active configuration. |
-| `v` | Zoom the review region to the full height. |
-| `t`, `s`, `c`, `a`, `x` | Act on the selected PR's reviews. See [review region](reviews.md#use-the-review-region). |
+| `v` | Zoom the detail pane to the full height. |
+| `t`, `s`, `c`, `a`, `x` | Act on the selected PR's reviews. See [detail pane](reviews.md#use-the-detail-pane). |
 | A command shortcut key | Run the command shortcut for the selected PR. See [command shortcuts](#command-shortcuts). |
 | `Ctrl+R` | Refresh the active view. |
 | `R` | Refresh all views. |
@@ -182,7 +191,7 @@ A GraphQL rate limit is low when it cannot pay for one more CI batch.
 
 Press `?` for the keyboard help.
 The help opens in a frame at the center of the screen. The board stays visible behind it in a dim color.
-The help lists every board control, every review region control, and every command shortcut.
+The help lists every board control, every detail pane control, and every command shortcut.
 The General group comes last. It has `?`, `q`, and `Ctrl+C`.
 Each key is in the left column and its action is in the right column.
 Scroll it with `j`, `k`, `↑`, `↓`, `g`, `G`, `Home`, `End`, or the mouse wheel.
@@ -257,10 +266,10 @@ The fixed columns stay at the right edge of the table.
 The title bar shows the plugin version at 80 cells or more.
 A narrower terminal omits the version and keeps the configured title.
 The selected PR URL stays visible at every width.
-A terminal with 24 rows or more shows the review region under the URL.
+A terminal with 24 rows or more shows the detail pane under the table.
 The table keeps its rows up to half the screen.
-The region takes the rest and keeps at least six rows.
-A shorter terminal shows the one-line summary under the URL instead.
+The pane takes the rest and keeps at least ten rows.
+A shorter terminal shows the URL and the one-line summary under the table instead.
 The summary wraps at the terminal width.
 The board truncates column text by terminal cell width.
 Emoji, combining characters, and wide glyphs stay aligned.

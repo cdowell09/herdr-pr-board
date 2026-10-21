@@ -131,32 +131,33 @@ Those adapters start a shared language runtime, which does not prove the agent i
 Setup shows no install status for an unchecked reviewer.
 It also does not select an unchecked built-in reviewer as the default.
 
-## Use the review region
+## Use the detail pane
 
-The board shows the selected PR's local reviews in the review region under the URL.
-A line under the URL summarizes the posted reviews.
-The region header names the outcome, the reviewer, the revision comparison, and the severity counts.
+The board shows the selected PR in the detail pane under the table.
+The review section of the pane shows the local reviews of the PR.
+A `POSTED` row summarizes the posted reviews.
+The review header names the outcome, the reviewer, the revision comparison, and the severity counts.
 The findings follow the header with their severity, title, path, and body.
 One line summarizes the automation state and one line names the run and its diagnostics directory.
-A `▼` marker counts the lines below the visible part of the region.
-Press `j` or `k` to scroll the region.
+A `▼` marker counts the lines below the visible part of the review section.
+Press `j` or `k` to scroll the review section.
 Press `g` or `G` for the start or the end.
 Press `PgUp` or `PgDn` for one page.
-Selecting another PR reloads the region from local state without a GitHub request.
+Selecting another PR reloads the pane from local state without a GitHub request.
 
-Press `v` to zoom the region to the full height.
+Press `v` to zoom the pane to the full height.
 Zoom shows the latest review before previous reviews.
 Each review shows its findings and publication outcomes together.
 The latest completed review is the manual publication target.
-The region compares history with the latest successful board observation.
+The pane compares history with the latest successful board observation.
 Older findings do not complete a newer observed revision.
 A failed observation makes the current revision unknown.
 Refresh the board to retrieve newer PR data.
 Scroll to Details for full run IDs, revisions, publication URLs, and diagnostics paths.
 Automation status appears after review results.
 Eligible PRs show **Waiting for review slot** when the running monitor has no available review slot.
-The region checks shared review slots each second.
-A terminal with fewer than 24 rows collapses the region to one summary line. Zoom still shows everything.
+The pane checks shared review slots each second.
+A terminal with fewer than 24 rows collapses the pane to the URL and one summary line. Zoom still shows everything.
 
 The review keys work on the board and in zoom:
 
@@ -168,9 +169,9 @@ The review keys work on the board and in zoom:
 | `a` | Publish the latest completed run as an approval. |
 | `x` | Publish the latest completed run as a change request. |
 | `Enter`, `y` | Confirm the publication. Any other key cancels it. |
-| `j`, `k`, `g`, `G`, `PgUp`, `PgDn`, mouse wheel | Scroll the region. In zoom, `↑` and `↓` also scroll. |
+| `j`, `k`, `g`, `G`, `PgUp`, `PgDn`, mouse wheel | Scroll the pane. In zoom, `↑` and `↓` also scroll. |
 | `o`, click the URL | Open the PR in a browser. |
-| `v` | Zoom the region, or leave zoom. |
+| `v` | Zoom the pane, or leave zoom. |
 | `Esc` | Leave zoom. |
 | `?` | Open or close the keyboard help. |
 | `q`, `Ctrl+C` | Close the board. |
@@ -195,12 +196,12 @@ To run your own review command for a PR, use a [command shortcut](board.md#comma
 
 Press `t` to stop the newest active review shown for this PR.
 The footer names the target run while the run is active.
-The region reports cleanup progress and the final outcome.
+The pane reports cleanup progress and the final outcome.
 The stop request also works for a review owned by another board or monitor in the same state directory.
 The owner cancels only that reviewer and cleans up its child processes.
 The stopped run records a failure with a cancellation reason and does not publish findings.
 Use `--review --rerun` to retry the stopped revision explicitly.
-If the run finishes before the stop request, the region reports that it is no longer running.
+If the run finishes before the stop request, the pane reports that it is no longer running.
 An older or unavailable owner cannot accept the request.
 
 Press `s` to edit repository settings.
@@ -311,7 +312,7 @@ bin/herdr-pr-board --review-history https://github.com/owner/repository/pull/7
 This command requires neither GitHub CLI nor a terminal.
 It writes a versioned document with a `runs` array.
 The command preserves older revision history.
-See [review region controls](#use-the-review-region) for findings, cancellation, and publication.
+See [detail pane controls](#use-the-detail-pane) for findings, cancellation, and publication.
 
 Each attempt stores artifacts under `HERDR_PLUGIN_STATE_DIR/reviews/<run-id>/`:
 

@@ -44,7 +44,7 @@ func TestHelpOverlayOpensAndClosesFromBoardAndReviewPanel(t *testing.T) {
 		t.Fatal("? did not open the help overlay on the board")
 	}
 	overlay := stripANSI(opened.View())
-	for _, want := range []string{"Board", "Review region", "Esc"} {
+	for _, want := range []string{"Board", "Detail pane", "Esc"} {
 		if !strings.Contains(overlay, want) {
 			t.Fatalf("overlay missing %q:\n%s", want, overlay)
 		}
@@ -64,7 +64,7 @@ func TestHelpOverlayOpensAndClosesFromBoardAndReviewPanel(t *testing.T) {
 	}
 	back, _ := opened.Update(tea.KeyMsg{Type: tea.KeyEsc})
 	if closed := back.(Model); closed.helpOverlay || !closed.zoom {
-		t.Fatal("Esc did not return from the help overlay to the zoomed region")
+		t.Fatal("Esc did not return from the help overlay to the zoomed pane")
 	}
 }
 

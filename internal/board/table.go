@@ -47,14 +47,7 @@ func (m Model) frameTop() string {
 	if m.filter != "" {
 		count = fmt.Sprintf("%d of %d", len(m.filteredPRs()), len(view.PRs))
 	}
-	width := m.tableWidth()
-	// "─ " before and " " after the title keep it clear of the corners.
-	title := truncate(fmt.Sprintf("%s (%s)", view.View.Title, count), max(0, width-3))
-	if width < 4 {
-		return frameStyle.Render("╭" + strings.Repeat("─", width) + "╮")
-	}
-	fill := max(0, width-3-lipgloss.Width(title))
-	return frameStyle.Render("╭─ ") + keyStyle.Render(title) + frameStyle.Render(" "+strings.Repeat("─", fill)+"╮")
+	return frameEdge(m.tableWidth(), fmt.Sprintf("%s (%s)", view.View.Title, count), "")
 }
 
 // tableBody returns the column header and the lines under it. A view without
@@ -317,18 +310,15 @@ func (m Model) selectedReviewLines(pr gh.PullRequest) []string {
 	return strings.Split(ansi.Wrap(reviewText(detail), max(1, m.width), ""), "\n")
 }
 
-// renderSelected shows the selected URL. The one-line summary follows it
-// only when the review region is collapsed.
-func (m Model) renderSelected(lay boardLayout) string {
+// renderSelected shows the selected URL and the one-line review summary
+// when the detail pane does not fit.
+func (m Model) renderSelected() string {
 	pr, ok := m.selectedPR()
 	if !ok {
 		// The table area already explains why no PR is listed.
 		return ""
 	}
 	url := urlStyle.Render(truncate(pr.URL, m.width))
-	if lay.regionRows > 0 {
-		return url
-	}
 	return url + "\n" + reviewSecondaryStyle.Render(strings.Join(m.selectedReviewLines(pr), "\n"))
 }
 

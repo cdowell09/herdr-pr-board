@@ -99,10 +99,10 @@ func TestSplitGeometryMatchesRenderedRowsAndMouse(t *testing.T) {
 	if !strings.Contains(stripANSI(lines[lay.firstPRRow]), "#1") || !strings.Contains(stripANSI(lines[lay.firstPRRow+1]), "#2") {
 		t.Fatalf("rows moved:\n%s", stripANSI(m.View()))
 	}
-	if stripANSI(lines[lay.selectedURLRow]) != m.region.pr.URL {
+	if unframe(stripANSI(lines[lay.selectedURLRow])) != m.region.pr.URL {
 		t.Fatalf("URL row %d = %q", lay.selectedURLRow, stripANSI(lines[lay.selectedURLRow]))
 	}
-	header := stripANSI(lines[lay.selectedURLRow+1])
+	header := reviewSection(t, m)[0]
 	for _, want := range []string{"REVIEW", "● P0 3, P1 3, P2 3, P3 3", "agent", "current observed revision", "run 1 of 1"} {
 		if !strings.Contains(header, want) {
 			t.Fatalf("region header lacks %q: %q", want, header)
@@ -113,8 +113,8 @@ func TestSplitGeometryMatchesRenderedRowsAndMouse(t *testing.T) {
 	if region := stripANSI(strings.Join(m.regionLines(false), "\n")); !strings.Contains(region, "POSTED      GitHub · current revision") {
 		t.Fatalf("region lacks the posted detail:\n%s", region)
 	}
-	if lay.regionRows < regionMinRows || lay.regionRows != m.height-lay.selectedURLRow-1-len(m.footerHelpLines())-1 {
-		t.Fatalf("region rows = %d in layout %+v", lay.regionRows, lay)
+	if lay.paneRows < paneMinRows || lay.paneTop+paneURLOffset != lay.selectedURLRow || lay.paneTop+lay.paneRows != m.height-len(m.footerHelpLines())-1 {
+		t.Fatalf("pane rows = %d in layout %+v", lay.paneRows, lay)
 	}
 	for _, line := range lines {
 		if lipgloss.Width(line) > m.width {
@@ -159,7 +159,7 @@ func TestRegionScrollKeysLeaveTheSelectionAlone(t *testing.T) {
 	press(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("g")})
 	firstPage := stripANSI(strings.Join(strings.Split(m.View(), "\n")[m.boardLayout().selectedURLRow+1:], "\n"))
 	press(tea.KeyMsg{Type: tea.KeyPgDown})
-	if want := m.boardLayout().regionRows - 1; m.region.offset != want {
+	if want := m.regionSize() - 1; m.region.offset != want {
 		t.Fatalf("PgDn scrolled %d rows, want %d", m.region.offset, want)
 	}
 	// The line the marker covered on the first page leads the second page.
@@ -183,7 +183,7 @@ func TestShortTerminalCollapsesTheRegionAndZoomStillWorks(t *testing.T) {
 	next, _ := m.Update(tea.WindowSizeMsg{Width: 120, Height: regionSplitHeight - 1})
 	m = next.(Model)
 	view := stripANSI(m.View())
-	if m.boardLayout().regionRows != 0 || strings.Contains(view, "── Review") || !strings.Contains(view, "Review: ") {
+	if m.boardLayout().paneRows != 0 || strings.Contains(view, "── Review") || !strings.Contains(view, "Review: ") {
 		t.Fatalf("short terminal kept the region:\n%s", view)
 	}
 	if lines := strings.Split(view, "\n"); len(lines) > m.height {
@@ -192,7 +192,7 @@ func TestShortTerminalCollapsesTheRegionAndZoomStillWorks(t *testing.T) {
 	next, _ = m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("v")})
 	m = next.(Model)
 	zoomed := strings.Split(stripANSI(m.View()), "\n")
-	if !m.zoom || zoomed[1] != m.region.pr.URL || !strings.Contains(strings.Join(zoomed, "\n"), "Latest review") {
+	if !m.zoom || unframe(zoomed[1]) != m.region.pr.URL || !strings.Contains(strings.Join(zoomed, "\n"), "Latest review") {
 		t.Fatalf("zoom unavailable on a short terminal:\n%s", strings.Join(zoomed, "\n"))
 	}
 	next, _ = m.Update(tea.KeyMsg{Type: tea.KeyEsc})
@@ -254,8 +254,9 @@ func TestBoardFooterNamesTheStopTarget(t *testing.T) {
 func TestZoomWithoutLocalReviewsExplainsTheStateDirectory(t *testing.T) {
 	m := layoutModel(t, 100)
 	next, _ := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("v")})
-	if zoomed := next.(Model); zoomed.zoom || !strings.Contains(zoomed.warning, "HERDR_PLUGIN_STATE_DIR") {
-		t.Fatalf("v without reviews: zoom=%v warning=%q", zoomed.zoom, zoomed.warning)
+	// The pane does not need local reviews. Its review section explains them.
+	if zoomed := next.(Model); !zoomed.zoom || !strings.Contains(stripANSI(zoomed.View()), "HERDR_PLUGIN_STATE_DIR") {
+		t.Fatalf("v without reviews: zoom=%v view:\n%s", zoomed.zoom, stripANSI(zoomed.View()))
 	}
 	next, _ = m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("s")})
 	if !strings.Contains(next.(Model).warning, "HERDR_PLUGIN_STATE_DIR") {
@@ -271,10 +272,10 @@ func TestNarrowTerminalKeepsRevisionMetadataInTheRegion(t *testing.T) {
 	for _, zoom := range []bool{false, true} {
 		m.zoom = zoom
 		// Wrapped region rows continue under a blank gutter, so compare words.
-		view := strings.Join(strings.Fields(stripANSI(m.View())), " ")
+		view := strings.Join(strings.Fields(strings.ReplaceAll(stripANSI(m.View()), "│", " ")), " ")
 		counts := "● P0 1 ·"
 		if zoom {
-			counts = "P0:1 P1:0 P2:0 P3:0"
+			counts = "P0 1"
 		}
 		for _, want := range []string{"current observed revision", counts} {
 			if !strings.Contains(view, want) {
@@ -314,10 +315,10 @@ func TestFrameClosesTheTableAboveTheSelection(t *testing.T) {
 	m := splitModel(t, &reviewFake{})
 	lay := m.boardLayout()
 	lines := strings.Split(stripANSI(m.View()), "\n")
-	if rule := lines[lay.selectedURLRow-1]; rule != "╰"+strings.Repeat("─", m.width-2)+"╯" {
-		t.Fatalf("row above the URL = %q", rule)
+	if rule := lines[lay.selectedURLRow-paneURLOffset-1]; rule != "╰"+strings.Repeat("─", m.width-2)+"╯" {
+		t.Fatalf("row above the pane = %q", rule)
 	}
-	if lines[lay.selectedURLRow] != m.region.pr.URL {
+	if unframe(lines[lay.selectedURLRow]) != m.region.pr.URL {
 		t.Fatalf("URL moved: %q", lines[lay.selectedURLRow])
 	}
 	// An empty view keeps the frame and the blank URL row under it.
@@ -429,7 +430,7 @@ func TestTinyPanesKeepContentAndWidth(t *testing.T) {
 		next, _ = m.Update(tea.WindowSizeMsg{Width: size[0], Height: size[1]})
 		m = next.(Model)
 		lines := strings.Split(m.View(), "\n")
-		if len(lines) > size[1] || stripANSI(lines[1]) != truncate(m.region.pr.URL, size[0]) {
+		if len(lines) > size[1] || unframe(stripANSI(lines[1])) != truncate(m.region.pr.URL, size[0]-4) {
 			t.Fatalf("%v: %d lines, URL row %q", size, len(lines), stripANSI(lines[1]))
 		}
 		for _, line := range lines {
@@ -508,7 +509,7 @@ func TestPinnedPRThatLeavesTheViewYieldsToTheSelection(t *testing.T) {
 	next, _ := m.Update(snapshotMsg{Snapshot: discovery.Snapshot{Views: []discovery.ViewData{{View: m.cfg.Views[0], PRs: []gh.PullRequest{splitPR(2, time.Hour)}, UpdatedAt: now, ObservedAt: now}, {View: m.cfg.Views[1]}}, StartedAt: now, FinishedAt: now}})
 	m = next.(Model)
 	lines := strings.Split(stripANSI(m.View()), "\n")
-	shown := lines[m.boardLayout().selectedURLRow]
+	shown := unframe(lines[m.boardLayout().selectedURLRow])
 	if m.region.pr.Number != 2 || shown != m.region.pr.URL {
 		t.Fatalf("displayed %q while actions target %s", shown, m.region.pr.URL)
 	}
@@ -723,10 +724,10 @@ func TestSplitRegionUsesLabeledRows(t *testing.T) {
 	m.reviewRows = map[string]reviewOverviewRow{m.region.pr.URL: {identity: dispatch.Identity(m.region.pr), summary: reviewRowSummary{postedDetail: "GitHub · current revision"}}}
 	lay := m.boardLayout()
 	lines := strings.Split(stripANSI(m.View()), "\n")
-	if lines[lay.selectedURLRow] != m.region.pr.URL {
+	if unframe(lines[lay.selectedURLRow]) != m.region.pr.URL {
 		t.Fatalf("URL row moved: %q", lines[lay.selectedURLRow])
 	}
-	region := lines[lay.selectedURLRow+1 : lay.selectedURLRow+1+lay.regionRows]
+	region := reviewSection(t, m)
 	want := []string{
 		"  REVIEW      ✓ Clean review · agent · current observed revision",
 		"  FINDINGS    Standards: no findings.",
@@ -743,7 +744,7 @@ func TestSplitRegionUsesLabeledRows(t *testing.T) {
 			t.Fatalf("region line %d = %q, want prefix %q\n%s", i, region[i], prefix, strings.Join(region, "\n"))
 		}
 	}
-	if !strings.HasSuffix(region[0], "run 1 of 2") || lipgloss.Width(region[0]) != m.width {
+	if !strings.HasSuffix(region[0], "run 1 of 2") || lipgloss.Width(region[0]) != m.paneWidth() {
 		t.Fatalf("run position is not at the right edge: %q", region[0])
 	}
 	if all := strings.Join(region, "\n"); strings.Contains(all, "run-1") || strings.Contains(all, "diagnostics") {
@@ -758,8 +759,7 @@ func TestSplitRegionUsesLabeledRows(t *testing.T) {
 func TestSplitRegionListsFindingsUnderTheSummary(t *testing.T) {
 	m := splitModel(t, &reviewFake{})
 	m.setRegionRuns(completedRun(2))
-	lines := strings.Split(stripANSI(m.View()), "\n")
-	region := strings.Join(lines[m.boardLayout().selectedURLRow+1:], "\n")
+	region := strings.Join(reviewSection(t, m), "\n")
 	for _, want := range []string{
 		"  REVIEW      ● P0 1, P1 1 · agent · current observed revision",
 		"  FINDINGS    Summary\n  P0          Finding 0\n              main.go:1\n              Body text 0\n  P1          Finding 1\n              main.go:2\n              Body text 1\n  REVISION    aaaaaaaa → main",
