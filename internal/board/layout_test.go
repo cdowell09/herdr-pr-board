@@ -405,6 +405,82 @@ func TestHelpOverlayOpensAndClosesFromBoardAndReviewPanel(t *testing.T) {
 	}
 }
 
+func TestHelpModalSitsOverTheDimmedBoard(t *testing.T) {
+	// Colors must render for the dimmed backdrop to be visible in the test.
+	profile := lipgloss.ColorProfile()
+	lipgloss.SetColorProfile(termenv.ANSI256)
+	defer lipgloss.SetColorProfile(profile)
+	for _, size := range [][2]int{{50, 22}, {90, 28}, {140, 34}} {
+		model := layoutModel(t, size[0])
+		model.height = size[1]
+		model.helpOverlay = true
+		rendered := strings.Split(model.View(), "\n")
+		if len(rendered) != size[1] {
+			t.Fatalf("%v: help rendered %d lines, want %d", size, len(rendered), size[1])
+		}
+		for _, line := range rendered {
+			if got := lipgloss.Width(line); got > size[0] {
+				t.Fatalf("%v: help line is %d cells wide: %q", size, got, stripANSI(line))
+			}
+		}
+		box := model.helpBox()
+		top := stripANSI(rendered[box.y])
+		for _, want := range []string{"╭─ Keyboard controls", "[×] ─╮"} {
+			if !strings.Contains(top, want) {
+				t.Fatalf("%v: top edge %q lacks %q", size, top, want)
+			}
+		}
+		// The board stays visible behind the modal, in one dim color.
+		if box.y == 0 || rendered[0] == stripANSI(rendered[0]) || rendered[0] != backdropStyle.Render(stripANSI(rendered[0])) {
+			t.Fatalf("%v: the line above the modal is not the dimmed board: %q", size, rendered[0])
+		}
+		if bottom := stripANSI(rendered[box.y+box.height-1]); !strings.Contains(bottom, "╰") {
+			t.Fatalf("%v: the modal has no bottom edge at row %d: %q", size, box.y+box.height-1, bottom)
+		}
+	}
+}
+
+func TestHelpCloseControlIsTheOnlyMouseTargetInTheHelp(t *testing.T) {
+	for _, width := range []int{50, 140} {
+		model := layoutModel(t, width)
+		model.helpOverlay = true
+		lines := strings.Split(model.View(), "\n")
+		closeY, closeX := -1, 0
+		for y, line := range lines {
+			if x, ok := displayColumn(stripANSI(line), "[×]"); ok {
+				closeY, closeX = y, x
+				break
+			}
+		}
+		if closeY < 0 {
+			t.Fatalf("width %d: no rendered close control:\n%s", width, stripANSI(model.View()))
+		}
+		for _, x := range []int{closeX - 1, closeX + 3} {
+			if stayed, _ := click(model, x, closeY); !stayed.helpOverlay {
+				t.Fatalf("width %d: a click beside the close control at x %d closed the help", width, x)
+			}
+		}
+		for x := closeX; x < closeX+3; x++ {
+			if closed, _ := click(model, x, closeY); closed.helpOverlay {
+				t.Fatalf("width %d: a click on the rendered close control at %d,%d did not close the help", width, x, closeY)
+			}
+		}
+		// A click on a board row behind the help reaches neither the row
+		// nor the browser.
+		opened := ""
+		model.openBrowser = func(url string) tea.Cmd { opened = url; return nil }
+		behind := model
+		behind.helpOverlay = false
+		y := renderedRow(t, behind, "#42 ")
+		for _, x := range []int{1, width / 2} {
+			next, _ := click(model, x, y)
+			if !next.helpOverlay || next.cursor != model.cursor || opened != "" {
+				t.Fatalf("width %d: a click at %d,%d reached the board", width, x, y)
+			}
+		}
+	}
+}
+
 func TestHelpOverlayKeepsTheFilterLineBehavior(t *testing.T) {
 	model := layoutModel(t, 80)
 	next, _ := model.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("/")})

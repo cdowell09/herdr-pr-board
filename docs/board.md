@@ -119,6 +119,7 @@ GitHub review observations follow the normal refresh interval and cache.
 | Left click a PR | Select the PR. A click on the selected PR opens it in a browser. |
 | Left click the URL | Open the PR in a browser. |
 | Left click a footer key | Do the action of that key. |
+| Left click `[×]` in the help | Close the help. |
 | Mouse wheel | Over the table, move through the PR list. Over the review region, scroll the region. |
 | `1`–`9` | Select a view. |
 | `Tab`, `Shift+Tab`, `h`, `l`, `←`, `→` | Select the next or previous view. |
@@ -180,9 +181,13 @@ A Search rate limit is low when it cannot pay for a refresh of all views.
 A GraphQL rate limit is low when it cannot pay for one more CI batch.
 
 Press `?` for the keyboard help.
+The help opens in a frame at the center of the screen. The board stays visible behind it in a dim color.
 The help lists every board control, every review region control, and every command shortcut.
+The General group comes last. It has `?`, `q`, and `Ctrl+C`.
+Each key is in the left column and its action is in the right column.
 Scroll it with `j`, `k`, `↑`, `↓`, `g`, `G`, `Home`, `End`, or the mouse wheel.
-Press `?` or `Esc` to close it.
+Press `?` or `Esc` to close it, or click `[×]` in its top edge.
+While the help is open, a mouse click does not change the board.
 
 See [reviews](reviews.md) for review controls, cancellation, and result history.
 

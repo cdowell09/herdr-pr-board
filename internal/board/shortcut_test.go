@@ -70,6 +70,15 @@ func TestHelpOverlayListsCommandShortcuts(t *testing.T) {
 	if view := stripANSI(m.View()); !strings.Contains(view, "Command shortcuts") || !strings.Contains(view, "r  Pi review") {
 		t.Fatalf("help overlay lacks the shortcut:\n%s", view)
 	}
+	// The controls that work everywhere stay last, after the shortcuts.
+	var plain []string
+	for _, line := range m.helpOverlayLines() {
+		plain = append(plain, stripANSI(line))
+	}
+	content := strings.Join(plain, "\n")
+	if strings.Index(content, "Command shortcuts") > strings.Index(content, "General") {
+		t.Fatalf("command shortcuts come after the general controls:\n%s", content)
+	}
 }
 
 func TestShortcutFooterHintClickLaunches(t *testing.T) {
