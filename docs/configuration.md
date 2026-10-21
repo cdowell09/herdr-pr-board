@@ -212,7 +212,7 @@ cwd   = "~"     # optional
 | `where` | Must be `tab` or `split`. The default is `tab`. |
 | `cwd` | Optional. The start directory of the new pane. A leading `~` becomes your home directory. |
 
-The keys in [board controls](board.md#controls) and [review region controls](reviews.md#use-the-review-region) are built-in keys.
+The keys in [board controls](board.md#controls) and [detail pane controls](reviews.md#use-the-detail-pane) are built-in keys.
 `r`, `n`, and `N` are available.
 The new pane runs the command under `sh -c`. Command shortcuts require `sh`.
 Command shortcuts do not work on Windows.

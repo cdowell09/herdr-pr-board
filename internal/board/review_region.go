@@ -251,7 +251,7 @@ func (m Model) updateZoomMouse(message tea.MouseMsg) (tea.Model, tea.Cmd) {
 	case tea.MouseButtonWheelDown:
 		m.scrollRegion(mouseStep)
 	case tea.MouseButtonLeft:
-		if event.Action == tea.MouseActionPress && event.Y == 1 {
+		if event.Action == tea.MouseActionPress && event.Y == paneURLOffset {
 			return m, m.openBrowser(m.region.pr.URL)
 		}
 	}

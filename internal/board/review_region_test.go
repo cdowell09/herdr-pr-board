@@ -60,7 +60,7 @@ func TestReviewPanelHistoryCoordinatesAndControls(t *testing.T) {
 		t.Fatal("diagnostics not reachable by scrolling")
 	}
 	lines := strings.Split(view, "\n")
-	if lines[1] != m.region.pr.URL {
+	if unframe(lines[1]) != m.region.pr.URL {
 		t.Fatalf("URL coordinate drift: %q", lines[1])
 	}
 	opened := ""

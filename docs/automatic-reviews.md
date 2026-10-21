@@ -156,7 +156,7 @@ The POSTED column independently shows submitted reviews from GitHub, PR Board, o
 Posted reviews do not change automatic launch eligibility.
 
 Press `v` on the board to inspect the selected PR.
-The review region shows the same eligibility reason from the latest full observation.
+The review section of the detail pane shows the same eligibility reason from the latest full observation.
 Eligible PRs show **Waiting for review slot** when the running monitor has no available review slot.
 The panel checks shared review slots each second.
 The message clears when a slot becomes available.

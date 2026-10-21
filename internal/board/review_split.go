@@ -117,13 +117,22 @@ func runStatus(run reviewmemory.Run) []span {
 	if worst < 0 {
 		return []span{{text: "✓ Clean review", style: okStyle}}
 	}
+	return []span{{text: "● " + severitySummary(counts), style: severityStyles[worst].Bold(true)}}
+}
+
+// severitySummary names the nonzero severity counts, for example "P2 1", or
+// "clean" when every count is zero.
+func severitySummary(counts reviewmemory.SeverityCounts) string {
 	var parts []string
 	for i, count := range counts {
 		if count > 0 {
 			parts = append(parts, fmt.Sprintf("%s %d", reviewmemory.Severities[i], count))
 		}
 	}
-	return []span{{text: "● " + strings.Join(parts, ", "), style: severityStyles[worst].Bold(true)}}
+	if len(parts) == 0 {
+		return "clean"
+	}
+	return strings.Join(parts, ", ")
 }
 
 // severityStyle colors a severity label; an unknown severity keeps the body color.

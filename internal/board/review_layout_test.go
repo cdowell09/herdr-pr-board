@@ -70,7 +70,7 @@ func TestReviewLayoutBoundsAndPinnedURL(t *testing.T) {
 					t.Fatalf("%v overflow %q", size, line)
 				}
 			}
-			if stripANSI(view[1]) != truncate(m.region.pr.URL, m.width) {
+			if unframe(stripANSI(view[1])) != truncate(m.region.pr.URL, max(1, m.width-4)) {
 				t.Fatalf("%v URL moved", size)
 			}
 		}

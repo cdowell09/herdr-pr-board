@@ -93,7 +93,7 @@ func TestStopControlPreservesPanelLayoutAndURLHitbox(t *testing.T) {
 		m.width = width
 		m.setRegionRuns(reviewmemory.Run{ID: "active", Outcome: reviewmemory.Outcome{Status: reviewmemory.Running}})
 		lines := strings.Split(m.View(), "\n")
-		if len(lines) > m.height || stripANSI(lines[1]) != truncate(m.region.pr.URL, width) {
+		if len(lines) > m.height || unframe(stripANSI(lines[1])) != truncate(m.region.pr.URL, width-4) {
 			t.Fatalf("width %d: stop control moved URL or overflowed height", width)
 		}
 		for _, line := range lines {

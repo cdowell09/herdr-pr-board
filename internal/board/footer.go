@@ -31,7 +31,7 @@ var keyHelp = []keyHelpEntry{
 	{"?", "help"},
 }
 
-// zoomKeyHelp is the footer control list of the zoomed review region.
+// zoomKeyHelp is the footer control list of the zoomed detail pane.
 var zoomKeyHelp = []keyHelpEntry{
 	{"v", "board"},
 	{"j/k", "scroll"},
@@ -75,7 +75,7 @@ func (m Model) boardHints() [][]keyHint {
 	return m.hintRows(slices.Concat(keyHelp, m.shortcutHelp()), budget)
 }
 
-// zoomHints are the controls of the zoomed review region footer.
+// zoomHints are the controls of the zoomed detail pane footer.
 func (m Model) zoomHints() [][]keyHint {
 	return m.hintRows(slices.Concat(zoomKeyHelp, m.shortcutHelp()), m.height-4)
 }

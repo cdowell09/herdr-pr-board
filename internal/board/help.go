@@ -17,17 +17,17 @@ type helpSection struct {
 }
 
 // helpSections is the single source of truth for the ? overlay. It names every
-// board control and every review region control. The documentation drift test
+// board control and every detail pane control. The documentation drift test
 // checks it against documentedKeys. The controls that work everywhere come
 // last, once.
 var helpSections = []helpSection{
 	{"Board", []keyHelpEntry{
 		{"1–9 Tab Shift+Tab h/l ←/→", "select a view"},
 		{"↑/↓ Home/End", "select a PR"},
-		{"j/k g/G PgUp/PgDn", "scroll the review region"},
-		{"wheel", "select over the table, scroll over the review region"},
+		{"j/k g/G PgUp/PgDn", "scroll the detail pane"},
+		{"wheel", "select over the table, scroll over the detail pane"},
 		{"Enter o", "open the PR in a browser"},
-		{"v", "zoom the review region"},
+		{"v", "zoom the detail pane"},
 		{"/", "start the filter"},
 		{"↑/↓", "select a PR during the filter"},
 		{"Enter", "keep the filter and finish it"},
@@ -38,14 +38,14 @@ var helpSections = []helpSection{
 		{"click", "select a PR, or open the selected PR"},
 		{"click a footer key", "press that key"},
 	}},
-	{"Review region", []keyHelpEntry{
+	{"Detail pane", []keyHelpEntry{
 		{"t", "stop the newest active review"},
 		{"s", "edit repository settings"},
 		{"c", "publish a comment"},
 		{"a", "publish an approval"},
 		{"x", "publish a change request"},
 		{"Enter y", "confirm the publication; another key or a click cancels it"},
-		{"j/k ↑/↓ g/G Home/End PgUp/PgDn wheel", "scroll the zoomed region"},
+		{"j/k ↑/↓ g/G Home/End PgUp/PgDn wheel", "scroll the zoomed pane"},
 		{"o", "open the PR in a browser"},
 		{"Esc v", "leave zoom"},
 	}},

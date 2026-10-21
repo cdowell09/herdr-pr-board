@@ -38,8 +38,8 @@ type boardLayout struct {
 	selectedURLRow int
 	visibleRows    int
 	emptyRows      int
-	// regionRows is the height of the review region under the URL row. It is
-	// zero when the region collapses to the one-line summary.
+	// regionRows is the height of the detail pane under the table, less one.
+	// It is zero when the pane collapses to the URL and a one-line summary.
 	regionRows int
 	// repository is set when every listed row belongs to it. The table then
 	// hides the REPOSITORY column and names it once on a line under the header.
@@ -80,6 +80,10 @@ func (m Model) boardLayout() boardLayout {
 	selectedURLRow := firstPRRow
 	if len(rows) > 0 {
 		selectedURLRow = firstPRRow + 1 + min(visibleRows, max(0, len(rows)-m.offset))
+	}
+	if regionRows > 0 {
+		// The pane starts under the table, and its URL follows the top edge.
+		selectedURLRow += paneURLOffset
 	}
 	return boardLayout{
 		firstPRRow:     firstPRRow,
@@ -276,7 +280,7 @@ func (m Model) Init() tea.Cmd {
 	return tea.Batch(commands...)
 }
 
-// Update handles one message, then keeps the review region on the selected PR.
+// Update handles one message, then keeps the detail pane on the selected PR.
 // Only user input moves the selection to another PR. A refresh or a review
 // read that reorders or filters rows keeps the selected PR when it remains.
 func (m Model) Update(message tea.Msg) (tea.Model, tea.Cmd) {
@@ -673,9 +677,9 @@ func (m Model) updateMouse(message tea.MouseMsg) (tea.Model, tea.Cmd) {
 		step = mouseStep
 	}
 	if step != 0 {
-		// The wheel acts on the area under the pointer: the review region
-		// under the URL row, or the table above it.
-		if lay := m.boardLayout(); lay.regionRows > 0 && event.Y > lay.selectedURLRow {
+		// The wheel acts on the area under the pointer: the detail pane under
+		// the table, or the table above it.
+		if lay := m.boardLayout(); lay.regionRows > 0 && event.Y >= lay.selectedURLRow-paneURLOffset {
 			m.scrollRegion(step)
 		} else {
 			m.cursor += step
@@ -797,9 +801,10 @@ func (m Model) View() string {
 		output.WriteString(notice + "\n")
 	}
 	output.WriteString(m.renderTable(lay))
-	output.WriteString(m.renderSelected(lay))
 	if lay.regionRows > 0 {
-		output.WriteString("\n" + m.renderRegion(lay))
+		output.WriteString(strings.Join(m.renderPane(lay.regionRows+1), "\n"))
+	} else {
+		output.WriteString(m.renderSelected())
 	}
 	// A view without rows, such as an empty, loading, or unmatched view, has a
 	// short body. Blank rows keep its footer at the bottom like every view.
