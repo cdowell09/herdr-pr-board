@@ -2,6 +2,51 @@
 
 This file lists notable changes to PR Board.
 
+## 0.9.0 - 2026-10-21
+
+PR Board has a clearer, framed layout and runs your own commands for the selected PR.
+
+### Highlights
+
+- Read the selected PR in the detail pane under the table. The pane shows the URL, the title, the author, the CI state, the revision, and the latest review.
+- Find your place faster. A frame around the table names the view and its PR count. Tabs read `Opened by me (4)`. One glyph means one state in every column.
+- Press `?` to open the keyboard help as a centered window over the board. Click `[×]` or press `?` or `Esc` to close it.
+- Run your own command for a PR with `[[shortcuts]]`. PR Board starts the command in a new Herdr tab or split.
+- Filter without a layout change. The status line shows the filter and its match count, for example `/ rev · 2 of 4`.
+
+See [board controls and status](https://github.com/cdowell09/herdr-pr-board/blob/v0.9.0/docs/board.md) for the layout and the keys.
+
+### Upgrade
+
+```sh
+herdr plugin install cdowell09/herdr-pr-board --ref v0.9.0
+```
+
+Reopen the board to load the new binary.
+The board no longer starts reviews with `n` or `N`. Configure a command shortcut instead.
+Press `Ctrl+R` to refresh the current view. `R` still refreshes all views.
+
+<details>
+<summary>Full changelog</summary>
+
+### Features
+
+- Interaction polish and command shortcuts (#159)
+- Polish status line, tabs, glyphs, filter, and empty view (#160)
+- Frame the table and name the shared repository group (#162)
+- Show the keyboard help as a centered modal (#163)
+- Show the selected PR in a framed detail pane (#164)
+
+### Maintenance
+
+- Bump orhun/git-cliff-action in the actions group (#154)
+
+### Refactoring
+
+- Name every board color in one palette (#161)
+
+</details>
+
 ## 0.8.0 - 2026-09-10
 
 PR Board shows the selected PR's local reviews under the table, so you act without leaving the board.
