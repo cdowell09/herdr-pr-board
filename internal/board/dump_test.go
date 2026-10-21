@@ -69,9 +69,9 @@ func dumpModel(t *testing.T, width, height int) Model {
 	model.reviewRows = map[string]reviewOverviewRow{}
 	summaries := []reviewRowSummary{
 		{state: "completed", detail: "Completed locally · ● P2 1", posted: "PR Board", postedDetail: "PR Board · current revision", findings: reviewmemory.SeverityCounts{0, 0, 1, 0}},
-		{state: "running", detail: "Running", posted: "–", postedDetail: "No submitted reviews"},
+		{state: "running", detail: "Running", posted: noneMark.text, postedDetail: "No submitted reviews"},
 		{state: "completed", detail: "Completed locally · ✓ clean", posted: "GitHub", postedDetail: "GitHub · current revision"},
-		{state: "blocked", detail: "blocked · explicit retry required", posted: "–", postedDetail: "No submitted reviews"},
+		{state: "blocked", detail: "blocked · explicit retry required", posted: noneMark.text, postedDetail: "No submitted reviews"},
 	}
 	for i, pr := range model.views[0].PRs {
 		model.reviewRows[pr.URL] = reviewOverviewRow{identity: dispatch.Identity(pr), summary: summaries[i]}

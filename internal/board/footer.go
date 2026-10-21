@@ -10,6 +10,7 @@ import (
 	"github.com/cdowell09/herdr-pr-board/internal/config"
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
+	"github.com/charmbracelet/x/ansi"
 )
 
 type keyHelpEntry struct {
@@ -53,23 +54,16 @@ var documentedKeys = append([]string{
 	"Enter", "Ctrl+U", "Esc", "Backspace", "Ctrl+R", "Ctrl+C",
 }, config.ReservedKeys...)
 
-// footerHelpLines renders the board controls and, while a filter is set,
-// the filter row under them.
+// footerHelpLines renders the board control rows. The filter shows on the
+// meta line, so starting a filter does not move any row.
 func (m Model) footerHelpLines() []string {
-	width := max(1, m.width)
-	lines := renderHints(m.boardHints())
-	if m.editing {
-		lines = append(lines, dimStyle.Render("filter: ")+truncate(m.filter+"▌", max(1, width-8)))
-	} else if m.filter != "" {
-		lines = append(lines, dimStyle.Render("filter: ")+truncate(m.filter, max(1, width-8)))
-	}
-	return lines
+	return renderHints(m.boardHints())
 }
 
 // boardHints wraps the board control reference at pair boundaries so each
 // keybinding stays next to its action on narrow terminals. The rows left
 // after the title, tabs, stale notice, table header, one PR row, the URL,
-// the collapsed summary, the filter row, and the meta line bound the controls.
+// the collapsed summary, and the meta line bound the controls.
 func (m Model) boardHints() [][]keyHint {
 	budget := m.height - 9
 	if stale(m.currentView()) {
@@ -77,9 +71,6 @@ func (m Model) boardHints() [][]keyHint {
 	}
 	if pr, ok := m.selectedPR(); ok && !m.regionSplit() {
 		budget -= len(m.selectedReviewLines(pr))
-	}
-	if m.editing || m.filter != "" {
-		budget-- // the filter row follows the controls
 	}
 	return m.hintRows(slices.Concat(keyHelp, m.shortcutHelp()), budget)
 }
@@ -195,43 +186,76 @@ func (m Model) footerKey(message tea.MouseMsg) (tea.KeyMsg, bool) {
 }
 
 // renderFooter renders the control lines and the meta line under them.
+// Alerts use the warning color. Healthy status, such as the refresh age and
+// the rate limits, is dim.
 func (m Model) renderFooter(help []string) string {
 	// Collect the meta parts, then join them. Prefixing a separator to each
 	// part leaves a leading separator when an earlier part is absent.
 	var parts []string
+	add := func(text string, alert bool) {
+		style := dimStyle
+		if alert {
+			style = warningStyle
+		}
+		// The meta line owns exactly one row, so a multiline message flattens.
+		parts = append(parts, style.Render(strings.Join(strings.Fields(text), " ")))
+	}
+	// A narrow terminal truncates the tail. An armed confirmation comes
+	// first, so no filter can hide what Enter is about to publish. Every
+	// alert comes before the routine refresh age and rate limits.
 	if m.confirm != nil {
-		parts = append(parts, m.confirm.prompt())
+		add(m.confirm.prompt(), true)
+	}
+	if filter := m.renderFilter(); filter != "" {
+		parts = append(parts, filter)
 	}
 	if m.notice != "" {
-		// Keep the notice first. A narrow terminal truncates the tail.
-		parts = append(parts, m.notice)
+		add(m.notice, true)
 	}
 	if m.monitorError != "" {
-		parts = append(parts, reviewText(m.monitorError))
+		add(reviewText(m.monitorError), true)
 	}
 	// A collapsed region cannot show its status line, so the footer does.
 	if m.region != nil && m.region.message != "" && !m.zoom && !m.regionSplit() {
-		parts = append(parts, reviewText(m.region.message))
+		add(reviewText(m.region.message), true)
+	}
+	if m.warning != "" {
+		add(m.warning, true)
+	}
+	if stale(m.currentView()) {
+		add("stale", true)
 	}
 	freshness := m.currentView().UpdatedAt
 	if !freshness.IsZero() {
-		parts = append(parts, "updated "+relativeTime(freshness, time.Now()))
+		add("updated "+relativeTime(freshness, time.Now()), false)
 	}
-	if stale(m.currentView()) {
-		parts = append(parts, "stale")
-	}
+	// A rate is low when it cannot pay for the next full refresh or the
+	// next GraphQL batch. The refresh keys use the same Search check.
 	if m.rates.Search.Limit > 0 {
-		parts = append(parts, fmt.Sprintf("Search %d/%d", m.rates.Search.Remaining, m.rates.Search.Limit))
+		add(fmt.Sprintf("Search %d/%d", m.rates.Search.Remaining, m.rates.Search.Limit), !m.rates.Search.HasCapacity(m.cfg.SearchRequestCount()))
 	}
 	if m.rates.GraphQL.Limit > 0 {
-		parts = append(parts, fmt.Sprintf("GraphQL %d/%d", m.rates.GraphQL.Remaining, m.rates.GraphQL.Limit))
+		add(fmt.Sprintf("GraphQL %d/%d", m.rates.GraphQL.Remaining, m.rates.GraphQL.Limit), !m.rates.GraphQL.HasCapacity(m.rates.GraphQL.CostPerQuery()))
 	}
-	if m.warning != "" {
-		parts = append(parts, m.warning)
+	meta := ansi.Truncate(strings.Join(parts, hintSeparator), max(1, m.width), "…")
+	return strings.Join(append(help, meta), "\n")
+}
+
+// renderFilter shows the filter and its match count, for example
+// "/ rev · 2 of 4". The meta line shows it, so starting a filter does not
+// move the table or the footer controls. The filter text takes at most half
+// the width, so a long filter cannot push notices and warnings off the line.
+func (m Model) renderFilter() string {
+	if !m.editing && m.filter == "" {
+		return ""
 	}
-	// The meta line owns exactly one row, so a multiline message flattens.
-	meta := strings.Join(strings.Fields(strings.Join(parts, " · ")), " ")
-	return strings.Join(append(help, warningStyle.Render(truncate(meta, m.width))), "\n")
+	count := hintSeparator + dimStyle.Render(fmt.Sprintf("%d of %d", len(m.filteredPRs()), len(m.currentView().PRs)))
+	cursor := ""
+	if m.editing {
+		cursor = "▌"
+	}
+	room := m.width/2 - lipgloss.Width("/ "+cursor+count)
+	return keyStyle.Render("/") + " " + truncate(m.filter, max(1, room)) + cursor + count
 }
 
 // keyPairs renders each control as a bright key and a dim action.

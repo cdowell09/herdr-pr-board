@@ -129,6 +129,9 @@ var (
 // changes.
 var tabPadding = lipgloss.Width(inactiveTab.Render(""))
 
+// tabSeparator is the dim dot between two tabs. tabBars counts its one cell.
+var tabSeparator = dimStyle.Render("·")
+
 type snapshotMsg struct {
 	discovery.Snapshot
 	epoch uint64
@@ -722,8 +725,8 @@ type tabBar struct {
 }
 
 // tabBars lays out the tabs across the tab row. The rendered labels and the
-// mouse hitboxes share these positions. The x advance includes the single
-// space renderTabs puts between tabs.
+// mouse hitboxes share these positions. The x advance includes the
+// one-cell separator renderTabs puts between tabs.
 func (m Model) tabBars() []tabBar {
 	bars := make([]tabBar, len(m.views))
 	x := 0
@@ -797,7 +800,13 @@ func (m Model) View() string {
 	if lay.regionRows > 0 {
 		output.WriteString("\n" + m.renderRegion(lay))
 	}
-	output.WriteString("\n" + m.renderFooter(m.footerHelpLines()))
+	// A view without rows, such as an empty, loading, or unmatched view, has a
+	// short body. Blank rows keep its footer at the bottom like every view.
+	footer := m.renderFooter(m.footerHelpLines())
+	if pad := m.height - strings.Count(output.String(), "\n") - strings.Count(footer, "\n") - 2; pad > 0 {
+		output.WriteString(strings.Repeat("\n", pad))
+	}
+	output.WriteString("\n" + footer)
 	return output.String()
 }
 
@@ -821,7 +830,7 @@ func (m Model) renderTabs() string {
 			tabs = append(tabs, inactiveTab.Render(bar.label))
 		}
 	}
-	return strings.Join(tabs, " ")
+	return strings.Join(tabs, tabSeparator)
 }
 
 func (m Model) renderStaleNotice() string {
@@ -905,11 +914,11 @@ func (m Model) selectedPR() (gh.PullRequest, bool) {
 // truncates.
 func (m Model) tabLabel(index int, view discovery.ViewData) string {
 	budget := m.tabBudget()
-	label := fmt.Sprintf("%d %s %d", index+1, view.View.Title, len(view.PRs))
+	label := fmt.Sprintf("%s (%d)", view.View.Title, len(view.PRs))
 	if lipgloss.Width(label) <= budget {
 		return label
 	}
-	return truncate(fmt.Sprintf("%d %s", index+1, view.View.Title), budget)
+	return truncate(view.View.Title, budget)
 }
 
 func (m Model) tabBudget() int {

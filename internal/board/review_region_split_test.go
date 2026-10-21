@@ -565,7 +565,7 @@ func TestOneCorruptPublicationRecordLeavesOtherPRsIntact(t *testing.T) {
 	if len(intact.publications) != 1 || intact.err != nil || read.rows[first.URL].summary.posted != "PR Board" {
 		t.Fatalf("intact PR lost its publications: %+v row=%+v", intact, read.rows[first.URL].summary)
 	}
-	if broken.err == nil || read.rows[second.URL].summary.posted != "?" {
+	if broken.err == nil || read.rows[second.URL].summary.posted != noneMark.text {
 		t.Fatalf("corrupt PR did not report its own failure: %+v row=%+v", broken, read.rows[second.URL].summary)
 	}
 }

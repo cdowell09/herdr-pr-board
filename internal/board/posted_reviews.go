@@ -11,10 +11,10 @@ import (
 func postedReviewSummary(pr gh.PullRequest, attempts []publication.Attempt, localErr error) (string, string) {
 	observation := pr.ViewerReviews
 	if observation == nil || observation.Actor == "" {
-		return "?", "GitHub review status unavailable"
+		return noneMark.text, "GitHub review status unavailable"
 	}
 	if localErr != nil {
-		return "?", "Review publication source unavailable"
+		return noneMark.text, "Review publication source unavailable"
 	}
 	owned := map[int64]publication.Attempt{}
 	uncertain := false
@@ -73,7 +73,7 @@ func postedReviewSummary(pr gh.PullRequest, attempts []publication.Attempt, loca
 		}
 		details = append(details, source+" · "+revision)
 	}
-	label := "–"
+	label := noneMark.text
 	if len(names) == 1 {
 		label = names[0]
 	} else if len(names) == 2 {
@@ -84,13 +84,13 @@ func postedReviewSummary(pr gh.PullRequest, attempts []publication.Attempt, loca
 		if detail != "" {
 			detail += "; "
 		}
-		return "?", detail + "PR Board publication outcome uncertain"
+		return noneMark.text, detail + "PR Board publication outcome uncertain"
 	}
 	if !observation.Complete {
 		if detail != "" {
 			detail += "; "
 		}
-		return "?", detail + "GitHub review history incomplete"
+		return noneMark.text, detail + "GitHub review history incomplete"
 	}
 	if detail == "" {
 		detail = "No submitted reviews"

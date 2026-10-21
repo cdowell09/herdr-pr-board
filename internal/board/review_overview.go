@@ -270,7 +270,7 @@ func localReviewSummary(pr gh.PullRequest, runs []reviewmemory.Run, active map[s
 }
 
 func (m Model) rowReviewSummary(pr gh.PullRequest) reviewRowSummary {
-	summary := reviewRowSummary{state: "unknown", detail: "Loading review status", posted: "?", postedDetail: "Loading posted reviews"}
+	summary := reviewRowSummary{state: "unknown", detail: "Loading review status", posted: noneMark.text, postedDetail: "Loading posted reviews"}
 	if row, ok := m.reviewRows[pr.URL]; ok && row.identity == dispatch.Identity(pr) {
 		summary = row.summary
 	}

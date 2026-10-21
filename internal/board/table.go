@@ -132,7 +132,12 @@ func (m Model) renderPRRow(pr gh.PullRequest, layout tableLayout, selected bool,
 	spans = append(spans, reviewCell(summary)...)
 	gap(2)
 	if layout.posted {
-		cell(summary.posted, 8)
+		if summary.posted == noneMark.text {
+			// The selected detail names why no source is known.
+			spans = append(spans, span{text: padCells(noneMark.text, 8), style: noneMark.style})
+		} else {
+			cell(summary.posted, 8)
+		}
 		gap(2)
 	}
 	title := pr.Title
@@ -209,18 +214,22 @@ func reviewCellText(summary reviewRowSummary) string {
 	return b.String()
 }
 
+// noneMark is the dim dot for an absent or unknown state in any column.
+var noneMark = span{text: "·", style: dimStyle}
+
 func reviewMark(state string) span {
 	switch state {
-	case "running", "waiting", "ready":
+	case "running":
+		// A running review has its own shape, so it does not read as pending CI.
+		return span{text: "◉", style: ciMark(gh.CIPending).style}
+	case "waiting", "ready":
 		return ciMark(gh.CIPending)
 	case "completed":
 		return ciMark(gh.CISuccess)
 	case "failed", "blocked", "abandoned":
 		return ciMark(gh.CIFailure)
-	case "none":
-		return ciMark(gh.CINone)
 	default:
-		return ciMark(gh.CIUnknown)
+		return noneMark
 	}
 }
 
@@ -235,7 +244,8 @@ func (m Model) selectedReviewLines(pr gh.PullRequest) []string {
 func (m Model) renderSelected(lay boardLayout) string {
 	pr, ok := m.selectedPR()
 	if !ok {
-		return dimStyle.Render("No PR selected")
+		// The table area already explains why no PR is listed.
+		return ""
 	}
 	url := urlStyle.Render(truncate(pr.URL, m.width))
 	if lay.regionRows > 0 {
@@ -252,10 +262,10 @@ func ciMark(state gh.CIState) span {
 		return span{text: "●", style: lipgloss.NewStyle().Foreground(lipgloss.Color("214"))}
 	case gh.CIFailure, gh.CIError:
 		return span{text: "✗", style: lipgloss.NewStyle().Foreground(lipgloss.Color("210"))}
-	case gh.CINone:
-		return span{text: "–", style: dimStyle.Foreground(lipgloss.Color("248"))}
 	default:
-		return span{text: "?", style: dimStyle.Foreground(lipgloss.Color("248"))}
+		// No checks and an unknown status share the dim dot. The filter
+		// still tells them apart by state name.
+		return noneMark
 	}
 }
 

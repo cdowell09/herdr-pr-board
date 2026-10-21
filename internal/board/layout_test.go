@@ -12,6 +12,7 @@ import (
 	gh "github.com/cdowell09/herdr-pr-board/internal/github"
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
+	"github.com/muesli/termenv"
 )
 
 var layoutWidths = []int{40, 50, 60, 70, 80, 100, 120, 160}
@@ -100,7 +101,12 @@ func TestModelTabGeometryMatchesRenderedOutput(t *testing.T) {
 				style = activeTab
 			}
 			rendered := stripANSI(style.Render(bar.label))
-			if x := strings.Index(tabLine, rendered); x != bar.x || lipgloss.Width(rendered) != bar.width {
+			// The dim dot separator is multibyte, so measure cells, not bytes.
+			x := strings.Index(tabLine, rendered)
+			if x >= 0 {
+				x = lipgloss.Width(tabLine[:x])
+			}
+			if x != bar.x || lipgloss.Width(rendered) != bar.width {
 				t.Fatalf("width %d: tab %d renders at x %d width %d, hitbox x %d width %d", width, i, x, lipgloss.Width(rendered), bar.x, bar.width)
 			}
 		}
@@ -321,7 +327,7 @@ func TestHelpOverlayKeepsTheFilterLineBehavior(t *testing.T) {
 	if filtering.filter != "?" {
 		t.Fatalf("filter = %q, want %q", filtering.filter, "?")
 	}
-	if view := stripANSI(filtering.View()); !strings.Contains(view, "filter: ?") {
+	if view := stripANSI(filtering.View()); !strings.Contains(view, "/ ?") {
 		t.Fatalf("filter line missing:\n%s", view)
 	}
 }
@@ -503,8 +509,12 @@ func TestEmptyViewsExplainTheViewAndNameTheNextKeys(t *testing.T) {
 					t.Fatalf("view %q width %d: line is %d cells wide:\n%q", tc.view.ID, width, got, line)
 				}
 			}
-			if lines := len(strings.Split(rendered, "\n")); lines > model.height {
+			// The footer stays at the bottom, and no line repeats that no PR is listed.
+			if lines := len(strings.Split(rendered, "\n")); lines != model.height {
 				t.Fatalf("view %q width %d: rendered %d lines in a %d-line terminal", tc.view.ID, width, lines, model.height)
+			}
+			if strings.Contains(rendered, "No PR selected") {
+				t.Fatalf("view %q width %d: kept the redundant selection line:\n%s", tc.view.ID, width, rendered)
 			}
 		}
 	}
@@ -543,6 +553,121 @@ func TestEmptyViewKeepsLoadingFilterAndErrorText(t *testing.T) {
 	}
 }
 
+// TestRowlessViewsKeepTheFooterAtTheBottom covers each state with no table
+// rows. Each one fills the terminal, so the footer controls stay on the last
+// rows and do not float under a short message.
+func TestRowlessViewsKeepTheFooterAtTheBottom(t *testing.T) {
+	for name, setup := range map[string]func(*Model){
+		"empty":    func(*Model) {},
+		"loading":  func(m *Model) { m.loading = true },
+		"no match": func(m *Model) { m.filter = "nothing" },
+		"error":    func(m *Model) { m.views[0].Err = errors.New("timeout") },
+	} {
+		model := emptyViewModel(t, 80, defaultView(t, config.ViewAuthored))
+		model.height = 30
+		setup(&model)
+		lines := strings.Split(stripANSI(model.View()), "\n")
+		if len(lines) != model.height {
+			t.Fatalf("%s: rendered %d lines in a %d-line terminal", name, len(lines), model.height)
+		}
+		if !strings.Contains(lines[len(lines)-2], "? help") {
+			t.Fatalf("%s: the controls are not above the meta line:\n%s", name, strings.Join(lines, "\n"))
+		}
+	}
+}
+
+// TestEmptyViewCentersItsText covers the empty view layout: the message
+// sits in the middle of the table area, not under the tabs.
+func TestEmptyViewCentersItsText(t *testing.T) {
+	model := emptyViewModel(t, 80, defaultView(t, config.ViewAuthored))
+	lines := strings.Split(stripANSI(model.View()), "\n")
+	want := "You have no open pull requests."
+	for y, line := range lines {
+		if x := strings.Index(line, want); x >= 0 {
+			if left := (80 - len(want)) / 2; x != left {
+				t.Fatalf("message starts at x %d, want %d", x, left)
+			}
+			if y <= model.boardLayout().firstPRRow {
+				t.Fatalf("message at row %d is not centered vertically:\n%s", y, strings.Join(lines, "\n"))
+			}
+			return
+		}
+	}
+	t.Fatalf("message missing:\n%s", strings.Join(lines, "\n"))
+}
+
+// TestTabLabelsNameTheViewAndItsCount covers the tab label format. The
+// number keys select views, so the label does not repeat the index.
+func TestTabLabelsNameTheViewAndItsCount(t *testing.T) {
+	model := layoutModel(t, 120)
+	tabs := stripANSI(strings.Split(model.View(), "\n")[tabRowY])
+	if !strings.Contains(tabs, " Opened by me (3) · Review requested (0) ") {
+		t.Fatalf("tab row = %q", tabs)
+	}
+	if next := press(model, runes("2")); next.active != 1 {
+		t.Fatalf("2 selected view %d, want 1", next.active)
+	}
+}
+
+// TestFilterShowsItsCountWithoutMovingRows covers the inline filter. The
+// filter and its match count open the meta line, so starting a filter keeps
+// every table, URL, and footer row where it was.
+func TestFilterShowsItsCountWithoutMovingRows(t *testing.T) {
+	model := layoutModel(t, 120)
+	before := strings.Split(stripANSI(model.View()), "\n")
+	filtering := press(model, runes("/"), runes("acme"))
+	after := strings.Split(stripANSI(filtering.View()), "\n")
+	if len(after) != len(before) {
+		t.Fatalf("filter changed the line count from %d to %d", len(before), len(after))
+	}
+	if got := after[len(after)-1]; !strings.HasPrefix(got, "/ acme▌ · 2 of 3") {
+		t.Fatalf("meta line = %q", got)
+	}
+	if model.boardLayout().firstPRRow != filtering.boardLayout().firstPRRow || len(model.footerHelpLines()) != len(filtering.footerHelpLines()) {
+		t.Fatal("filter moved the table or the footer controls")
+	}
+}
+
+// TestMetaLineWarnsOnlyWhenSomethingNeedsAttention covers the meta line
+// colors. A healthy refresh age and rate limits are dim. A low rate, a stale
+// view, or a warning uses the warning color.
+func TestMetaLineWarnsOnlyWhenSomethingNeedsAttention(t *testing.T) {
+	previous := lipgloss.ColorProfile()
+	lipgloss.SetColorProfile(termenv.TrueColor)
+	t.Cleanup(func() { lipgloss.SetColorProfile(previous) })
+	meta := func(m Model) string {
+		lines := strings.Split(m.renderFooter(m.footerHelpLines()), "\n")
+		return lines[len(lines)-1]
+	}
+	model := layoutModel(t, 120)
+	model.rates.Search = gh.RateResource{Limit: 30, Remaining: 27}
+	model.rates.GraphQL = gh.RateResource{Limit: 5000, Remaining: 4823}
+	healthy := meta(model)
+	for _, part := range []string{"Search 27/30", "GraphQL 4823/5000"} {
+		if !strings.Contains(healthy, dimStyle.Render(part)) {
+			t.Fatalf("healthy %q is not dim: %q", part, healthy)
+		}
+	}
+
+	low := model
+	low.rates.Search.Remaining = 0
+	low.rates.Search.Reset = time.Now().Add(time.Minute)
+	if got := meta(low); !strings.Contains(got, warningStyle.Render("Search 0/30")) || !strings.Contains(got, dimStyle.Render("GraphQL 4823/5000")) {
+		t.Fatalf("a low Search rate is not the only warning: %q", got)
+	}
+	graphQL := model
+	graphQL.rates.GraphQL = gh.RateResource{Limit: 5000, Remaining: 10, Cost: 50, Reset: time.Now().Add(time.Minute)}
+	if got := meta(graphQL); !strings.Contains(got, warningStyle.Render("GraphQL 10/5000")) {
+		t.Fatalf("a low GraphQL rate is not a warning: %q", got)
+	}
+
+	warned := model
+	warned.warning = "refresh failed"
+	if got := meta(warned); !strings.Contains(got, warningStyle.Render("refresh failed")) || !strings.Contains(got, dimStyle.Render("Search 27/30")) {
+		t.Fatalf("a warning did not keep the healthy rates dim: %q", got)
+	}
+}
+
 // TestEmptyViewFitsShortTerminalsAndKeepsTheKeys covers a long custom query in
 // a small pane. The empty state must never push the tabs off the screen,
 // because the mouse rows assume that the tabs stay at their rendered row.
@@ -555,7 +680,7 @@ func TestEmptyViewFitsShortTerminalsAndKeepsTheKeys(t *testing.T) {
 			model.height = height
 			rendered := stripANSI(model.View())
 			lines := strings.Split(rendered, "\n")
-			if len(lines) > height {
+			if len(lines) != height {
 				t.Fatalf("width %d height %d: rendered %d lines:\n%s", width, height, len(lines), rendered)
 			}
 			for _, line := range lines {
@@ -672,5 +797,44 @@ func TestFilterToOneRepositoryHidesTheRepositoryColumn(t *testing.T) {
 	model = press(model, tea.KeyMsg{Type: tea.KeyEsc})
 	if lines := strings.Split(stripANSI(model.View()), "\n"); !strings.Contains(lines[model.boardLayout().firstPRRow-2], "REPOSITORY") {
 		t.Fatalf("mixed view hides the repository column:\n%s", strings.Join(lines, "\n"))
+	}
+}
+
+// TestConfirmationStaysVisibleWithALongFilter covers a narrow pane with a
+// long filter. The armed confirmation comes first on the meta line, so Enter
+// never publishes behind a hidden prompt.
+func TestConfirmationStaysVisibleWithALongFilter(t *testing.T) {
+	model := layoutModel(t, 40)
+	model.filter = "responsive layouts and cell-width truncation"
+	pr, _ := model.selectedPR()
+	model.confirm = &pendingPublication{pr, config.PublishApprove}
+	lines := strings.Split(stripANSI(model.renderFooter(model.footerHelpLines())), "\n")
+	prompt := stripANSI(model.confirm.prompt())
+	if got := lines[len(lines)-1]; !strings.HasPrefix(got, prompt[:min(len(prompt), 30)]) {
+		t.Fatalf("meta line %q does not open with the confirmation %q", got, prompt)
+	}
+}
+
+// TestLongFilterKeepsNoticesAndWarningsVisible covers a long filter next to
+// the rate limits. The filter takes at most half the meta line, and every
+// alert comes before the routine status, so action feedback stays visible.
+func TestLongFilterKeepsNoticesAndWarningsVisible(t *testing.T) {
+	for _, width := range []int{40, 80} {
+		model := layoutModel(t, width)
+		model.filter = "responsive layouts and cell-width truncation"
+		model.rates.Search = gh.RateResource{Limit: 30, Remaining: 27}
+		model.rates.GraphQL = gh.RateResource{Limit: 5000, Remaining: 4823}
+		model.views[0].UpdatedAt = time.Now()
+		for _, alert := range []func(*Model){
+			func(m *Model) { m.notice = "browser failed" },
+			func(m *Model) { m.warning = "browser failed" },
+		} {
+			alerted := model
+			alert(&alerted)
+			lines := strings.Split(stripANSI(alerted.renderFooter(alerted.footerHelpLines())), "\n")
+			if got := lines[len(lines)-1]; !strings.Contains(got, "browser failed") || !strings.HasPrefix(got, "/ responsi") {
+				t.Fatalf("width %d: meta line = %q", width, got)
+			}
+		}
 	}
 }

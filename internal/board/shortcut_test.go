@@ -99,7 +99,7 @@ func TestShortcutDoesNotFireInFilterInputOrAConfirmation(t *testing.T) {
 	fake := &launchFake{}
 	m := withShortcut(layoutModel(t, 120), fake)
 	m = press(m, runes("/"), runes("r"))
-	if !strings.Contains(stripANSI(m.View()), "filter: r▌") || len(fake.prs) != 0 {
+	if !strings.Contains(stripANSI(m.View()), "/ r▌") || len(fake.prs) != 0 {
 		t.Fatal("r in filter input did not type r")
 	}
 

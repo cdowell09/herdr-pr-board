@@ -7,8 +7,10 @@ The plugin supplies these default views:
 - **All open** shows each open PR in the configured scopes.
 
 You can add, remove, rename, or move views in `config.toml`.
+Each tab shows the view title and its PR count, for example `Opened by me (4)`.
+A dim dot separates the tabs. The number keys `1`–`9` select the tabs in order.
 
-A view with no pull requests shows text for that view and the next keys:
+A view with no pull requests shows text for that view and the next keys in the middle of the table area:
 
 | View | Text |
 | --- | --- |
@@ -24,6 +26,7 @@ The board omits `Tab` when the configuration has one view.
 The text wraps on narrow terminals. No width removes a key.
 A short terminal makes the text shorter. Then it shows the keys without the actions.
 The filter, loading, and error messages replace this text.
+The footer stays on the last rows of the terminal in each of these states.
 
 The board shows the URL of the selected PR.
 The selected row has a background color across the full table width.
@@ -43,8 +46,7 @@ The CI column uses a symbol and a color:
 | `✓` | Green | All checks passed. |
 | `●` | Yellow | One or more checks are pending. |
 | `✗` | Red | One or more checks failed. |
-| `–` | Dim | The PR has no checks. |
-| `?` | Dim | The plugin cannot get the check status. |
+| `·` | Dim | The PR has no checks, or the plugin cannot get the check status. |
 
 The **REVIEW** column shows local PR Board reviews for the current revision.
 A completed review with findings shows the most severe finding level and its count:
@@ -55,14 +57,16 @@ A completed review with findings shows the most severe finding level and its cou
 
 The color identifies the severity. P0 is red. P1 is orange. P2 is yellow. P3 is gray.
 A completed review with no findings shows `✓ clean`.
-Every other state uses the CI symbols:
+Every other state uses these symbols:
 
 | Symbol | Meaning |
 | --- | --- |
-| `●` | A review is running, queued, waiting for a slot, or awaiting dispatch. |
+| `◉` | A review is running. |
+| `●` | A review is queued, waiting for a slot, or awaiting dispatch. |
 | `✗` | The current revision has a failed, blocked, or abandoned review. |
-| `–` | No local review is active or complete for this revision. |
-| `?` | Local review status or the current revision is unavailable. |
+| `·` | No local review is active or complete for this revision, or the local review status is unavailable. |
+
+`◉` has the pending color, but its shape is different from pending CI.
 
 Select a PR to read its local reviews in the review region below the URL.
 A rule closes the table above the URL, so the table and the region read as two areas.
@@ -89,8 +93,9 @@ The **POSTED** column shows submitted reviews from your authenticated GitHub acc
 | `GitHub` | Reviews posted outside this PR Board installation. |
 | `PR Board` | Reviews matched to this installation's publication records. |
 | `Both` | Both sources have submitted reviews. |
-| `–` | No submitted reviews were found. |
-| `?` | Review history, publication origin, or a publication outcome is uncertain. |
+| `·` | No submitted reviews were found, or the review history, publication origin, or a publication outcome is uncertain. |
+
+The selected detail names the reason for `·`.
 
 The selected detail shows whether each source has a review on the current head.
 Otherwise, it identifies older reviews or an unknown revision.
@@ -141,6 +146,10 @@ For example, `/p0` finds a review whose most severe finding is P0, and `/clean` 
 `/failure` finds failed CI.
 The filter ignores letter case and makes no GitHub requests.
 One filter applies to all views.
+The filter and its match count start the last line, for example `/ rev · 2 of 4`.
+An armed publication confirmation comes before the filter, so a long filter cannot hide it.
+The filter takes at most half of the line, so notices and warnings stay visible.
+The filter does not move the table or the footer controls.
 A refresh keeps the selection on the same PR while the PR stays in the view.
 
 Press `E` to edit the active configuration while the board runs.
@@ -158,6 +167,13 @@ The footer shows the most used controls. On narrow terminals, the pairs wrap.
 A short pane shows the keys without the actions.
 Click a footer key to do the action of that key. The click is the same as the key press.
 A footer entry with two keys, such as `j/k`, does not respond to a click.
+
+The last line shows the time since the refresh and the remaining GitHub rate limits, for example `updated 5m · Search 27/30 · GraphQL 4823/5000`.
+This status is dim.
+The warning color identifies an item that needs attention: a notice, a warning, a stale view, or a low rate limit.
+Notices, warnings, and the stale mark come before the refresh time and the rate limits.
+A Search rate limit is low when it cannot pay for a refresh of all views.
+A GraphQL rate limit is low when it cannot pay for one more CI batch.
 
 Press `?` for the keyboard help.
 The help lists every board control, every review region control, and every command shortcut.

@@ -5,6 +5,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/cdowell09/herdr-pr-board/internal/dispatch"
 	gh "github.com/cdowell09/herdr-pr-board/internal/github"
 	"github.com/cdowell09/herdr-pr-board/internal/reviewmemory"
 	"github.com/charmbracelet/lipgloss"
@@ -17,12 +18,22 @@ func TestReviewStateUsesCISymbols(t *testing.T) {
 		state string
 		ci    gh.CIState
 	}{
-		{"running", gh.CIPending}, {"waiting", gh.CIPending}, {"ready", gh.CIPending},
+		{"waiting", gh.CIPending}, {"ready", gh.CIPending},
 		{"completed", gh.CISuccess}, {"failed", gh.CIFailure}, {"blocked", gh.CIFailure}, {"abandoned", gh.CIFailure},
 		{"none", gh.CINone}, {"unknown", gh.CIUnknown},
 	} {
 		if got, want := reviewMark(tc.state), ciMark(tc.ci); got.text != want.text || got.style.Render(got.text) != want.style.Render(want.text) {
 			t.Fatalf("%s marker = %q, want CI marker %q", tc.state, got.text, want.text)
+		}
+	}
+	// A running review keeps the pending color but has its own shape, so it
+	// does not read as pending CI.
+	if got, pending := reviewMark("running"), ciMark(gh.CIPending); got.text != "◉" || got.style.GetForeground() != pending.style.GetForeground() {
+		t.Fatalf("running marker = %q, want ◉ in the pending color", got.text)
+	}
+	for _, state := range []gh.CIState{gh.CINone, gh.CIUnknown} {
+		if got := ciMark(state); got.text != "·" {
+			t.Fatalf("%s CI marker = %q, want the dim dot", state, got.text)
 		}
 	}
 }
@@ -40,7 +51,7 @@ func TestReviewCellShowsTheWorstSeverity(t *testing.T) {
 		{"lower severities show when no worse one exists", completed(reviewmemory.SeverityCounts{0, 0, 1, 0}), "● P2 1"},
 		{"exact counts above nine", completed(reviewmemory.SeverityCounts{0, 12, 0, 9}), "● P1 12"},
 		{"clean review", completed(reviewmemory.SeverityCounts{}), "✓ clean"},
-		{"counts never leak into other states", reviewRowSummary{state: "running", findings: reviewmemory.SeverityCounts{1, 0, 0, 0}}, "●"},
+		{"counts never leak into other states", reviewRowSummary{state: "running", findings: reviewmemory.SeverityCounts{1, 0, 0, 0}}, "◉"},
 		{"failed rerun hides older counts", reviewRowSummary{state: "failed", findings: reviewmemory.SeverityCounts{1, 0, 0, 0}}, "✗"},
 	} {
 		cell := reviewCellText(tc.summary)
@@ -163,6 +174,25 @@ func TestUpdatedAgesAlignToTheRightEdge(t *testing.T) {
 	for i, want := range []string{"30m", "1h", "6w"} {
 		if row := lines[lay.firstPRRow+i]; !strings.HasSuffix(row, " "+want) || lipgloss.Width(row) != m.width {
 			t.Fatalf("row %d = %q, want age %q at the right edge", i, row, want)
+		}
+	}
+}
+
+// TestPostedCellShowsTheDimDotWithoutAKnownSource covers the POSTED column.
+// No submitted reviews and an uncertain history both show the dim dot, like
+// the CI and REVIEW columns. The selected detail names the reason.
+func TestPostedCellShowsTheDimDotWithoutAKnownSource(t *testing.T) {
+	model := layoutModel(t, 160)
+	pr, _ := model.selectedPR()
+	layout := model.tableLayout(false)
+	// The loading fallback and postedReviewSummary both produce the dot.
+	for _, summary := range []reviewRowSummary{model.rowReviewSummary(pr), {state: "none", posted: noneMark.text}} {
+		model.reviewRows = map[string]reviewOverviewRow{pr.URL: {identity: dispatch.Identity(pr), summary: summary}}
+		header := stripANSI(model.renderHeader(layout))
+		row := stripANSI(model.renderPRRow(pr, layout, false, time.Now()))
+		x := lipgloss.Width(header[:strings.Index(header, "POSTED")])
+		if got := ansi.Cut(row, x, x+8); got != "·       " {
+			t.Fatalf("posted %q renders %q", summary.posted, got)
 		}
 	}
 }
