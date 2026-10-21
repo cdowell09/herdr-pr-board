@@ -26,6 +26,15 @@ A short terminal makes the text shorter. Then it shows the keys without the acti
 The filter, loading, and error messages replace this text.
 
 The board shows the URL of the selected PR.
+The selected row has a background color across the full table width.
+A `▌` mark in the left gutter identifies the selected row.
+
+When all rows in the current view belong to one repository, the board hides the **REPOSITORY** column.
+A dim line under the header names the repository, for example `all in acme/api`.
+The filter can cause this change. A short terminal keeps the column instead of the line.
+
+The **UPDATED** column shows the time since the last PR update: `now`, `5m`, `3h`, `2d`, or `6w`.
+The ages align to the right edge of the table.
 
 The CI column uses a symbol and a color:
 
@@ -38,19 +47,18 @@ The CI column uses a symbol and a color:
 | `?` | Dim | The plugin cannot get the check status. |
 
 The **REVIEW** column shows local PR Board reviews for the current revision.
-A completed review with findings shows the finding count for each severity:
+A completed review with findings shows the most severe finding level and its count:
 
 ```
-P0:1 P1:2 P2:0 P3:3
+● P2 1
 ```
 
-The counts are in severity order from P0 to P3. A count of 10 or more shows `+`.
-A P0 count above zero is red. A P1 count above zero is yellow. Zero counts are dim.
+The color identifies the severity. P0 is red. P1 is orange. P2 is yellow. P3 is gray.
+A completed review with no findings shows `✓ clean`.
 Every other state uses the CI symbols:
 
 | Symbol | Meaning |
 | --- | --- |
-| `✓` | The current revision has a completed local review with no findings. |
 | `●` | A review is running, queued, waiting for a slot, or awaiting dispatch. |
 | `✗` | The current revision has a failed, blocked, or abandoned review. |
 | `–` | No local review is active or complete for this revision. |
@@ -58,9 +66,19 @@ Every other state uses the CI symbols:
 
 Select a PR to read its local reviews in the review region below the URL.
 A rule closes the table above the URL, so the table and the region read as two areas.
-A line under the URL summarizes the posted reviews.
-The region header names the outcome, the reviewer, the revision comparison, and the severity counts.
-The findings follow the header.
+The region shows one labeled row for each topic:
+
+| Label | Content |
+| --- | --- |
+| `REVIEW` | The outcome, the reviewer, and the revision comparison. The run position, for example `run 1 of 3`, is at the right edge. |
+| `FINDINGS` | The reviewer summary. A dim line lists the checks that the reviewer did not run. |
+| `REVISION` | The short head commit, the target branch, and the start time. |
+| `POSTED` | The submitted reviews for the PR. |
+| `AUTOMATION` | The monitor state, the automatic launch setting, and the action after a review. |
+
+Each finding follows these rows under its severity label, with its file, line, and text.
+When a newer run did not complete, the region also shows the completed run that publication targets.
+The run ID and the diagnostics path show only in zoom.
 A terminal with fewer than 24 rows collapses the region to one summary line.
 That line shows the exact count for each severity, or `no findings`.
 Local status updates each second without GitHub requests.
@@ -82,7 +100,7 @@ Draft reviews and ordinary PR conversation comments do not count as submitted re
 Dismissed reviews still count as posts. The column does not represent approval status.
 `GitHub` identifies the publication source. It does not prove that a human wrote the review.
 A review started with `--review` is still a PR Board review.
-Press `v` to zoom the review region for previous runs and publication diagnostics.
+Press `v` to zoom the review region for previous runs, run IDs, diagnostics paths, and publication diagnostics.
 GitHub review observations follow the normal refresh interval and cache.
 
 ## Controls
@@ -120,7 +138,7 @@ GitHub review observations follow the normal refresh interval and cache.
 The board sorts PRs by update time, with the most recent first.
 The filter matches repository names, titles, authors, and PR numbers.
 It also matches the REVIEW and CI cells and their state names.
-For example, `/p0:1` finds a review with one P0 finding.
+For example, `/p0` finds a review whose most severe finding is P0, and `/clean` finds a clean review.
 `/failure` finds failed CI.
 The filter ignores letter case and makes no GitHub requests.
 One filter applies to all views.
@@ -210,8 +228,8 @@ The board adapts to the terminal width:
 | 60–79 cells | No author or updated columns. |
 | Fewer than 60 cells | PR, CI, REVIEW, and title columns. |
 
-The REVIEW column keeps 19 cells at every width. The title column absorbs the difference.
-Below 100 cells, the title column shows only a few characters.
+The REVIEW column keeps 8 cells at every width. The title column absorbs the remaining width.
+The fixed columns stay at the right edge of the table.
 The title bar shows the plugin version at 80 cells or more.
 A narrower terminal omits the version and keeps the configured title.
 The selected PR URL stays visible at every width.

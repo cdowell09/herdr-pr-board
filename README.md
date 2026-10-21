@@ -9,7 +9,7 @@ PR Board brings GitHub searches, CI status, and agent reviews into one reusable 
 - Keep findings local, or enable publication and automatic reviews per repository.
 - Retrieve JSON snapshots for scripts and coding agents.
 
-![PR Board with repository views, CI status, and review controls](docs/images/herdr-pr-board.png)
+![PR Board with a selected PR, CI and review status, and the labeled review region](docs/images/herdr-pr-board.png)
 
 ## Install and open
 
@@ -60,7 +60,7 @@ The board refreshes every five minutes by default.
 Click a footer key to do the action of that key.
 
 The CI column shows check status.
-REVIEW shows local review progress and finding counts for the current revision.
+REVIEW shows local review progress and the most severe finding for the current revision.
 POSTED shows reviews submitted through GitHub, this PR Board installation, or both.
 Select a PR to inspect its revision details.
 See [board controls and status](docs/board.md) for all controls, symbols, and layouts.
