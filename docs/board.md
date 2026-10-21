@@ -228,6 +228,7 @@ herdr plugin action invoke open --plugin cdowell09.pr-board
 
 The action opens a dedicated tab named `PR Board`.
 If the tab is open, the action focuses that tab.
+If the tab is in another workspace, the action moves the board to the workspace that you view.
 
 You can add this key binding to `~/.config/herdr/config.toml`:
 

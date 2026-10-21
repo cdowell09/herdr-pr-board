@@ -3,7 +3,6 @@ package config
 import (
 	"bytes"
 	"context"
-	"crypto/sha256"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -37,8 +36,8 @@ func SaveRepository(ctx context.Context, path, stateDir string, repo Repository,
 	if err := os.MkdirAll(stateDir, 0700); err != nil {
 		return Config{}, err
 	}
-	lockName := fmt.Sprintf("config-%x.lock", sha256.Sum256([]byte(resolved)))
-	lock, err := localstate.Lock(ctx, filepath.Join(stateDir, lockName))
+	// One lock per state directory: path text cannot tell aliases of one file apart.
+	lock, err := localstate.Lock(ctx, filepath.Join(stateDir, "config.lock"))
 	if err != nil {
 		return Config{}, err
 	}

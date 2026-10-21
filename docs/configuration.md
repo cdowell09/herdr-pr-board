@@ -178,6 +178,8 @@ The tokens appear under the workspace that runs the board.
 With a nonzero `sidebar.ttl`, tokens expire after the last report.
 Closing the board stops reports.
 With `sidebar.ttl = "0"`, closing the board does not expire tokens.
+When the open action moves the board to another workspace, it clears the tokens in the workspace that the board left.
+With `sidebar.ttl = "0"`, a failed clear or an overlapping report can leave old tokens there.
 The headless monitor does not report workspace tokens.
 The board reports tokens only when Herdr starts it. When you run the binary directly, the board does not report.
 

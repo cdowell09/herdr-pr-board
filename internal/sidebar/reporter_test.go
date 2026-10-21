@@ -16,22 +16,71 @@ import (
 
 func TestMain(m *testing.M) {
 	if strings.TrimSuffix(filepath.Base(os.Args[0]), ".exe") == "herdr" {
+		if strings.Join(os.Args[1:], " ") == "pane current" {
+			os.Stdout.Write(paneIn("w1"))
+		}
 		os.Exit(0)
 	}
 	os.Exit(m.Run())
 }
 
+func paneIn(workspace string) []byte {
+	return []byte(`{"result":{"pane":{"pane_id":"` + workspace + `:p1","workspace_id":"` + workspace + `"}}}`)
+}
+
+// fakeRunner records report calls. It answers `pane current` with current,
+// or fails that lookup when current is nil.
 type fakeRunner struct {
-	calls [][]string
-	err   error
+	calls   [][]string
+	err     error
+	current []byte
 }
 
 func (f *fakeRunner) Run(_ context.Context, args ...string) ([]byte, error) {
+	if len(args) == 2 && args[0] == "pane" && args[1] == "current" {
+		if f.current == nil {
+			return nil, errors.New("no pane")
+		}
+		return f.current, nil
+	}
 	f.calls = append(f.calls, append([]string(nil), args...))
 	if f.err != nil {
 		return nil, f.err
 	}
 	return []byte(`{"id":"cli:workspace:report-metadata","result":{}}`), nil
+}
+
+// The open action moves the board pane between workspaces. The process keeps
+// its startup workspace ID, so each report asks Herdr where the pane runs now.
+func TestReportFollowsBoardPaneToItsCurrentWorkspace(t *testing.T) {
+	runner := &fakeRunner{current: paneIn("w5")}
+	reporter := Reporter{Runner: runner.Run, WorkspaceID: "w1"}
+	if err := reporter.Report(context.Background(), map[string]string{TokenOpen: "1 open"}); err != nil {
+		t.Fatal(err)
+	}
+	if got := runner.calls[0][2]; got != "w5" {
+		t.Fatalf("reported to %q, want the current workspace w5", got)
+	}
+}
+
+// The startup workspace can be obsolete, so an unknown location is an error.
+func TestReportFailsWhenBoardWorkspaceIsUnknown(t *testing.T) {
+	for name, current := range map[string][]byte{
+		"lookup fails": nil,
+		"malformed":    []byte("not json"),
+		"no workspace": []byte(`{"result":{"pane":{"pane_id":"w1:p1"}}}`),
+	} {
+		t.Run(name, func(t *testing.T) {
+			runner := &fakeRunner{current: current}
+			reporter := Reporter{Runner: runner.Run, WorkspaceID: "w1"}
+			if err := reporter.Report(context.Background(), map[string]string{TokenOpen: "1 open"}); err == nil {
+				t.Fatal("expected an unknown workspace error")
+			}
+			if len(runner.calls) != 0 {
+				t.Fatalf("reported without a known workspace: %#v", runner.calls)
+			}
+		})
+	}
 }
 
 func TestReportRequiresWorkspaceID(t *testing.T) {
@@ -54,7 +103,7 @@ func TestReportUsesConfiguredBinary(t *testing.T) {
 }
 
 func TestReportBuildsMetadataArguments(t *testing.T) {
-	runner := &fakeRunner{}
+	runner := &fakeRunner{current: paneIn("w2")}
 	reporter := Reporter{Runner: runner.Run, WorkspaceID: "w2", TTL: 15 * time.Minute}
 	err := reporter.Report(context.Background(), map[string]string{
 		TokenOpen:   "3 open",
@@ -78,7 +127,7 @@ func TestReportBuildsMetadataArguments(t *testing.T) {
 }
 
 func TestReportOmitsTTLWhenZero(t *testing.T) {
-	runner := &fakeRunner{}
+	runner := &fakeRunner{current: paneIn("w1")}
 	reporter := Reporter{Runner: runner.Run, WorkspaceID: "w1"}
 	if err := reporter.Report(context.Background(), map[string]string{TokenOpen: "1 open"}); err != nil {
 		t.Fatal(err)
@@ -92,7 +141,7 @@ func TestReportOmitsTTLWhenZero(t *testing.T) {
 }
 
 func TestReportPropagatesRunnerError(t *testing.T) {
-	reporter := Reporter{Runner: (&fakeRunner{err: errors.New("bad workspace")}).Run, WorkspaceID: "w1"}
+	reporter := Reporter{Runner: (&fakeRunner{current: paneIn("w1"), err: errors.New("bad workspace")}).Run, WorkspaceID: "w1"}
 	if err := reporter.Report(context.Background(), map[string]string{TokenOpen: "1 open"}); err == nil {
 		t.Fatal("expected error")
 	}

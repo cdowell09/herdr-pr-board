@@ -2,6 +2,7 @@ package sidebar
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"sort"
@@ -23,7 +24,8 @@ type Reporter struct {
 	Runner cli.Runner
 	// Binary is the herdr CLI path. Empty means DefaultBinary on PATH.
 	Binary string
-	// WorkspaceID is the Herdr workspace that owns this board process.
+	// WorkspaceID is the Herdr workspace that started this board process. It
+	// marks a board inside Herdr; Report asks Herdr for the current workspace.
 	WorkspaceID string
 	// TTL is how long the reported tokens stay visible. Zero disables
 	// expiry and sends no --ttl-ms flag.
@@ -53,11 +55,36 @@ func (r Reporter) runner() cli.Runner {
 	return cli.Command(bin)
 }
 
-// Report writes the tokens to the reporter's workspace metadata.
+// ClearArgs returns the herdr arguments that clear every board token from a
+// workspace. Herdr prints nothing when the command succeeds.
+func ClearArgs(workspaceID string) []string {
+	return []string{"workspace", "report-metadata", workspaceID, "--source", Source,
+		"--clear-token", TokenOpen, "--clear-token", TokenReview, "--clear-token", TokenCI}
+}
+
+// Report writes the tokens to the metadata of the workspace that runs the
+// board now. The open action can move the board pane to another workspace.
 func (r Reporter) Report(ctx context.Context, tokens map[string]string) error {
-	workspaceID := strings.TrimSpace(r.WorkspaceID)
-	if workspaceID == "" {
+	if strings.TrimSpace(r.WorkspaceID) == "" {
 		return errors.New("workspace ID is required")
+	}
+	out, err := r.runner()(ctx, "pane", "current")
+	if err != nil {
+		return fmt.Errorf("find the board workspace: %w", err)
+	}
+	var current struct {
+		Result struct {
+			Pane struct {
+				WorkspaceID string `json:"workspace_id"`
+			} `json:"pane"`
+		} `json:"result"`
+	}
+	if err := json.Unmarshal(out, &current); err != nil {
+		return fmt.Errorf("decode the board workspace: %w", err)
+	}
+	workspaceID := current.Result.Pane.WorkspaceID
+	if workspaceID == "" {
+		return errors.New("herdr reported no workspace for the board pane")
 	}
 	args := []string{"workspace", "report-metadata", workspaceID, "--source", Source}
 	names := make([]string, 0, len(tokens))
