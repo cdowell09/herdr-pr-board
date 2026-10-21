@@ -2,7 +2,7 @@
 
 The `internal/reviewmemory` package owns review history and local claims.
 It does not launch reviewers or publish findings.
-See [manual reviews](reviews.md) for commands and board controls.
+See [reviews](reviews.md) for commands and board controls.
 
 Supply `HERDR_PLUGIN_STATE_DIR` to `reviewmemory.Open`.
 The package stores history and lock files in its `reviews` directory.

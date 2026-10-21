@@ -16,7 +16,8 @@ It receives reviewer context from PR Board and returns structured findings.
 **Coding agent**:
 The agent the human uses to write code.
 PR Board does not control this agent.
-A command shortcut can start a user-configured command, but PR Board does not drive or track it.
+A command shortcut can start a user-configured command.
+PR Board does not drive or track that command.
 It is not an actor in these journeys.
 
 ## Primary journey: automatic reviews
@@ -34,10 +35,10 @@ It is not an actor in these journeys.
 
 ## Secondary journey: command shortcut
 
-1. The human configures a command shortcut in `config.toml`, for example an interactive review session.
+1. The human configures a command shortcut in `config.toml`. An example is an interactive review session.
 2. The human selects a PR on the board.
 3. The human presses the command shortcut.
-4. PR Board runs the command for the PR in a new Herdr pane and does not track it.
+4. PR Board runs the command for the PR in a new Herdr pane. PR Board does not track the command.
 
 See [replace manual review runs with command shortcuts](adr/0003-replace-manual-review-runs-with-command-shortcuts.md).
 

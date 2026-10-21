@@ -94,7 +94,7 @@ The plugin combines the scoped results. The plugin removes duplicate PR URLs.
 | `[[shortcuts]]` | None | See [command shortcuts](#command-shortcuts). | Keys that run your command for the selected PR in a new Herdr pane. |
 
 Reviewer commands and repository permissions require separate configuration.
-See [manual reviews](reviews.md) and [repository setup and publication](repository-publication.md) for those settings.
+See [reviews](reviews.md) and [repository setup and publication](repository-publication.md) for those settings.
 
 The board validates configuration at startup.
 Invalid settings prevent startup.
@@ -214,7 +214,8 @@ cwd   = "~"     # optional
 
 The keys in [board controls](board.md#controls) and [review region controls](reviews.md#use-the-review-region) are built-in keys.
 `r`, `n`, and `N` are available.
-The new pane runs the command under `sh -c`. Command shortcuts require `sh`, so they do not work on Windows.
+The new pane runs the command under `sh -c`. Command shortcuts require `sh`.
+Command shortcuts do not work on Windows.
 See [command shortcuts](board.md#command-shortcuts) for the board behavior.
 
 ## API capacity and refresh failures

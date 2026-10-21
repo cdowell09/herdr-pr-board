@@ -87,7 +87,7 @@ Create the selected files before saving these profiles.
 See [complete instruction examples](review-instructions.md#configure-named-profiles) for file contents.
 PR Board passes arguments directly without shell interpretation.
 Start reviews with the `--review` command or with automatic reviews.
-See [manual reviews](reviews.md) for launch, retry, timeout, and history behavior.
+See [reviews](reviews.md) for launch, retry, timeout, and history behavior.
 
 ## Review preparation
 

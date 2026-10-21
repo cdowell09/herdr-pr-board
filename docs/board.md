@@ -109,7 +109,7 @@ GitHub review observations follow the normal refresh interval and cache.
 | `Ctrl+U`, `Esc` | Clear the filter. |
 | `E` | Edit the active configuration. |
 | `v` | Zoom the review region to the full height. |
-| `t`, `s`, `c`, `a`, `x` | Act on the selected PR's reviews. See [manual reviews](reviews.md#use-the-review-region). |
+| `t`, `s`, `c`, `a`, `x` | Act on the selected PR's reviews. See [review region](reviews.md#use-the-review-region). |
 | A command shortcut key | Run the command shortcut for the selected PR. See [command shortcuts](#command-shortcuts). |
 | `Ctrl+R` | Refresh the active view. |
 | `R` | Refresh all views. |
@@ -120,7 +120,8 @@ GitHub review observations follow the normal refresh interval and cache.
 The board sorts PRs by update time, with the most recent first.
 The filter matches repository names, titles, authors, and PR numbers.
 It also matches the REVIEW and CI cells and their state names.
-For example, `/p0:1` finds a review with one P0 finding, and `/failure` finds failed CI.
+For example, `/p0:1` finds a review with one P0 finding.
+`/failure` finds failed CI.
 The filter ignores letter case and makes no GitHub requests.
 One filter applies to all views.
 A refresh keeps the selection on the same PR while the PR stays in the view.
@@ -146,7 +147,7 @@ The help lists every board control, every review region control, and every comma
 Scroll it with `j`, `k`, `↑`, `↓`, `g`, `G`, `Home`, `End`, or the mouse wheel.
 Press `?` or `Esc` to close it.
 
-See [manual reviews](reviews.md) for review controls, cancellation, and result history.
+See [reviews](reviews.md) for review controls, cancellation, and result history.
 
 ## Command shortcuts
 
