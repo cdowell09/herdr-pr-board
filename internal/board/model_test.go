@@ -25,6 +25,11 @@ func stripANSI(value string) string {
 	return ansiPattern.ReplaceAllString(value, "")
 }
 
+// insideFrame removes the table frame sides from a rendered table line.
+func insideFrame(line string) string {
+	return strings.TrimSuffix(strings.TrimPrefix(line, "│"), "│")
+}
+
 func displayColumn(line, needle string) (int, bool) {
 	idx := strings.Index(line, needle)
 	if idx < 0 {

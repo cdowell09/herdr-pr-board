@@ -137,7 +137,7 @@ func TestModelURLRemainsVisibleInEveryLayout(t *testing.T) {
 }
 
 func TestModelMouseCoordinatesMatchRenderedOutputInEachLayout(t *testing.T) {
-	for _, width := range []int{50, 80, 120} {
+	for _, width := range []int{50, 80, 90, 120, 140} {
 		model := layoutModel(t, width)
 		lines := strings.Split(model.View(), "\n")
 
@@ -194,7 +194,96 @@ func TestModelMouseCoordinatesMatchRenderedOutputInEachLayout(t *testing.T) {
 		if command == nil {
 			t.Fatalf("width %d: URL click did not return a browser command", width)
 		}
-		_ = updated
+		model = updated.(Model)
+
+		// A click on a lower row, inside the frame, selects the row that
+		// renders there.
+		secondY := -1
+		for y, line := range lines {
+			if strings.Contains(stripANSI(line), "#42 ") {
+				secondY = y
+			}
+		}
+		x, _ := displayColumn(stripANSI(lines[secondY]), "#42")
+		updated, _ = model.Update(tea.MouseMsg(tea.MouseEvent{X: x, Y: secondY, Action: tea.MouseActionPress, Button: tea.MouseButtonLeft}))
+		if got := updated.(Model).cursor; got != 1 {
+			t.Fatalf("width %d: click on rendered #42 at y %d selected %d, want 1", width, secondY, got)
+		}
+
+		// The footer keys stay outside the frame. A click on the rendered
+		// help key opens the help.
+		for y := len(lines) - 1; y >= 0; y-- {
+			if x, ok := displayColumn(stripANSI(lines[y]), "? help"); ok {
+				updated, _ = model.Update(tea.MouseMsg(tea.MouseEvent{X: x, Y: y, Action: tea.MouseActionPress, Button: tea.MouseButtonLeft}))
+				if !updated.(Model).helpOverlay {
+					t.Fatalf("width %d: click on the rendered help key at %d,%d did nothing", width, x, y)
+				}
+				break
+			}
+		}
+	}
+}
+
+// TestFrameTitleNamesTheViewAndItsCount covers the rounded table frame. Its
+// top edge names the active view, not the board title, and an active filter
+// shows its matches.
+func TestFrameTitleNamesTheViewAndItsCount(t *testing.T) {
+	for _, width := range []int{50, 90, 140} {
+		model := layoutModel(t, width)
+		lines := strings.Split(stripANSI(model.View()), "\n")
+		top := lines[tabRowY+1]
+		if !strings.HasPrefix(top, "╭─ Opened by me (3) ─") || !strings.HasSuffix(top, "─╮") || lipgloss.Width(top) != width {
+			t.Fatalf("width %d: frame top = %q", width, top)
+		}
+		if strings.Contains(top, model.cfg.UI.Title) {
+			t.Fatalf("width %d: frame top repeats the board title: %q", width, top)
+		}
+		for _, line := range lines[tabRowY+2 : model.boardLayout().selectedURLRow-1] {
+			if !strings.HasPrefix(line, "│") && !strings.HasPrefix(line, "├") || lipgloss.Width(line) != width {
+				t.Fatalf("width %d: table line outside the frame: %q", width, line)
+			}
+		}
+		filtered := press(model, runes("/"), runes("acme"))
+		if top := strings.Split(stripANSI(filtered.View()), "\n")[tabRowY+1]; !strings.HasPrefix(top, "╭─ Opened by me (2 of 3) ─") {
+			t.Fatalf("width %d: filtered frame top = %q", width, top)
+		}
+	}
+}
+
+// TestFrameKeepsShortMessagesInside covers messages that replace the table.
+// Each one fits inside the frame, so the right side stays on screen.
+func TestFrameKeepsShortMessagesInside(t *testing.T) {
+	for _, width := range []int{22, 34} {
+		for name, setup := range map[string]func(*Model){
+			"loading":  func(m *Model) { m.loading = true },
+			"no match": func(m *Model) { m.filter = "nothing" },
+			"error":    func(m *Model) { m.views[0].Err = errors.New("timeout while searching") },
+		} {
+			model := emptyViewModel(t, width, defaultView(t, config.ViewAuthored))
+			setup(&model)
+			for _, line := range strings.Split(stripANSI(model.renderTable(model.boardLayout())), "\n") {
+				if line == "" {
+					continue
+				}
+				if lipgloss.Width(line) != width || !strings.HasSuffix(line, "│") && !strings.HasSuffix(line, "╮") && !strings.HasSuffix(line, "╯") {
+					t.Fatalf("%s width %d: line outside the frame: %q", name, width, line)
+				}
+			}
+		}
+	}
+}
+
+// TestSharedRepositoryHeaderIsBoldAccentWithCount covers the group header
+// that names the shared repository.
+func TestSharedRepositoryHeaderIsBoldAccentWithCount(t *testing.T) {
+	colorProfile(t)
+	model := layoutModel(t, 120)
+	for i := range model.views[0].PRs {
+		model.views[0].PRs[i].Repository = "acme/web-ui"
+	}
+	line := strings.Split(model.View(), "\n")[model.boardLayout().firstPRRow-1]
+	if !strings.Contains(line, "\x1b[1;38;5;105m") || !strings.Contains(stripANSI(line), "acme/web-ui (3)") {
+		t.Fatalf("group header = %q", line)
 	}
 }
 
@@ -458,8 +547,10 @@ func emptyViewModel(t *testing.T, width int, views ...config.View) Model {
 
 // flatten removes the line breaks that wrapping adds, so one assertion covers
 // every terminal width.
+// flatten removes white space and the table frame sides, so wrapped text
+// inside the frame compares as one string.
 func flatten(value string) string {
-	return strings.Join(strings.Fields(value), "")
+	return strings.Join(strings.Fields(strings.ReplaceAll(value, "│", "")), "")
 }
 
 // defaultView returns a copy of the default view with this identifier.
@@ -584,7 +675,9 @@ func TestEmptyViewCentersItsText(t *testing.T) {
 	want := "You have no open pull requests."
 	for y, line := range lines {
 		if x := strings.Index(line, want); x >= 0 {
-			if left := (80 - len(want)) / 2; x != left {
+			// The frame side takes one column, and the text centers in the
+			// 78 columns inside the frame.
+			if x, left := lipgloss.Width(line[:x]), 1+(78-len(want))/2; x != left {
 				t.Fatalf("message starts at x %d, want %d", x, left)
 			}
 			if y <= model.boardLayout().firstPRRow {
@@ -601,7 +694,9 @@ func TestEmptyViewCentersItsText(t *testing.T) {
 func TestTabLabelsNameTheViewAndItsCount(t *testing.T) {
 	model := layoutModel(t, 120)
 	tabs := stripANSI(strings.Split(model.View(), "\n")[tabRowY])
-	if !strings.Contains(tabs, " Opened by me (3) · Review requested (0) ") {
+	// The active tab fill ends one cell after its label. One space then
+	// separates the fill from the dot on each side.
+	if !strings.Contains(tabs, " Opened by me (3)  · Review requested (0)") {
 		t.Fatalf("tab row = %q", tabs)
 	}
 	if next := press(model, runes("2")); next.active != 1 {
@@ -697,8 +792,9 @@ func TestEmptyViewFitsShortTerminalsAndKeepsTheKeys(t *testing.T) {
 			if index, ok := model.tabAtX(lipgloss.Width(tabs[:start])); !ok || index != 0 {
 				t.Fatalf("width %d height %d: tabAtX = %d, %v, want 0", width, height, index, ok)
 			}
-			if height < 12 {
-				// A short pane drops the actions, then the keys.
+			// A short pane drops the actions, then the keys. The frame takes
+			// two columns, so the narrowest pane needs one more row.
+			if height < 12 || width < 40 && height < 14 {
 				continue
 			}
 			for _, pair := range []string{"Tab next view", "E edit config", "Ctrl+R refresh"} {
@@ -769,7 +865,7 @@ func TestSharedRepositoryMovesOutOfTheTable(t *testing.T) {
 		if header := lines[lay.firstPRRow-3]; strings.Contains(header, "REPOSITORY") || !strings.Contains(header, "TITLE") && width >= 80 {
 			t.Fatalf("width %d: header = %q", width, header)
 		}
-		if got := strings.TrimRight(lines[lay.firstPRRow-1], " "); got != "   all in acme/web-ui" {
+		if got := strings.TrimRight(insideFrame(lines[lay.firstPRRow-1]), " "); got != "   acme/web-ui (3)" {
 			t.Fatalf("width %d: shared repository line = %q", width, got)
 		}
 		for i, number := range []string{"#7", "#42", "#1234"} {
@@ -791,7 +887,7 @@ func TestFilterToOneRepositoryHidesTheRepositoryColumn(t *testing.T) {
 	model := press(layoutModel(t, 120), runes("/"), runes("acme/web-ui"))
 	lines := strings.Split(stripANSI(model.View()), "\n")
 	lay := model.boardLayout()
-	if got := strings.TrimSpace(lines[lay.firstPRRow-1]); got != "all in acme/web-ui" || !strings.Contains(lines[lay.firstPRRow], "#42 ") {
+	if got := strings.TrimSpace(insideFrame(lines[lay.firstPRRow-1])); got != "acme/web-ui (1)" || !strings.Contains(lines[lay.firstPRRow], "#42 ") {
 		t.Fatalf("filtered view:\n%s", strings.Join(lines, "\n"))
 	}
 	model = press(model, tea.KeyMsg{Type: tea.KeyEsc})

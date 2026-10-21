@@ -310,19 +310,21 @@ func TestSettingsFormKeepsThePinnedPRAcrossAReorder(t *testing.T) {
 	}
 }
 
-func TestSeparatorClosesTheTableAboveTheSelection(t *testing.T) {
+func TestFrameClosesTheTableAboveTheSelection(t *testing.T) {
 	m := splitModel(t, &reviewFake{})
 	lay := m.boardLayout()
 	lines := strings.Split(stripANSI(m.View()), "\n")
-	if rule := lines[lay.selectedURLRow-1]; rule != strings.Repeat("─", m.width) {
+	if rule := lines[lay.selectedURLRow-1]; rule != "╰"+strings.Repeat("─", m.width-2)+"╯" {
 		t.Fatalf("row above the URL = %q", rule)
 	}
 	if lines[lay.selectedURLRow] != m.region.pr.URL {
 		t.Fatalf("URL moved: %q", lines[lay.selectedURLRow])
 	}
+	// An empty view keeps the frame and the blank URL row under it.
 	empty := emptyViewModel(t, 80, defaultView(t, config.ViewAll))
-	if view := stripANSI(empty.View()); strings.Contains(view, strings.Repeat("─", 80)+"\nNo PR selected") {
-		t.Fatalf("empty view drew a separator:\n%s", view)
+	emptyView := stripANSI(empty.View())
+	if !strings.Contains(emptyView, "╰"+strings.Repeat("─", 78)+"╯\n\n") {
+		t.Fatalf("empty view frame:\n%s", emptyView)
 	}
 }
 

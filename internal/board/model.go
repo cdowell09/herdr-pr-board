@@ -106,10 +106,12 @@ func sharedRepository(rows []gh.PullRequest) string {
 }
 
 var (
-	titleStyle    = lipgloss.NewStyle().Bold(true).Foreground(highlightColor)
-	activeTab     = lipgloss.NewStyle().Bold(true).Foreground(brightColor).Background(accentFillColor).Padding(0, 1)
-	inactiveTab   = lipgloss.NewStyle().Foreground(subtleColor).Padding(0, 1)
-	headerStyle   = lipgloss.NewStyle().Bold(true).Foreground(textColor).BorderBottom(true).BorderStyle(lipgloss.NormalBorder()).BorderForeground(borderColor)
+	titleStyle  = lipgloss.NewStyle().Bold(true).Foreground(highlightColor)
+	activeTab   = lipgloss.NewStyle().Bold(true).Foreground(brightColor).Background(accentFillColor).Padding(0, 1)
+	inactiveTab = lipgloss.NewStyle().Foreground(subtleColor)
+	headerStyle = lipgloss.NewStyle().Bold(true).Foreground(textColor)
+	// groupStyle names the repository that every listed row shares.
+	groupStyle    = lipgloss.NewStyle().Bold(true).Foreground(accentColor)
 	selectedStyle = lipgloss.NewStyle().Foreground(brightColor).Background(selectionColor)
 	// selectionEdgeStyle marks the selected row in the table gutter.
 	selectionEdgeStyle = lipgloss.NewStyle().Foreground(accentColor)
@@ -119,18 +121,18 @@ var (
 	warningStyle       = lipgloss.NewStyle().Foreground(warnColor)
 	errorStyle         = lipgloss.NewStyle().Foreground(errorColor)
 	urlStyle           = lipgloss.NewStyle().Foreground(linkColor).Underline(true)
-	// separatorStyle matches the table header border, so the rule under the
-	// last row closes the table the way the header opens it.
-	separatorStyle = lipgloss.NewStyle().Foreground(borderColor)
+	// frameStyle draws the rounded frame around the table.
+	frameStyle = lipgloss.NewStyle().Foreground(borderColor)
 )
 
-// tabPadding is the horizontal padding the tab styles add to every label.
-// Deriving it from the style keeps tab hitboxes correct if the padding
-// changes.
-var tabPadding = lipgloss.Width(inactiveTab.Render(""))
+// tabPadding is the horizontal padding the active tab fill adds to its label.
+// Inactive tabs have no padding, so the separator spaces both sides of every
+// dot equally. Deriving it from the style keeps tab hitboxes correct if the
+// padding changes.
+var tabPadding = lipgloss.Width(activeTab.Render(""))
 
-// tabSeparator is the dim dot between two tabs. tabBars counts its one cell.
-var tabSeparator = dimStyle.Render("·")
+// tabSeparator is the dim dot between two tabs. tabBars counts its cells.
+var tabSeparator = dimStyle.Render(" · ")
 
 type snapshotMsg struct {
 	discovery.Snapshot
@@ -726,7 +728,7 @@ type tabBar struct {
 
 // tabBars lays out the tabs across the tab row. The rendered labels and the
 // mouse hitboxes share these positions. The x advance includes the
-// one-cell separator renderTabs puts between tabs.
+// separator renderTabs puts between tabs.
 func (m Model) tabBars() []tabBar {
 	bars := make([]tabBar, len(m.views))
 	x := 0
@@ -738,7 +740,7 @@ func (m Model) tabBars() []tabBar {
 		}
 		width := lipgloss.Width(style.Render(label))
 		bars[i] = tabBar{label: label, x: x, width: width}
-		x += width + 1
+		x += width + lipgloss.Width(tabSeparator)
 	}
 	return bars
 }
@@ -794,9 +796,8 @@ func (m Model) View() string {
 	if notice := m.renderStaleNotice(); notice != "" {
 		output.WriteString(notice + "\n")
 	}
-	output.WriteString("\n")
 	output.WriteString(m.renderTable(lay))
-	output.WriteString(m.renderSeparator() + "\n" + m.renderSelected(lay))
+	output.WriteString(m.renderSelected(lay))
 	if lay.regionRows > 0 {
 		output.WriteString("\n" + m.renderRegion(lay))
 	}
@@ -808,17 +809,6 @@ func (m Model) View() string {
 	}
 	output.WriteString("\n" + footer)
 	return output.String()
-}
-
-// renderSeparator closes the table with a rule above the selected PR, so the
-// table and the review region read as two areas. It takes the row that was
-// blank, so the geometry does not change. A view without a selection keeps
-// the blank row.
-func (m Model) renderSeparator() string {
-	if _, ok := m.selectedPR(); !ok {
-		return ""
-	}
-	return separatorStyle.Render(strings.Repeat("─", max(0, m.width)))
 }
 
 func (m Model) renderTabs() string {
@@ -840,38 +830,6 @@ func (m Model) renderStaleNotice() string {
 	}
 	notice := fmt.Sprintf("stale — showing %d rows retained from the last successful refresh", len(view.PRs))
 	return warningStyle.Render(truncate(notice, m.width))
-}
-
-func (m Model) renderTable(lay boardLayout) string {
-	view := m.currentView()
-	if view.Err != nil && len(view.PRs) == 0 {
-		return errorStyle.Render(truncate("GitHub query failed: "+view.Err.Error(), m.width)) + "\n"
-	}
-	rows := m.filteredPRs()
-	if len(rows) == 0 {
-		if m.loading {
-			return dimStyle.Render("Loading pull requests…") + "\n"
-		}
-		if m.filter != "" {
-			return dimStyle.Render("No pull requests match the filter.") + "\n"
-		}
-		return m.renderEmptyView(lay)
-	}
-
-	cols := m.tableLayout(lay.repository != "")
-	var output strings.Builder
-	output.WriteString(m.renderHeader(cols) + "\n")
-	if lay.repository != "" {
-		line := strings.Repeat(" ", gutterWidth) + "all in " + lay.repository
-		output.WriteString(dimStyle.Render(truncate(line, m.width)) + "\n")
-	}
-	end := min(m.offset+lay.visibleRows, len(rows))
-	// One clock reading per render keeps every row's age consistent.
-	now := time.Now()
-	for i := m.offset; i < end; i++ {
-		output.WriteString(m.renderPRRow(rows[i], cols, i == m.cursor, now) + "\n")
-	}
-	return output.String()
 }
 
 func (m Model) currentView() discovery.ViewData {
@@ -923,7 +881,7 @@ func (m Model) tabLabel(index int, view discovery.ViewData) string {
 
 func (m Model) tabBudget() int {
 	count := max(1, len(m.views))
-	available := m.width - (count - 1) // separators between tabs
+	available := m.width - (count-1)*lipgloss.Width(tabSeparator)
 	return max(6, available/count-tabPadding)
 }
 
