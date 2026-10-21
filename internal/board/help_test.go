@@ -213,3 +213,20 @@ func TestHelpBackdropKeepsWideGlyphsInsideTheScreen(t *testing.T) {
 		}
 	}
 }
+
+func TestCutLeftReplacesASplitGraphemeWithSpaces(t *testing.T) {
+	for _, tc := range []struct {
+		line string
+		from int
+		want string
+	}{
+		{"ab日本x", 3, " 本x"},
+		{"❤️x", 1, " x"},
+		{"abc", 1, "bc"},
+		{"abc", 5, ""},
+	} {
+		if got := cutLeft(tc.line, tc.from); got != tc.want {
+			t.Fatalf("cutLeft(%q, %d) = %q, want %q", tc.line, tc.from, got, tc.want)
+		}
+	}
+}

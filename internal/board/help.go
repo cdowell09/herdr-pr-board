@@ -3,11 +3,11 @@ package board
 import (
 	"slices"
 	"strings"
-	"unicode/utf8"
 
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
 	"github.com/charmbracelet/x/ansi"
+	"github.com/rivo/uniseg"
 )
 
 // helpSection is one group of controls in the ? overlay.
@@ -258,14 +258,14 @@ func (m Model) renderHelpOverlay() string {
 }
 
 // cutLeft returns the cells of a plain line from column from to its end. A
-// wide glyph that the cut splits becomes a space, so the result keeps the
+// wide grapheme that the cut splits becomes spaces, so the result keeps the
 // width of the cells it replaces.
 func cutLeft(line string, from int) string {
 	want := lipgloss.Width(line) - from
 	right := ansi.TruncateLeft(line, from, "")
 	for right != "" && lipgloss.Width(right) > want {
-		_, size := utf8.DecodeRuneInString(right)
-		right = right[size:]
+		// Remove the whole grapheme, so no combining mark stays behind.
+		_, right, _, _ = uniseg.FirstGraphemeClusterInString(right, -1)
 	}
 	return strings.Repeat(" ", max(0, want-lipgloss.Width(right))) + right
 }
