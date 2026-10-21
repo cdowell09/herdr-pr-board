@@ -19,6 +19,7 @@ import (
 	"github.com/cdowell09/herdr-pr-board/internal/sidebar"
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
+	"github.com/charmbracelet/x/ansi"
 )
 
 const (
@@ -160,9 +161,10 @@ type Model struct {
 	region           *reviewRegion
 	zoom             bool
 	reviewJobs       map[string]string
-	publishing       map[string]bool   // PR URL -> a publication is in flight
-	stopping         map[string]string // PR URL -> run ID with a stop request pending
-	settingsRequests uint64            // counts settings requests; the region keeps the one it awaits
+	publishing       map[string]bool     // PR URL -> a publication is in flight
+	confirm          *pendingPublication // an armed publication action
+	stopping         map[string]string   // PR URL -> run ID with a stop request pending
+	settingsRequests uint64              // counts settings requests; the region keeps the one it awaits
 	cfg              config.Config
 	configPath       string
 	version          string
@@ -245,9 +247,16 @@ func (m Model) Init() tea.Cmd {
 }
 
 // Update handles one message, then keeps the review region on the selected PR.
+// Only user input moves the selection to another PR. A refresh or a review
+// read that reorders or filters rows keeps the selected PR when it remains.
 func (m Model) Update(message tea.Msg) (tea.Model, tea.Cmd) {
+	selected, _ := m.selectedPR()
 	next, cmd := m.update(message)
-	return next.(Model).syncRegion(message, cmd)
+	model := next.(Model)
+	if !userInput(message) {
+		model.restoreSelection(selected.URL)
+	}
+	return model.syncRegion(message, cmd)
 }
 
 func (m Model) update(message tea.Msg) (tea.Model, tea.Cmd) {
@@ -359,12 +368,23 @@ func (m Model) update(message tea.Msg) (tea.Model, tea.Cmd) {
 			return m.updateHelpMouse(msg)
 		case m.region != nil && m.region.setup != nil:
 			return m.updateRepositoryMouse(msg)
-		case m.zoom && m.region != nil:
+		}
+		// A footer control click is the same as its key.
+		if key, ok := m.footerKey(msg); ok {
+			return m.update(key)
+		}
+		if m.confirm != nil && msg.Action == tea.MouseActionPress {
+			m.confirm = nil
+			return m, nil
+		}
+		if m.zoom && m.region != nil {
 			return m.updateZoomMouse(msg)
 		}
 		return m.updateMouse(msg)
 	case tea.KeyMsg:
 		switch {
+		case m.confirm != nil:
+			return m.updateConfirm(msg)
 		case m.helpOverlay:
 			return m.updateHelpKey(msg)
 		case m.region != nil && m.region.setup != nil:
@@ -400,13 +420,20 @@ func (m Model) updateFilter(key tea.KeyMsg) (tea.Model, tea.Cmd) {
 		m.cursor, m.offset = 0, 0
 	case "enter":
 		m.editing = false
-		m.cursor, m.offset = 0, 0
+	case "up":
+		m.cursor--
+		m.clampCursor()
+	case "down":
+		m.cursor++
+		m.clampCursor()
 	case "backspace":
-		if m.filter != "" {
-			_, size := utf8.DecodeLastRuneInString(m.filter)
-			m.filter = m.filter[:len(m.filter)-size]
-			m.cursor, m.offset = 0, 0
+		if m.filter == "" {
+			m.editing = false
+			break
 		}
+		_, size := utf8.DecodeLastRuneInString(m.filter)
+		m.filter = m.filter[:len(m.filter)-size]
+		m.cursor, m.offset = 0, 0
 	case "ctrl+u":
 		m.filter = ""
 		m.cursor, m.offset = 0, 0
@@ -606,7 +633,9 @@ func (m Model) updateMouse(message tea.MouseMsg) (tea.Model, tea.Cmd) {
 		step = mouseStep
 	}
 	if step != 0 {
-		if m.boardLayout().regionRows > 0 {
+		// The wheel acts on the area under the pointer: the review region
+		// under the URL row, or the table above it.
+		if lay := m.boardLayout(); lay.regionRows > 0 && event.Y > lay.selectedURLRow {
 			m.scrollRegion(step)
 		} else {
 			m.cursor += step
@@ -630,6 +659,11 @@ func (m Model) updateMouse(message tea.MouseMsg) (tea.Model, tea.Cmd) {
 	row := m.offset + event.Y - lay.firstPRRow
 	visible := min(lay.visibleRows, max(0, len(rows)-m.offset))
 	if event.Y >= lay.firstPRRow && event.Y < lay.firstPRRow+visible && row >= 0 && row < len(rows) {
+		// A click on the selected row opens it, so a stray click on another
+		// row never opens a browser.
+		if row == m.cursor {
+			return m, m.openBrowser(rows[row].URL)
+		}
 		m.cursor = row
 		m.clampCursor()
 		return m, nil
@@ -809,7 +843,9 @@ func (m Model) filteredPRs() []gh.PullRequest {
 		needle := strings.ToLower(m.filter)
 		filtered := rows[:0]
 		for _, pr := range rows {
-			haystack := strings.ToLower(fmt.Sprintf("%s %s %s #%d", pr.Repository, pr.Title, pr.Author, pr.Number))
+			// The REVIEW and CI cells show symbols, so their states match by name too.
+			summary := m.rowReviewSummary(pr)
+			haystack := strings.ToLower(fmt.Sprintf("%s %s %s #%d %s %s %s", pr.Repository, pr.Title, pr.Author, pr.Number, ansi.Strip(renderReviewCell(summary)), summary.state, pr.CI))
 			if strings.Contains(haystack, needle) {
 				filtered = append(filtered, pr)
 			}

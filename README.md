@@ -45,15 +45,18 @@ The board refreshes every five minutes by default.
 | --- | --- |
 | `1`–`9`, `Tab`, or click a view | Select a view. |
 | `↑`, `↓`, or click a PR | Select a PR. |
-| `Enter`, `o`, or click the URL | Open the selected PR in a browser. |
-| `/` | Filter the current view locally. |
+| `Enter`, `o`, click the URL, or click the selected PR | Open the selected PR in a browser. |
+| `/` | Filter the PRs locally. The filter matches the REVIEW and CI cells too. |
 | `r` / `R` | Refresh the current view / all views. |
 | `n`, `s` | Start a review or edit repository settings for the selected PR. |
 | `j`, `k` | Scroll the review region under the table. |
 | `v` | Zoom the review region to the full height. |
 | `E` | Edit configuration and reload valid changes. |
+| `c`, `a`, `x` | Publish a review. Press `Enter` or `y` to confirm. |
 | `?` | Show the keyboard help for all controls. |
 | `q` | Close the board. |
+
+Click a footer key to do the action of that key.
 
 The CI column shows check status.
 REVIEW shows local review progress and finding counts for the current revision.

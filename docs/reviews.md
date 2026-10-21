@@ -169,12 +169,17 @@ The review keys work on the board and in zoom:
 | `c` | Publish the latest completed run as a comment. |
 | `a` | Publish the latest completed run as an approval. |
 | `x` | Publish the latest completed run as a change request. |
+| `Enter`, `y` | Confirm the publication. Any other key cancels it. |
 | `j`, `k`, `g`, `G`, `PgUp`, `PgDn`, mouse wheel | Scroll the region. In zoom, `↑` and `↓` also scroll. |
 | `o`, click the URL | Open the PR in a browser. |
 | `v` | Zoom the region, or leave zoom. |
 | `Esc` | Leave zoom. |
 | `?` | Open or close the keyboard help. |
 | `q`, `Ctrl+C` | Close the board and stop its review requests. |
+
+The publication keys ask for confirmation before they publish.
+The footer names the action and the PR. For example: `approve owner/repo#12? enter/y`.
+Press `Enter` or `y` to publish. Any other key or a mouse click cancels the publication.
 
 The repository must have saved settings before `n` starts a review.
 Without saved settings, `n` opens repository setup.

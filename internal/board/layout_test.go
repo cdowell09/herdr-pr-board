@@ -173,8 +173,9 @@ func TestModelMouseCoordinatesMatchRenderedOutputInEachLayout(t *testing.T) {
 		updated, command := model.Update(tea.MouseMsg(tea.MouseEvent{
 			X: 2, Y: firstRowY, Action: tea.MouseActionPress, Button: tea.MouseButtonLeft,
 		}))
-		if command != nil {
-			t.Fatalf("width %d: row click returned a command", width)
+		// The first row is already selected, so the click opens it.
+		if command == nil {
+			t.Fatalf("width %d: click on the selected row did not return a browser command", width)
 		}
 		model = updated.(Model)
 		if model.cursor != 0 {
@@ -265,7 +266,7 @@ func TestHelpOverlayNamesEveryImplementedControl(t *testing.T) {
 func TestFooterShowsTheTopControls(t *testing.T) {
 	model := layoutModel(t, 200)
 	footer := stripANSI(model.renderFooter(model.footerHelpLines()))
-	want := "Tab view · ↑↓ select · Enter open · j/k scroll · n run · s settings · v zoom · ? help"
+	want := "Tab view · ↑↓ select · Enter open · / filter · j/k scroll · n run · s settings · v zoom · ? help"
 	if !strings.Contains(footer, want) {
 		t.Fatalf("footer missing %q:\n%s", want, footer)
 	}

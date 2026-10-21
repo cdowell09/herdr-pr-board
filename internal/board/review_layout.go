@@ -297,7 +297,7 @@ func (m Model) renderRegion(lay boardLayout) string {
 // region under the title and URL rows and above the footer. The controls
 // leave those rows, one content row, and the meta line on screen.
 func (m Model) zoomViewport() ([]string, int) {
-	help := m.helpLines(zoomKeyHelp, m.height-4)
+	help := renderHints(m.zoomHints())
 	return help, max(0, m.height-3-len(help))
 }
 

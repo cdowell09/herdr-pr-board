@@ -90,9 +90,10 @@ GitHub review observations follow the normal refresh interval and cache.
 | Key | Action |
 | --- | --- |
 | Left click a view | Select the view. |
-| Left click a PR | Select the PR. |
+| Left click a PR | Select the PR. A click on the selected PR opens it in a browser. |
 | Left click the URL | Open the PR in a browser. |
-| Mouse wheel | Scroll the review region. When the region is collapsed, move through the PR list. |
+| Left click a footer key | Do the action of that key. |
+| Mouse wheel | Over the table, move through the PR list. Over the review region, scroll the region. |
 | `1`–`9` | Select a view. |
 | `Tab`, `Shift+Tab`, `h`, `l`, `←`, `→` | Select the next or previous view. |
 | `↑`, `↓` | Select a PR. |
@@ -102,8 +103,9 @@ GitHub review observations follow the normal refresh interval and cache.
 | `g`, `G` | Scroll to the start or the end of the review region. |
 | `PgUp`, `PgDn` | Scroll the review region by one page. |
 | `/` | Start filter input. |
-| `Enter` | Finish filter input. |
-| `Backspace` | Remove the last filter character. |
+| `↑`, `↓` | During filter input, select a PR. |
+| `Enter` | Keep the filter and finish filter input. |
+| `Backspace` | Remove the last filter character. When the filter is empty, finish filter input. |
 | `Ctrl+U`, `Esc` | Clear the filter. |
 | `E` | Edit the active configuration. |
 | `v` | Zoom the review region to the full height. |
@@ -116,7 +118,11 @@ GitHub review observations follow the normal refresh interval and cache.
 
 The board sorts PRs by update time, with the most recent first.
 The filter matches repository names, titles, authors, and PR numbers.
+It also matches the REVIEW and CI cells and their state names.
+For example, `/p0:1` finds a review with one P0 finding, and `/failure` finds failed CI.
 The filter ignores letter case and makes no GitHub requests.
+One filter applies to all views.
+A refresh keeps the selection on the same PR while the PR stays in the view.
 
 Press `E` to edit the active configuration while the board runs.
 The board uses `$VISUAL`, then `$EDITOR`.
@@ -129,8 +135,10 @@ It keeps the previous configuration when the editor or validation fails.
 The board reports browser failures at the bottom of the screen.
 The selected URL stays visible for manual copying.
 
-The footer shows the eight most used controls. On narrow terminals, the pairs wrap.
+The footer shows the most used controls. On narrow terminals, the pairs wrap.
 A short pane shows the keys without the actions.
+Click a footer key to do the action of that key. The click is the same as the key press.
+A footer entry with two keys, such as `j/k`, does not respond to a click.
 
 Press `?` for the keyboard help.
 The help lists every board control and every review region control.

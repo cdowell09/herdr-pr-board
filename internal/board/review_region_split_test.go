@@ -131,7 +131,7 @@ func TestSplitGeometryMatchesRenderedRowsAndMouse(t *testing.T) {
 	if opened != m.region.pr.URL {
 		t.Fatal("URL click did not open the selected PR")
 	}
-	updated, _ = m.Update(tea.MouseMsg{Button: tea.MouseButtonWheelDown})
+	updated, _ = m.Update(tea.MouseMsg{Y: lay.selectedURLRow + 1, Button: tea.MouseButtonWheelDown})
 	if scrolled := updated.(Model); scrolled.cursor != 0 || scrolled.region.offset != mouseStep {
 		t.Fatalf("wheel moved the cursor or skipped the region: cursor=%d offset=%d", scrolled.cursor, scrolled.region.offset)
 	}
@@ -215,7 +215,8 @@ func TestBoardKeysActOnTheSelectedPR(t *testing.T) {
 	m.region.settingsLoading = false
 	m.setRegionRuns(completedRun(1))
 	m = m.WithPublications("", &publicationFake{})
-	next, cmd = m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("c")})
+	next, _ = m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("c")})
+	next, cmd = next.(Model).Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("y")})
 	if cmd == nil || !next.(Model).publishing[m.region.pr.URL] {
 		t.Fatal("c did not publish from the board")
 	}
@@ -472,9 +473,10 @@ func TestInFlightActionsPinTheRegionAcrossAReorder(t *testing.T) {
 			t.Fatalf("%s: navigation during the action left n on the old PR: region=%d jobs=%v", name, m.region.pr.Number, m.reviewJobs)
 		}
 	}
+	// An idle region follows the selection, which keeps its PR across the reorder.
 	m := splitModel(t, &reviewFake{})
-	if m = reorder(m); m.region.pr.Number != 2 {
-		t.Fatal("idle region did not follow the selection")
+	if m = reorder(m); m.region.pr.Number != 1 || m.cursor != 1 {
+		t.Fatal("idle region did not follow the selected PR")
 	}
 }
 
@@ -648,7 +650,8 @@ func TestPendingActionsSurviveNavigation(t *testing.T) {
 		m = next.(Model)
 		return cmd
 	}
-	if press(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("c")}) == nil {
+	press(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("c")})
+	if press(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("y")}) == nil {
 		t.Fatal("c did not publish")
 	}
 	press(tea.KeyMsg{Type: tea.KeyDown})
