@@ -34,6 +34,7 @@ herdr plugin action invoke open --plugin cdowell09.pr-board
 ```
 
 The open action creates a `PR Board` tab or focuses the existing tab.
+A board in another workspace moves to the workspace that you view.
 PR Board uses GitHub CLI authentication and preserves configuration during reinstallations.
 
 ## Use the board

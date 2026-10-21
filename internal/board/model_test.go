@@ -67,6 +67,9 @@ type sidebarFakeRunner struct {
 }
 
 func (f *sidebarFakeRunner) Run(_ context.Context, args ...string) ([]byte, error) {
+	if len(args) == 2 && args[0] == "pane" && args[1] == "current" {
+		return []byte(`{"result":{"pane":{"pane_id":"w1:p1","workspace_id":"w1"}}}`), nil
+	}
 	f.calls = append(f.calls, append([]string(nil), args...))
 	if f.err != nil {
 		return nil, f.err

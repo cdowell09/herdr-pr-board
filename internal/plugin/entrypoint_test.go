@@ -10,7 +10,6 @@ import (
 	"path/filepath"
 	"runtime"
 	"slices"
-	"strconv"
 	"strings"
 	"sync"
 	"testing"
@@ -45,6 +44,14 @@ func TestMain(m *testing.M) {
 			if owner := os.Getenv("HERDR_FAKE_BOARD_NEW_OWNER"); owner != "" {
 				_ = os.WriteFile(panePath, []byte(owner+"\n"), 0600)
 			}
+			// Invoke the open action from another workspace while this board runs.
+			if workspace := os.Getenv("HERDR_FAKE_OPEN_FROM"); workspace != "" {
+				os.Setenv("HERDR_WORKSPACE_ID", workspace)
+				if err := Open(context.Background()); err != nil {
+					fmt.Fprintln(os.Stderr, err)
+					os.Exit(1)
+				}
+			}
 			if err := cleanup(); err != nil {
 				fmt.Fprintln(os.Stderr, err)
 				os.Exit(1)
@@ -56,8 +63,45 @@ func TestMain(m *testing.M) {
 		args := strings.Join(os.Args[1:], " ")
 		appendLog(os.Getenv("HERDR_FAKE_LOG"), args)
 		if strings.HasPrefix(args, "plugin pane focus ") {
-			code, _ := strconv.Atoi(os.Getenv("HERDR_FAKE_FOCUS_EXIT"))
-			os.Exit(code)
+			// HERDR_FAKE_PANE names the pane's current workspace, or a failure.
+			switch workspace := os.Getenv("HERDR_FAKE_PANE"); workspace {
+			case "missing":
+				fmt.Fprintln(os.Stderr, `{"error":{"code":"pane_not_found","message":"pane not found"}}`)
+				os.Exit(1)
+			case "plain":
+				fmt.Fprintln(os.Stderr, `{"error":{"code":"plugin_pane_not_found","message":"plugin pane not found"}}`)
+				os.Exit(1)
+			case "error":
+				fmt.Fprintln(os.Stderr, `{"error":{"code":"server_unavailable","message":"no server"}}`)
+				os.Exit(1)
+			default:
+				pane := os.Getenv("HERDR_FAKE_PANE_ID")
+				if pane == "" {
+					pane = os.Args[4]
+				}
+				fmt.Printf(`{"result":{"type":"plugin_pane_focused","plugin_pane":{"pane":{"pane_id":%q,"workspace_id":%q}}}}`+"\n", pane, workspace)
+			}
+		}
+		if strings.HasPrefix(args, "pane move ") {
+			// Herdr names a new tab with --label; --tab-label is a usage error here.
+			if strings.Contains(args, "--new-tab") && strings.Contains(args, "--tab-label") {
+				os.Exit(2)
+			}
+			switch os.Getenv("HERDR_FAKE_MOVE") {
+			case "workspace":
+				fmt.Fprintln(os.Stderr, `{"error":{"code":"workspace_not_found","message":"workspace w5 not found"}}`)
+				os.Exit(1)
+			case "unchanged":
+				fmt.Println(`{"result":{"move_result":{"changed":false,"reason":"zoomed_tab","closed_workspace_id":null}}}`)
+			case "closed":
+				fmt.Println(`{"result":{"move_result":{"changed":true,"reason":null,"closed_workspace_id":"w1"}}}`)
+			default:
+				fmt.Println(`{"result":{"move_result":{"changed":true,"reason":null,"closed_workspace_id":null}}}`)
+			}
+		}
+		// Herdr's report-metadata prints nothing when it succeeds.
+		if strings.HasPrefix(args, "workspace report-metadata ") && os.Getenv("HERDR_FAKE_CLEAR") == "error" {
+			os.Exit(1)
 		}
 		if strings.HasPrefix(args, "plugin pane open ") {
 			_, err := os.Stat(filepath.Join(os.Getenv("HERDR_PLUGIN_STATE_DIR"), "pane-id"))
@@ -125,6 +169,11 @@ func newFixture(t *testing.T) *fixture {
 		"HERDR_PLUGIN_CONFIG_DIR": f.configDir,
 		"HERDR_FAKE_LOG":          f.herdrLog,
 		"HERDR_FAKE_BOARD_LOG":    f.boardLog,
+		// Keep the developer's live Herdr session out of the fixture.
+		"HERDR_WORKSPACE_ID": "",
+		"HERDR_TAB_ID":       "",
+		"HERDR_PANE_ID":      "",
+		"HERDR_FAKE_PANE":    "w1",
 	}
 	return f
 }
@@ -150,7 +199,6 @@ func (f *fixture) boardLines(t *testing.T) []string {
 
 func TestOpenFocusesLivePane(t *testing.T) {
 	f := newFixture(t)
-	f.env["HERDR_FAKE_FOCUS_EXIT"] = "0"
 	writePaneFile(t, f.stateDir, "pane-live")
 
 	if out, err := f.run(t, "open"); err != nil {
@@ -165,7 +213,7 @@ func TestOpenFocusesLivePane(t *testing.T) {
 
 func TestOpenReplacesStalePane(t *testing.T) {
 	f := newFixture(t)
-	f.env["HERDR_FAKE_FOCUS_EXIT"] = "1"
+	f.env["HERDR_FAKE_PANE"] = "missing"
 	writePaneFile(t, f.stateDir, "pane-stale")
 
 	if out, err := f.run(t, "open"); err != nil {
@@ -181,6 +229,159 @@ func TestOpenReplacesStalePane(t *testing.T) {
 	}
 	if got := readPaneFile(t, f.stateDir); got != "pane-created" {
 		t.Fatalf("replacement pane not recorded: %s", got)
+	}
+}
+
+func TestOpenFocusesPaneInActiveWorkspace(t *testing.T) {
+	f := newFixture(t)
+	f.env["HERDR_WORKSPACE_ID"] = "w5"
+	f.env["HERDR_FAKE_PANE"] = "w5"
+	writePaneFile(t, f.stateDir, "w5:pane-live")
+
+	if out, err := f.run(t, "open"); err != nil {
+		t.Fatalf("open failed: %v (%s)", err, out)
+	}
+	contains(t, f.herdrLines(t), "plugin pane focus w5:pane-live")
+	notContainsFragment(t, f.herdrLines(t), "pane move")
+}
+
+// Herdr keeps a pane's earlier ID as an alias after the user moves the pane.
+// The ID prefix then names the wrong workspace, so Open asks Herdr instead.
+func TestOpenUsesCurrentLocationOfPaneMovedByUser(t *testing.T) {
+	t.Run("into the active workspace", func(t *testing.T) {
+		f := newFixture(t)
+		f.env["HERDR_WORKSPACE_ID"] = "w5"
+		f.env["HERDR_FAKE_PANE"] = "w5"
+		f.env["HERDR_FAKE_PANE_ID"] = "w5:pane-current"
+		writePaneFile(t, f.stateDir, "w1:pane-alias")
+
+		if out, err := f.run(t, "open"); err != nil {
+			t.Fatalf("open failed: %v (%s)", err, out)
+		}
+		contains(t, f.herdrLines(t), "plugin pane focus w1:pane-alias")
+		notContainsFragment(t, f.herdrLines(t), "pane move")
+		if got := readPaneFile(t, f.stateDir); got != "w1:pane-alias" {
+			t.Fatalf("pane file = %q, want the board's first pane ID", got)
+		}
+	})
+	t.Run("out of the active workspace", func(t *testing.T) {
+		f := newFixture(t)
+		f.env["HERDR_WORKSPACE_ID"] = "w1"
+		f.env["HERDR_FAKE_PANE"] = "w7"
+		f.env["HERDR_FAKE_PANE_ID"] = "w7:pane-current"
+		writePaneFile(t, f.stateDir, "w1:pane-alias")
+
+		if out, err := f.run(t, "open"); err != nil {
+			t.Fatalf("open failed: %v (%s)", err, out)
+		}
+		contains(t, f.herdrLines(t), "pane move w7:pane-current --new-tab --workspace w1 --label PR Board --focus")
+	})
+}
+
+func TestOpenMovesPaneFromOtherWorkspace(t *testing.T) {
+	f := newFixture(t)
+	f.env["HERDR_WORKSPACE_ID"] = "w5"
+	writePaneFile(t, f.stateDir, "w1:pane-live")
+
+	if out, err := f.run(t, "open"); err != nil {
+		t.Fatalf("open failed: %v (%s)", err, out)
+	}
+	lines := f.herdrLines(t)
+	focus, move := "plugin pane focus w1:pane-live", "pane move w1:pane-live --new-tab --workspace w5 --label PR Board --focus"
+	contains(t, lines, focus)
+	contains(t, lines, move)
+	if lineIndex(lines, focus) >= lineIndex(lines, move) {
+		t.Fatalf("plugin focus must confirm the board before the move: %#v", lines)
+	}
+	notContainsFragment(t, lines, "plugin pane open")
+	contains(t, lines, "workspace report-metadata w1 --source "+pluginID+" --clear-token prs_open --clear-token prs_review --clear-token prs_ci")
+	if got := readPaneFile(t, f.stateDir); got != "w1:pane-live" {
+		t.Fatalf("pane file = %q, want the board's first pane ID", got)
+	}
+}
+
+// Herdr closes a workspace that the move leaves empty. It has no tokens left.
+func TestOpenSkipsTokenClearForClosedWorkspace(t *testing.T) {
+	f := newFixture(t)
+	f.env["HERDR_WORKSPACE_ID"] = "w5"
+	f.env["HERDR_FAKE_MOVE"] = "closed"
+	writePaneFile(t, f.stateDir, "w1:pane-live")
+
+	if out, err := f.run(t, "open"); err != nil {
+		t.Fatalf("open failed: %v (%s)", err, out)
+	}
+	notContainsFragment(t, f.herdrLines(t), "workspace report-metadata")
+}
+
+// After an unclean restart, Herdr can restore the recorded ID as a plain shell.
+// That shell is not the board: Open must not move it and must open a new board.
+func TestOpenReplacesRecordRestoredAsPlainShell(t *testing.T) {
+	for name, workspace := range map[string]string{"same workspace": "w1", "other workspace": "w5"} {
+		t.Run(name, func(t *testing.T) {
+			f := newFixture(t)
+			f.env["HERDR_WORKSPACE_ID"] = workspace
+			f.env["HERDR_FAKE_PANE"] = "plain"
+			writePaneFile(t, f.stateDir, "w1:pane-shell")
+
+			if out, err := f.run(t, "open"); err != nil {
+				t.Fatalf("open failed: %v (%s)", err, out)
+			}
+			notContainsFragment(t, f.herdrLines(t), "pane move")
+			contains(t, f.herdrLines(t), openCmd())
+			if got := readPaneFile(t, f.stateDir); got != "pane-created" {
+				t.Fatalf("pane file = %q, want the new board", got)
+			}
+		})
+	}
+}
+
+// The record keeps the board's first pane ID through a move. Herdr resolves
+// that ID as an alias, so the board's cleanup still finds its own record.
+func TestMovedBoardCleansUpItsRecord(t *testing.T) {
+	f := newFixture(t)
+	if out, err := f.run(t, "open"); err != nil {
+		t.Fatalf("open failed: %v (%s)", err, out)
+	}
+	// The board starts, a second open moves it, and then the board exits.
+	f.env["HERDR_PANE_ID"] = "pane-created"
+	f.env["HERDR_FAKE_OPEN_FROM"] = "w5"
+	if out, err := f.run(t, "run"); err != nil {
+		t.Fatalf("run failed: %v (%s)", err, out)
+	}
+	lines := f.herdrLines(t)
+	move := "pane move pane-created --new-tab --workspace w5 --label PR Board --focus"
+	contains(t, lines, move)
+	if lineIndex(lines, "plugin pane focus pane-created") > lineIndex(lines, move) {
+		t.Fatalf("plugin focus must confirm the board before the move: %#v", lines)
+	}
+	if paneFileExists(t, f.stateDir) {
+		t.Fatal("moved board left its pane record behind")
+	}
+}
+
+// A live board that Herdr cannot find, focus, or move must stay the only board.
+func TestOpenKeepsBoardRecordWhenHerdrFails(t *testing.T) {
+	for name, env := range map[string]map[string]string{
+		"focus":     {"HERDR_FAKE_PANE": "error"},
+		"workspace": {"HERDR_WORKSPACE_ID": "w5", "HERDR_FAKE_MOVE": "workspace"},
+		"unchanged": {"HERDR_WORKSPACE_ID": "w5", "HERDR_FAKE_MOVE": "unchanged"},
+		"clear":     {"HERDR_WORKSPACE_ID": "w5", "HERDR_FAKE_CLEAR": "error"},
+	} {
+		t.Run(name, func(t *testing.T) {
+			f := newFixture(t)
+			for key, value := range env {
+				f.env[key] = value
+			}
+			writePaneFile(t, f.stateDir, "w1:pane-live")
+
+			if out, err := f.run(t, "open"); err == nil {
+				t.Fatalf("open succeeded without showing the board (%s)", out)
+			}
+			notContainsFragment(t, f.herdrLines(t), "plugin pane open")
+			if got := readPaneFile(t, f.stateDir); got != "w1:pane-live" {
+				t.Fatalf("pane file = %q, want the live board kept", got)
+			}
+		})
 	}
 }
 
@@ -240,12 +441,11 @@ func TestEntrypointsLeaveUserConfigUntouched(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	f.env["HERDR_FAKE_FOCUS_EXIT"] = "0"
 	writePaneFile(t, f.stateDir, "pane-live")
 	if out, err := f.run(t, "open"); err != nil {
 		t.Fatalf("open (live) failed: %v (%s)", err, out)
 	}
-	f.env["HERDR_FAKE_FOCUS_EXIT"] = "1"
+	f.env["HERDR_FAKE_PANE"] = "missing"
 	if out, err := f.run(t, "open"); err != nil {
 		t.Fatalf("open (stale) failed: %v (%s)", err, out)
 	}

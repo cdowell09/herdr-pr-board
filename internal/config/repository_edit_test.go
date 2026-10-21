@@ -2,11 +2,35 @@ package config
 
 import (
 	"context"
+	"errors"
 	"os"
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
+
+	"github.com/cdowell09/herdr-pr-board/internal/localstate"
 )
+
+// Path text cannot identify a file: case and Windows prefix aliases reach the
+// same config through different text. Every save waits for the state lock.
+func TestSaveRepositoryWaitsForStateLockWhateverThePath(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "any-name.toml")
+	if err := os.WriteFile(path, []byte(DefaultFile+"\n[[reviewers]]\nid='custom'\ncommand=['unused']\n"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	state := t.TempDir()
+	lock, err := localstate.TryLock(filepath.Join(state, "config.lock"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer lock.Close()
+	ctx, cancel := context.WithTimeout(context.Background(), 100*time.Millisecond)
+	defer cancel()
+	if _, err := SaveRepository(ctx, path, state, Repository{Name: "acme/repo", Reviewer: "custom"}, nil, nil, nil); !errors.Is(err, context.DeadlineExceeded) {
+		t.Fatalf("save bypassed the held state lock: %v", err)
+	}
+}
 
 func TestRepositorySetupPreservesConfigurationAndComments(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "chosen.toml")
