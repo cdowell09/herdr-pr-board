@@ -53,15 +53,6 @@ func TestReviewCellShowsTheWorstSeverity(t *testing.T) {
 	}
 }
 
-func TestFindingsDetailListsExactCounts(t *testing.T) {
-	if got := findingsDetail(reviewmemory.SeverityCounts{12, 1, 0, 3}); got != "P0:12 P1:1 P2:0 P3:3" {
-		t.Fatalf("findingsDetail = %q", got)
-	}
-	if got := findingsDetail(reviewmemory.SeverityCounts{}); got != "no findings" {
-		t.Fatalf("findingsDetail of no findings = %q", got)
-	}
-}
-
 func TestReviewOverviewLayouts(t *testing.T) {
 	for _, width := range []int{40, 60, 80, 120} {
 		model := layoutModel(t, width)

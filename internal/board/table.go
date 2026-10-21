@@ -209,14 +209,6 @@ func reviewCellText(summary reviewRowSummary) string {
 	return b.String()
 }
 
-// findingsDetail lists the exact count at every severity for the selected detail line.
-func findingsDetail(counts reviewmemory.SeverityCounts) string {
-	if counts == (reviewmemory.SeverityCounts{}) {
-		return "no findings"
-	}
-	return counts.String()
-}
-
 func reviewMark(state string) span {
 	switch state {
 	case "running", "waiting", "ready":

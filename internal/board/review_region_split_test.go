@@ -109,8 +109,9 @@ func TestSplitGeometryMatchesRenderedRowsAndMouse(t *testing.T) {
 		}
 	}
 	m.reviewRows = map[string]reviewOverviewRow{m.region.pr.URL: {identity: dispatch.Identity(m.region.pr), summary: reviewRowSummary{postedDetail: "GitHub · current revision"}}}
-	if view := stripANSI(m.View()); !strings.Contains(view, "POSTED      GitHub · current revision") {
-		t.Fatalf("region lacks the posted detail:\n%s", view)
+	// Twelve findings precede POSTED, so it is below the first page.
+	if region := stripANSI(strings.Join(m.regionLines(false), "\n")); !strings.Contains(region, "POSTED      GitHub · current revision") {
+		t.Fatalf("region lacks the posted detail:\n%s", region)
 	}
 	if lay.regionRows < regionMinRows || lay.regionRows != m.height-lay.selectedURLRow-1-len(m.footerHelpLines())-1 {
 		t.Fatalf("region rows = %d in layout %+v", lay.regionRows, lay)
@@ -713,7 +714,10 @@ func TestSplitRegionUsesLabeledRows(t *testing.T) {
 	older.ID = "run-0"
 	run := completedRun(0)
 	run.Message = "Standards: no findings.\nNot run: full completion gates."
-	m.setRegionRuns(older, run)
+	m.setRegionData(func(data *regionData) {
+		data.runs = []reviewmemory.Run{older, run}
+		data.publications = []publication.Attempt{{RunID: run.ID, Action: config.PublishComment, Status: publication.Published}}
+	})
 	m.reviewRows = map[string]reviewOverviewRow{m.region.pr.URL: {identity: dispatch.Identity(m.region.pr), summary: reviewRowSummary{postedDetail: "GitHub · current revision"}}}
 	lay := m.boardLayout()
 	lines := strings.Split(stripANSI(m.View()), "\n")
@@ -726,8 +730,11 @@ func TestSplitRegionUsesLabeledRows(t *testing.T) {
 		"  FINDINGS    Standards: no findings.",
 		"              Not run: full completion gates.",
 		"  REVISION    aaaaaaaa → main · " + run.StartedAt.Local().Format("02 Jan 15:04"),
-		"  POSTED      GitHub · current revision",
+		"  POSTED      comment published · GitHub · current revision",
 		"  AUTOMATION  monitor unknown · launches off · after review: keep local",
+	}
+	if len(region) > len(want) && strings.TrimSpace(region[len(want)]) != "" {
+		t.Fatalf("region has a line under no label: %q", region[len(want)])
 	}
 	for i, prefix := range want {
 		if !strings.HasPrefix(region[i], prefix) {
@@ -753,8 +760,7 @@ func TestSplitRegionListsFindingsUnderTheSummary(t *testing.T) {
 	region := strings.Join(lines[m.boardLayout().selectedURLRow+1:], "\n")
 	for _, want := range []string{
 		"  REVIEW      ● P0 1, P1 1 · agent · current observed revision",
-		"  FINDINGS    Summary\n  REVISION",
-		"  P0          Finding 0\n              main.go:1\n              Body text 0\n  P1          Finding 1",
+		"  FINDINGS    Summary\n  P0          Finding 0\n              main.go:1\n              Body text 0\n  P1          Finding 1\n              main.go:2\n              Body text 1\n  REVISION    aaaaaaaa → main",
 	} {
 		if !strings.Contains(region, want) {
 			t.Fatalf("region lacks %q:\n%s", want, region)

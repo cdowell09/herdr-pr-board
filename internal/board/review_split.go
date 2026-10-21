@@ -5,17 +5,21 @@ import (
 	"slices"
 	"strings"
 
+	"github.com/cdowell09/herdr-pr-board/internal/publication"
 	"github.com/cdowell09/herdr-pr-board/internal/reviewmemory"
 	"github.com/charmbracelet/lipgloss"
 	"github.com/charmbracelet/x/ansi"
 )
 
+// regionBodyStyle is the plain text color of region values.
+var regionBodyStyle = keyStyle.Bold(false)
+
 // regionLabelWidth is the left gutter that holds the split region's labels.
 const regionLabelWidth = 14
 
 // splitRegionLines renders the selected PR's review state as labeled rows:
-// REVIEW, FINDINGS, and REVISION for the latest run, then POSTED and
-// AUTOMATION, then each finding under its severity. The run ID and the
+// REVIEW, FINDINGS with each finding under its severity, and REVISION for
+// the latest run, then POSTED and AUTOMATION. The run ID and the
 // diagnostics path stay in zoom.
 func (m Model) splitRegionLines() []string {
 	s := m.regionState()
@@ -26,7 +30,7 @@ func (m Model) splitRegionLines() []string {
 	}
 	labeled := func(text string) span { return span{text: text, style: dimStyle} }
 	blank := span{}
-	body := keyStyle.Bold(false)
+	body := regionBodyStyle
 
 	for _, warning := range m.regionWarnings() {
 		for _, line := range strings.Split(ansi.Wrap(reviewText(warning), max(1, m.width), ""), "\n") {
@@ -35,7 +39,7 @@ func (m Model) splitRegionLines() []string {
 	}
 	current := m.reviewObservation()
 	target, hasTarget := latestCompleted(s.runs)
-	var findings []reviewmemory.Finding
+	var published []span
 	for i := len(s.runs) - 1; i >= 0; i-- {
 		run := s.runs[i]
 		// The split shows the newest run and, when a newer run did not
@@ -53,20 +57,19 @@ func (m Model) splitRegionLines() []string {
 		if stop, ok := m.stopLine(run); ok {
 			row(blank, "", stop)
 		}
-		label, summarized := labeled("FINDINGS"), false
-		for _, line := range strings.Split(reviewText(strings.TrimSpace(run.Message)), "\n") {
-			if line = strings.TrimSpace(line); line == "" {
-				continue
-			}
-			style := body
-			if strings.HasPrefix(strings.ToLower(line), "not run") {
-				style = reviewSecondaryStyle
-			}
-			row(label, "", span{text: line, style: style})
-			label, summarized = blank, true
+		summary := reviewText(strings.TrimSpace(run.Message))
+		if summary == "" && run.Status == reviewmemory.Completed && len(run.Findings) == 0 {
+			summary = "no findings"
 		}
-		if !summarized && run.Status == reviewmemory.Completed && len(run.Findings) == 0 {
-			row(label, "", span{text: "no findings", style: body})
+		if summary != "" {
+			row(labeled("FINDINGS"), "", span{text: summary, style: body})
+		}
+		for _, f := range run.Findings {
+			row(span{text: reviewText(f.Severity), style: severityStyle(f.Severity).Bold(true)}, "", span{text: reviewText(f.Title), style: keyStyle})
+			if f.Path != "" {
+				row(blank, "", span{text: reviewText(fmt.Sprintf("%s:%d", f.Path, f.Line)), style: reviewSecondaryStyle})
+			}
+			row(blank, "", span{text: reviewText(f.Body), style: body})
 		}
 		revision := []span{
 			{text: shortRevision(run.Identity.HeadOID) + " → " + reviewText(run.Identity.BaseRefName), style: body},
@@ -76,15 +79,17 @@ func (m Model) splitRegionLines() []string {
 			revision = append(revision, span{text: " · publication target", style: reviewSecondaryStyle})
 		}
 		row(labeled("REVISION"), "", revision...)
-		for _, result := range m.publicationResults(run.ID) {
-			row(blank, "", span{text: reviewText(result.text), style: result.style})
+		for _, state := range m.publicationStates(run.ID) {
+			published = append(published, state, span{text: " · ", style: reviewSecondaryStyle})
 		}
-		findings = append(findings, run.Findings...)
 	}
 	if len(s.runs) == 0 {
 		row(labeled("REVIEW"), "", span{text: m.noRunsText(), style: body})
 	}
-	row(labeled("POSTED"), "", span{text: reviewText(m.rowReviewSummary(m.region.pr).postedDetail), style: body})
+	// POSTED leads with this board's publication results for the shown runs,
+	// then the submitted reviews on GitHub.
+	posted := append(published, span{text: reviewText(m.rowReviewSummary(m.region.pr).postedDetail), style: body})
+	row(labeled("POSTED"), "", posted...)
 
 	auto := m.automationState()
 	setup := "monitor " + auto.monitor + " · launches " + auto.launches + " · after review: " + auto.after
@@ -97,13 +102,6 @@ func (m Model) splitRegionLines() []string {
 	}
 	if s.monitor.Message != "" {
 		row(blank, "", span{text: reviewText(s.monitor.Message), style: warningStyle})
-	}
-	for _, f := range findings {
-		row(span{text: reviewText(f.Severity), style: severityStyle(f.Severity).Bold(true)}, "", span{text: reviewText(f.Title), style: keyStyle})
-		if f.Path != "" {
-			row(blank, "", span{text: reviewText(fmt.Sprintf("%s:%d", f.Path, f.Line)), style: reviewSecondaryStyle})
-		}
-		row(blank, "", span{text: reviewText(f.Body), style: body})
 	}
 	return lines
 }
@@ -168,4 +166,25 @@ func labeledRow(width, gutter int, label span, right string, spans ...span) []st
 		lines[i] = head + value
 	}
 	return lines
+}
+
+// publicationStates lists one run's publication results, for example
+// "comment published". A result that did not publish carries its message.
+func (m Model) publicationStates(runID string) []span {
+	var states []span
+	for _, a := range m.regionState().publications {
+		if a.RunID != runID {
+			continue
+		}
+		state := string(a.Action) + " " + string(a.Status)
+		style := regionBodyStyle
+		if a.Status != publication.Published {
+			style = warningStyle
+			if a.Message != "" {
+				state += ": " + a.Message
+			}
+		}
+		states = append(states, span{text: reviewText(state), style: style})
+	}
+	return states
 }

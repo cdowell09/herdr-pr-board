@@ -71,16 +71,15 @@ The region shows one labeled row for each topic:
 | Label | Content |
 | --- | --- |
 | `REVIEW` | The outcome, the reviewer, and the revision comparison. The run position, for example `run 1 of 3`, is at the right edge. |
-| `FINDINGS` | The reviewer summary. A dim line lists the checks that the reviewer did not run. |
+| `FINDINGS` | The reviewer summary. Each finding follows under its severity label, with its file, line, and text. |
 | `REVISION` | The short head commit, the target branch, and the start time. |
-| `POSTED` | The submitted reviews for the PR. |
+| `POSTED` | The publication results of this board, for example `comment published`, and the submitted reviews for the PR. |
 | `AUTOMATION` | The monitor state, the automatic launch setting, and the action after a review. |
 
-Each finding follows these rows under its severity label, with its file, line, and text.
 When a newer run did not complete, the region also shows the completed run that publication targets.
 The run ID and the diagnostics path show only in zoom.
 A terminal with fewer than 24 rows collapses the region to one summary line.
-That line shows the exact count for each severity, or `no findings`.
+That line shows the same severity text as the REVIEW column, for example `● P2 1` or `✓ clean`.
 Local status updates each second without GitHub requests.
 
 The **POSTED** column shows submitted reviews from your authenticated GitHub account:

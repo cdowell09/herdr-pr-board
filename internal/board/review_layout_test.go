@@ -37,7 +37,7 @@ func TestReviewLayoutGroupsResultsBeforeDiagnostics(t *testing.T) {
 		t.Fatalf("reading order:\n%s", all)
 	}
 	for _, block := range []string{all[latest:previous], all[previous:automation]} {
-		if !strings.Contains(block, "Publication comment: published") {
+		if !strings.Contains(block, "Publication comment published") {
 			t.Fatalf("publication not attached to run: %s", block)
 		}
 		if strings.Contains(block, strings.Repeat("a", 40)) || strings.Contains(block, "pullrequestreview-") || strings.Contains(block, "/state/reviews/") {

@@ -50,7 +50,7 @@ func (m Model) zoomRegionLines() []string {
 		}
 		lines = append(lines, rule(text, suffix, m.width, style))
 	}
-	body := keyStyle.Bold(false)
+	body := regionBodyStyle
 	for _, warning := range m.regionWarnings() {
 		add(warning, warningStyle)
 	}
@@ -110,8 +110,8 @@ func (m Model) zoomRegionLines() []string {
 			meta += " · Publication: no recorded posts"
 		}
 		add(meta, reviewSecondaryStyle)
-		for _, result := range m.publicationResults(run.ID) {
-			add(result.text, result.style)
+		for _, state := range m.publicationStates(run.ID) {
+			add("Publication "+state.text, state.style)
 		}
 	}
 	if len(s.runs) == 0 {
@@ -187,25 +187,6 @@ func (m Model) stopLine(run reviewmemory.Run) (span, bool) {
 		return span{text: "Stopping run " + shortRevision(run.ID) + " · waiting for reviewer cleanup", style: warningStyle}, true
 	}
 	return span{text: "t stop run " + shortRevision(run.ID), style: keyStyle}, true
-}
-
-// publicationResults lists the recorded publication attempts for one run.
-func (m Model) publicationResults(runID string) []span {
-	var results []span
-	for _, a := range m.regionState().publications {
-		if a.RunID != runID {
-			continue
-		}
-		style := keyStyle
-		if a.Status != publication.Published {
-			style = warningStyle
-		}
-		results = append(results, span{text: "Publication " + string(a.Action) + ": " + string(a.Status), style: style})
-		if a.Message != "" {
-			results = append(results, span{text: a.Message, style: warningStyle})
-		}
-	}
-	return results
 }
 
 func (m Model) noRunsText() string {

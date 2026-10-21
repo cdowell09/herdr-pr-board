@@ -243,7 +243,8 @@ func localReviewSummary(pr gh.PullRequest, runs []reviewmemory.Run, active map[s
 		switch latest.Status {
 		case reviewmemory.Completed:
 			summary.findings = reviewmemory.CountSeverities(latest.Findings)
-			summary.detail = "Completed locally · " + findingsDetail(summary.findings)
+			// The summary line uses the REVIEW cell, so both show one format.
+			summary.detail = "Completed locally · " + strings.TrimSpace(reviewCellText(summary))
 		case reviewmemory.Failed, reviewmemory.Blocked, reviewmemory.Abandoned:
 			summary.detail = string(latest.Status) + " · explicit retry required"
 		default:
