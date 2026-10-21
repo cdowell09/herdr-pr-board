@@ -34,9 +34,9 @@ func layoutModel(t *testing.T, width int) Model {
 		{View: cfg.Views[1]},
 	}
 	model.loading = false
-	model.width = width
-	model.height = 30
-	return model
+	// The first size message binds the detail pane, as it does at startup.
+	next, _ := model.Update(tea.WindowSizeMsg{Width: width, Height: 30})
+	return next.(Model)
 }
 
 func TestModelLayoutsFitTerminalWidth(t *testing.T) {

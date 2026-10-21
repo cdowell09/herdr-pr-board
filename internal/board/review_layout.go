@@ -24,10 +24,7 @@ const (
 )
 
 // regionSplit reports whether the board shows the detail pane under the table.
-func (m Model) regionSplit() bool {
-	_, ok := m.panePR()
-	return ok && m.height >= regionSplitHeight
-}
+func (m Model) regionSplit() bool { return m.region != nil && m.height >= regionSplitHeight }
 
 // regionLines renders the detail pane's review section: labeled rows for
 // the split, or every run with the full automation and details sections in
@@ -229,6 +226,9 @@ func (m Model) publicationStates(runID string) []span {
 }
 
 func (m Model) noRunsText() string {
+	if m.reviews == nil {
+		return reviewsUnavailable
+	}
 	if m.regionState().loaded {
 		return "No local review runs"
 	}

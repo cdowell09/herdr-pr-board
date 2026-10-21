@@ -20,20 +20,8 @@ const (
 	paneURLOffset = 1
 )
 
-// panePR is the PR that the pane shows: the PR that the review section is
-// bound to, or the selected PR without local reviews.
-func (m Model) panePR() (gh.PullRequest, bool) {
-	if m.region != nil {
-		return m.region.pr, true
-	}
-	return m.selectedPR()
-}
-
 // zoomed reports that the pane fills the screen.
-func (m Model) zoomed() bool {
-	_, ok := m.panePR()
-	return m.zoom && ok
-}
+func (m Model) zoomed() bool { return m.zoom && m.region != nil }
 
 // paneWidth is the content width inside the pane's sides and their padding.
 func (m Model) paneWidth() int { return max(1, m.width-4) }
@@ -41,7 +29,7 @@ func (m Model) paneWidth() int { return max(1, m.width-4) }
 // renderPane returns the pane in at most height lines. The review section
 // takes the rows that the other parts leave.
 func (m Model) renderPane(height int) []string {
-	pr, _ := m.panePR()
+	pr := m.region.pr
 	inner := m.paneWidth()
 	side := frameStyle.Render("│")
 	row := func(line string) string {
@@ -58,12 +46,7 @@ func (m Model) renderPane(height int) []string {
 	if title {
 		lines = append(lines, row(rule("Review", "", inner, dimStyle)))
 	}
-	// The review section is the only part that needs local reviews.
-	section := []string{dimStyle.Render(reviewsUnavailable)}
-	if m.region != nil {
-		section = m.regionViewport(m.regionLines(m.zoom), review)
-	}
-	for _, line := range section[:min(len(section), review)] {
+	for _, line := range m.regionViewport(m.regionLines(m.zoom), review) {
 		lines = append(lines, row(line))
 	}
 	if bottom {
@@ -88,8 +71,7 @@ func (m Model) paneRows(height int) (facts []string, title, bottom bool, review 
 	}
 	if bottom && review-2 >= 1 {
 		title, review = true, review-2
-		pr, _ := m.panePR()
-		if f := m.paneFacts(pr); review-len(f) >= 1 {
+		if f := m.paneFacts(m.region.pr); review-len(f) >= 1 {
 			facts, review = f, review-len(f)
 		}
 	}

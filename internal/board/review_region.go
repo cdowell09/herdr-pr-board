@@ -21,9 +21,10 @@ type ReviewBackend interface {
 
 const reviewsUnavailable = "Set HERDR_PLUGIN_STATE_DIR to an absolute path to use reviews."
 
-// reviewRegion is the board's view of the selected PR's local reviews: the
-// PR, the scroll position, the last action result, and the settings form.
-// The review data itself stays in the latest read; regionState resolves it.
+// reviewRegion is the detail pane's state: the selected or pinned PR, the
+// scroll position, the last action result, and the settings form. It exists
+// with or without local reviews. The review data itself stays in the latest
+// read; regionState resolves it.
 type reviewRegion struct {
 	pr              gh.PullRequest
 	message         string
@@ -88,9 +89,6 @@ func (m Model) WithReviews(ctx context.Context, backend ReviewBackend) Model {
 // its PR by URL across a refresh that reorders rows: the selection moves to
 // the PR's new row and the PR's metadata follows the latest observation.
 func (m Model) syncRegion(cmd tea.Cmd) (tea.Model, tea.Cmd) {
-	if m.reviews == nil {
-		return m, cmd
-	}
 	if m.region != nil && m.regionPinned() {
 		if observed := m.reviewObservation(); observed.URL != "" {
 			m.region.pr = observed
@@ -136,10 +134,11 @@ func (m Model) updateReviewAction(key tea.KeyMsg) (tea.Model, tea.Cmd, bool) {
 	default:
 		return m, nil, false
 	}
+	if m.reviews == nil {
+		m.warning = appendWarning(m.warning, reviewsUnavailable)
+		return m, nil, true
+	}
 	if m.region == nil {
-		if m.reviews == nil {
-			m.warning = appendWarning(m.warning, reviewsUnavailable)
-		}
 		return m, nil, true
 	}
 	switch key.String() {
@@ -164,7 +163,7 @@ func (m Model) updateReviewAction(key tea.KeyMsg) (tea.Model, tea.Cmd, bool) {
 
 // zoomIn shows the detail pane at full height.
 func (m Model) zoomIn() Model {
-	if _, ok := m.panePR(); !ok {
+	if m.region == nil {
 		return m
 	}
 	m.zoom = true
@@ -195,12 +194,10 @@ func (m Model) updateZoomKey(key tea.KeyMsg) (tea.Model, tea.Cmd) {
 	case "?":
 		m.helpOverlay = true
 	case "enter", "o":
-		pr, _ := m.panePR()
-		return m, m.openBrowser(pr.URL)
+		return m, m.openBrowser(m.region.pr.URL)
 	default:
 		if shortcut, ok := m.shortcut(key.String()); ok {
-			pr, _ := m.panePR()
-			return m, m.launchShortcut(shortcut, pr)
+			return m, m.launchShortcut(shortcut, m.region.pr)
 		}
 		m.scrollRegionKey(key.String())
 	}
@@ -250,8 +247,7 @@ func (m Model) updateZoomMouse(message tea.MouseMsg) (tea.Model, tea.Cmd) {
 		m.scrollRegion(mouseStep)
 	case tea.MouseButtonLeft:
 		if event.Action == tea.MouseActionPress && event.Y == paneURLOffset {
-			pr, _ := m.panePR()
-			return m, m.openBrowser(pr.URL)
+			return m, m.openBrowser(m.region.pr.URL)
 		}
 	}
 	return m, nil

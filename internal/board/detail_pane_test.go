@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/cdowell09/herdr-pr-board/internal/config"
+	"github.com/cdowell09/herdr-pr-board/internal/discovery"
 	gh "github.com/cdowell09/herdr-pr-board/internal/github"
 	"github.com/cdowell09/herdr-pr-board/internal/publication"
 	"github.com/cdowell09/herdr-pr-board/internal/reviewmemory"
@@ -185,7 +186,7 @@ func TestDetailPaneWorksWithoutLocalReviews(t *testing.T) {
 	m := layoutModel(t, 100)
 	next, _ := m.Update(tea.WindowSizeMsg{Width: 100, Height: 30})
 	m = next.(Model)
-	if m.reviews != nil || m.region != nil {
+	if m.reviews != nil {
 		t.Fatal("fixture has local reviews")
 	}
 	lay := m.boardLayout()
@@ -194,7 +195,8 @@ func TestDetailPaneWorksWithoutLocalReviews(t *testing.T) {
 	if lay.paneRows == 0 || unframe(lines[lay.selectedURLRow]) != pr.URL || unframe(lines[lay.selectedURLRow+1]) != pr.Title {
 		t.Fatalf("no pane without local reviews:\n%s", strings.Join(lines, "\n"))
 	}
-	if view := strings.Join(lines, "\n"); !strings.Contains(view, "Author grace") || !strings.Contains(view, "HERDR_PLUGIN_STATE_DIR") {
+	// GitHub reviews still show without local reviews.
+	if view := strings.Join(lines, "\n"); !strings.Contains(view, "Author grace") || !strings.Contains(view, "HERDR_PLUGIN_STATE_DIR") || !strings.Contains(view, "POSTED") {
 		t.Fatalf("pane lacks the facts or the review explanation:\n%s", view)
 	}
 	opened := ""
@@ -225,5 +227,17 @@ func TestManyShortcutsKeepThePaneURL(t *testing.T) {
 	// The footer yields rows, so the pane keeps its URL and a review row.
 	if len(lines) != m.height || m.paneReviewRows(lay.paneRows) < 1 || unframe(lines[lay.selectedURLRow]) != truncate(pr.URL, m.paneWidth()) {
 		t.Fatalf("pane rows %d, URL row %d:\n%s", lay.paneRows, lay.selectedURLRow, strings.Join(lines, "\n"))
+	}
+}
+
+func TestZoomKeepsItsPRWithoutLocalReviews(t *testing.T) {
+	m := press(layoutModel(t, 100), runes("v"))
+	pinned := m.region.pr
+	now := time.Now()
+	rest := m.views[0].PRs[:2]
+	next, _ := m.Update(snapshotMsg{Snapshot: discovery.Snapshot{Views: []discovery.ViewData{{View: m.cfg.Views[0], PRs: rest, UpdatedAt: now, ObservedAt: now}, {View: m.cfg.Views[1]}}, StartedAt: now, FinishedAt: now}})
+	m = next.(Model)
+	if !m.zoomed() || m.region.pr.URL != pinned.URL || unframe(strings.Split(stripANSI(m.View()), "\n")[paneURLOffset]) != pinned.URL {
+		t.Fatalf("refresh replaced the zoomed PR %s with %s", pinned.URL, m.region.pr.URL)
 	}
 }
