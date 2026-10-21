@@ -364,6 +364,11 @@ func (m Model) update(message tea.Msg) (tea.Model, tea.Cmd) {
 		return m, nil
 	case tea.MouseMsg:
 		switch {
+		case m.confirm != nil:
+			// Only a key confirms a publication, so a stray click, even on an
+			// Enter footer control, cancels it and never posts to GitHub.
+			m.confirm = nil
+			return m, nil
 		case m.helpOverlay:
 			return m.updateHelpMouse(msg)
 		case m.region != nil && m.region.setup != nil:
@@ -372,10 +377,6 @@ func (m Model) update(message tea.Msg) (tea.Model, tea.Cmd) {
 		// A footer control click is the same as its key.
 		if key, ok := m.footerKey(msg); ok {
 			return m.update(key)
-		}
-		if m.confirm != nil && msg.Action == tea.MouseActionPress {
-			m.confirm = nil
-			return m, nil
 		}
 		if m.zoom && m.region != nil {
 			return m.updateZoomMouse(msg)

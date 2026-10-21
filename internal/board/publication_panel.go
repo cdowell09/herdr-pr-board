@@ -70,16 +70,17 @@ func (m Model) updateConfirm(key tea.KeyMsg) (tea.Model, tea.Cmd) {
 
 // armPublication asks for confirmation of the action on the region PR.
 func (m Model) armPublication(action config.PublicationAction) (tea.Model, tea.Cmd) {
-	if _, ok := m.publicationRun(); ok {
+	if _, ok := m.checkPublicationRun(); ok {
 		m.confirm = &pendingPublication{m.region.pr, action}
 	}
 	return m, nil
 }
 
-// publicationRun returns the run the region PR can publish now. Arming and
-// publishing both check it, so a confirmation never publishes what the board
-// can no longer publish.
-func (m *Model) publicationRun() (reviewmemory.Run, bool) {
+// checkPublicationRun returns the run the region PR can publish now. When
+// no completed run exists, it tells the user in the region message. Arming
+// and publishing both check it, so a confirmation never publishes what the
+// board can no longer publish.
+func (m *Model) checkPublicationRun() (reviewmemory.Run, bool) {
 	if m.publications == nil || m.publishing[m.region.pr.URL] {
 		return reviewmemory.Run{}, false
 	}
@@ -91,7 +92,7 @@ func (m *Model) publicationRun() (reviewmemory.Run, bool) {
 }
 
 func (m Model) publishCmd(action config.PublicationAction) (tea.Model, tea.Cmd) {
-	run, ok := m.publicationRun()
+	run, ok := m.checkPublicationRun()
 	if !ok {
 		return m, nil
 	}

@@ -240,6 +240,13 @@ func TestPublicationActionsAskForConfirmation(t *testing.T) {
 	if m, _ = click(m, 0, 0); strings.Contains(stripANSI(m.View()), "enter/y") {
 		t.Fatal("a click did not cancel the confirmation")
 	}
+	// A click on the Enter footer control cancels instead of confirming.
+	m.zoom = false
+	m = press(m, runes("x"))
+	m, cmd = clickText(t, m, "Enter open")
+	if cmd != nil || backend.action != "" || strings.Contains(stripANSI(m.View()), "enter/y") {
+		t.Fatal("an Enter footer click confirmed the publication or kept the prompt")
+	}
 	// After the cancel, Enter is a plain key again.
 	opened := ""
 	m.openBrowser = func(url string) tea.Cmd { opened = url; return nil }

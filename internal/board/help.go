@@ -44,7 +44,7 @@ var helpSections = []helpSection{
 		{"c", "publish a comment"},
 		{"a", "publish an approval"},
 		{"x", "publish a change request"},
-		{"Enter y", "confirm the publication; another key cancels it"},
+		{"Enter y", "confirm the publication; another key or a click cancels it"},
 		{"j/k ↑/↓ g/G Home/End PgUp/PgDn wheel", "scroll the zoomed region"},
 		{"o", "open the PR in a browser"},
 		{"Esc v", "leave zoom"},
